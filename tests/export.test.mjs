@@ -12,3 +12,10 @@ test('export rejects upscaling and oversized decoded images',()=>{
  assert.throws(()=>placement(768,768,'4:5'),/too_small/);
  assert.throws(()=>placement(20000,20000,'4:5'),/too_large/);
 });
+test('export errors preserve only allowlisted failure codes',async t=>{
+ const {exportDraft}=await import('../src/export.mjs');
+ t.mock.method(globalThis,'fetch',async()=>Response.json({error:'original_format'},{status:400}));
+ await assert.rejects(exportDraft({id:'draft',version:1}),/^Error: original_format$/);
+ t.mock.method(globalThis,'fetch',async()=>Response.json({error:'private provider detail'},{status:400}));
+ await assert.rejects(exportDraft({id:'draft',version:1}),/^Error: export_failed$/);
+});

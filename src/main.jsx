@@ -311,7 +311,7 @@ function Editor({ draft, demo, busy, update }) {
   const download=async()=>{
     setExporting(true);setExportError(false);setExportProgress('');
     try{const {exportDraft}=await import('./export.mjs');await exportDraft(draft,(done,total)=>setExportProgress(`${done}/${total}`));}
-    catch{setExportError(true);}
+    catch(err){setExportError(true);console.warn('PhotoStory export: '+(['source_unavailable','source_changed','original_format','original_too_large','original_too_small','approval_required','version_conflict','reauthorization_required'].includes(err?.message)?err.message:'export_failed'));}
     finally{setExporting(false);}
   };
   const dirty = JSON.stringify(form) !== JSON.stringify(draft),

@@ -10,7 +10,9 @@ export function placement(width,height,aspect,frame){
 }
 async function request(draft,photoId){
  const r=await fetch('/api/export/'+draft.id+(photoId?'/'+photoId:''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:draft.version})});
- if(!r.ok)throw new Error('export_failed');return r;
+ if(!r.ok){let code;try{code=(await r.json()).error;}catch{}
+  throw new Error(['source_unavailable','source_changed','original_format','original_too_large','approval_required','version_conflict','reauthorization_required'].includes(code)?code:'export_failed');
+ }return r;
 }
 export async function exportDraft(draft,onProgress){
  const approved=await(await request(draft)).json();
