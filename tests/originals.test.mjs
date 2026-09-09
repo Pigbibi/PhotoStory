@@ -70,3 +70,8 @@ test('source recovery reports an authentication failure without provider details
  t.mock.method(globalThis,'fetch',async()=>new Response('private provider error',{status:400}));
  await assert.rejects(recoverSource(env,pid,'item','a'.repeat(64),'b'.repeat(64)),/^Error: source_authentication_failed$/);
 });
+test('source recovery distinguishes unavailable metadata without leaking transport errors',async t=>{
+ const {recoverSource}=await import('../worker/originals.mjs');const {env,pid}=await fixture(t);
+ t.mock.method(globalThis,'fetch',async()=>{throw new TypeError('private transport detail')});
+ await assert.rejects(recoverSource(env,pid,'item','a'.repeat(64),'b'.repeat(64)),/^Error: source_metadata_unavailable$/);
+});

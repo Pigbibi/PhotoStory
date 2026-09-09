@@ -334,6 +334,7 @@ export default {
       const known = new Set([
         "source_unavailable",
         "source_authentication_failed",
+        "source_metadata_unavailable",
         "source_changed",
         "original_format",
         "original_too_large",

@@ -53,9 +53,12 @@ export async function recoverSource(e,id,item,fingerprint,policy){
  if(typeof policy!=='string'||!/^[a-f0-9]{64}$/.test(policy))throw new Error('source_unavailable');
  let token;
  try{token=await microsoftToken(e);}catch{throw new Error('source_authentication_failed');}
- const r=await fetch('https://graph.microsoft.com/v1.0/me/drive/items/'+encodeURIComponent(item)+'?$select=id,parentReference,eTag',{headers:{Authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(20000)});
- const meta=JSON.parse(new TextDecoder().decode(await bytes(r,1024*1024)));
- if(meta.id!==item||typeof meta.eTag!=='string'||!meta.parentReference?.driveId||await hash(meta.parentReference.driveId+':'+item)!==id)throw new Error('source_changed');
+ let meta;
+ try{
+  const r=await fetch('https://graph.microsoft.com/v1.0/me/drive/items/'+encodeURIComponent(item)+'?$select=id,parentReference,eTag',{headers:{Authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(20000)});
+  meta=JSON.parse(new TextDecoder().decode(await bytes(r,1024*1024)));
+ }catch{throw new Error('source_metadata_unavailable');}
+ if(!meta||meta.id!==item||typeof meta.eTag!=='string'||!meta.parentReference?.driveId||await hash(meta.parentReference.driveId+':'+item)!==id)throw new Error('source_changed');
  const version=await hash(id+'\0'+meta.eTag);
  if(await hash(policy+version)!==fingerprint)throw new Error('source_changed');
  return {item,version};
