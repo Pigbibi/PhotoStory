@@ -29,7 +29,7 @@ export async function original(e,draftId,photoId,version){
  const source=sourceRecord(await get(e,'photo-source:'+photoId));
  const token=await microsoftToken(e),endpoint='https://graph.microsoft.com/v1.0/me/drive/items/'+encodeURIComponent(source.item);
  const metadata=async()=>{
-  const r=await fetch(endpoint,{headers:{Authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(20000)});
+  const r=await fetch(endpoint,{headers:{Authorization:'Bearer '+token},redirect:'manual',signal:AbortSignal.timeout(20000)});
   const meta=JSON.parse(new TextDecoder().decode(await bytes(r,1024*1024)));
   if(meta.id!==source.item||!meta.parentReference?.driveId||typeof meta.eTag!=='string'||await hash(meta.parentReference.driveId+':'+meta.id)!==photoId||await hash(photoId+'\0'+meta.eTag)!==source.version)throw new Error('source_changed');
   if(!['image/jpeg','image/png'].includes(meta.file?.mimeType)||meta.video||meta.remoteItem)throw new Error('original_format');
@@ -42,7 +42,7 @@ export async function original(e,draftId,photoId,version){
  if(!downloadHost(url))throw new Error('source_unavailable');
  // The pre-authenticated URL is never exposed to the browser and never receives
  // the Graph bearer token. A second redirect is not followed.
- const data=await bytes(await fetch(url,{redirect:'error',signal:AbortSignal.timeout(60000)}),MAX_ORIGINAL_BYTES);
+ const data=await bytes(await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(60000)}),MAX_ORIGINAL_BYTES);
  if(data.length!==before.size)throw new Error('source_changed');
  if(before.file.mimeType==='image/jpeg' ? !(data[0]===255&&data[1]===216&&data[2]===255) : !(data[0]===137&&data[1]===80&&data[2]===78&&data[3]===71))throw new Error('original_format');
  await metadata();await reviewedDraft(e,draftId,version);
@@ -55,7 +55,7 @@ export async function recoverSource(e,id,item,fingerprint,policy){
  try{token=await microsoftToken(e);}catch{throw new Error('source_authentication_failed');}
  let meta;
  try{
-  const r=await fetch('https://graph.microsoft.com/v1.0/me/drive/items/'+encodeURIComponent(item)+'?$select=id,parentReference,eTag',{headers:{Authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(20000)});
+  const r=await fetch('https://graph.microsoft.com/v1.0/me/drive/items/'+encodeURIComponent(item)+'?$select=id,parentReference,eTag',{headers:{Authorization:'Bearer '+token},redirect:'manual',signal:AbortSignal.timeout(20000)});
   meta=JSON.parse(new TextDecoder().decode(await bytes(r,1024*1024)));
  }catch{throw new Error('source_metadata_unavailable');}
  if(!meta||meta.id!==item||typeof meta.eTag!=='string'||!meta.parentReference?.driveId||await hash(meta.parentReference.driveId+':'+item)!==id)throw new Error('source_changed');

@@ -22,7 +22,7 @@ test('original requires current approval and never leaks bearer token to downloa
  t.mock.method(globalThis,'fetch',async(url,options)=>{
   calls++;
   if(url.startsWith('https://graph.microsoft.com/')){assert.equal(options.headers.Authorization,'Bearer fixture-token');return Response.json({id:'item',parentReference:{driveId:'drive'},eTag:'v1',size:3,file:{mimeType:'image/jpeg'},image:{width:2000,height:1000},'@microsoft.graph.downloadUrl':'https://files.1drv.com/x'});}
-  assert.equal(options.headers,undefined);assert.equal(options.redirect,'error');return new Response(new Uint8Array([255,216,255]));
+  assert.equal(options.headers,undefined);assert.equal(options.redirect,'manual');return new Response(new Uint8Array([255,216,255]));
  });
  const r=await original(env,'d',pid,1);assert.equal(r.status,200);assert.equal((await r.arrayBuffer()).byteLength,3);assert.equal(calls,3);
  await assert.rejects(original(env,'d',pid,2),/version_conflict/);
@@ -74,4 +74,12 @@ test('source recovery distinguishes unavailable metadata without leaking transpo
  const {recoverSource}=await import('../worker/originals.mjs');const {env,pid}=await fixture(t);
  t.mock.method(globalThis,'fetch',async()=>{throw new TypeError('private transport detail')});
  await assert.rejects(recoverSource(env,pid,'item','a'.repeat(64),'b'.repeat(64)),/^Error: source_metadata_unavailable$/);
+});
+test('original metadata and download requests use Workers-supported redirect rejection',async t=>{
+ const {env,pid}=await fixture(t);let calls=0;
+ t.mock.method(globalThis,'fetch',async(url,o)=>{
+  calls++;assert.equal(o.redirect,'manual');
+  return new Response(null,{status:302,headers:{Location:'https://untrusted.invalid/'}});
+ });
+ await assert.rejects(original(env,'d',pid,1),/source_unavailable/);assert.equal(calls,1);
 });
