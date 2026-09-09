@@ -36,7 +36,8 @@ async function request(url,options={}){
  const reader=r.body.getReader(),parts=[];let size=0;
  while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>65536){await reader.cancel();throw new Error('instagram_connection_failed');}parts.push(value);}
  const bytes=new Uint8Array(size);let at=0;for(const part of parts){bytes.set(part,at);at+=part.length;}
- try{return JSON.parse(new TextDecoder().decode(bytes));}catch{throw Object.assign(new Error('instagram_connection_failed'),{httpStatus:r.status,category:'invalid_json'});}
+ try{return JSON.parse(new TextDecoder().decode(bytes),(key,value,context)=>
+  (key==='id'||key==='user_id')&&typeof value==='number'&&/^\d{1,32}$/.test(context?.source||'')?context.source:value);}catch{throw Object.assign(new Error('instagram_connection_failed'),{httpStatus:r.status,category:'invalid_json'});}
 }
 function single(value){
  if(value&&Array.isArray(value.data)){if(value.data.length!==1)throw new Error('instagram_connection_failed');return value.data[0];}

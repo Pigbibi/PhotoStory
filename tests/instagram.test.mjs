@@ -106,3 +106,11 @@ test('Instagram rejects unsafe numeric IDs and malformed permission arrays',asyn
   assert.equal(await DB.prepare("SELECT value FROM state WHERE key='instagram'").first(),null);
  });
 });
+test('Instagram preserves long numeric account IDs before JSON loses precision',async t=>{
+ const {env}=await fixture(t);const {state}=await begin(env);provider(t,{id:'1234567890123456789'});
+ const mocked=globalThis.fetch;t.mock.method(globalThis,'fetch',async(url,options)=>{
+  if(new URL(url).hostname==='api.instagram.com')return new Response('{"access_token":"short-fixture","user_id":1234567890123456789,"permissions":["instagram_business_basic","instagram_business_content_publish"]}',{headers:{'Content-Type':'application/json'}});
+  return mocked(url,options);
+ });
+ assert.equal((await finish(env,state)).headers.get('location'),'/?instagram=connected');
+});
