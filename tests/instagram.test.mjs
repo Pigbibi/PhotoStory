@@ -44,7 +44,8 @@ test('Instagram callback stores only encrypted credentials and never publishes',
  const r=await finish(env,state);assert.equal(r.headers.get('location'),'/?instagram=connected');
  const row=await DB.prepare("SELECT value FROM state WHERE key='instagram'").first();assert.ok(!row.value.includes('long-fixture'));
  const token=await unseal(env,JSON.parse(row.value));assert.equal(token.access,'long-fixture');assert.equal(token.username,'landscapes');assert.equal(token.userId,'456');
- const status=await worker.fetch(new Request('https://example.test/api/session',{headers:{Cookie:'__Host-photostory=session'}}),env);const body=await status.json();assert.equal(body.instagram.connected,true);assert.equal(body.instagram.username,'landscapes');assert.equal(body.publishingEnabled,false);assert.ok(!JSON.stringify(body).includes('fixture'));
+ const status=await worker.fetch(new Request('https://example.test/api/session',{headers:{Cookie:'__Host-photostory=session'}}),env);const body=await status.json();assert.equal(body.instagram.connected,true);assert.equal(body.instagram.username,'landscapes');assert.equal(body.publishingEnabled,true);
+ assert.equal((await DB.prepare('SELECT count(*) AS n FROM publications').first()).n,0);assert.ok(!JSON.stringify(body).includes('fixture'));
  assert.equal(calls.length,3);assert.equal((await finish(env,state)).status,400);assert.equal(calls.length,3);
 });
 test('wrong session, expired state and changed expected account cannot exchange a code',async t=>{
