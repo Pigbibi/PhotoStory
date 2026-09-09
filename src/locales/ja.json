@@ -221,5 +221,18 @@
   "授权有效期至 {date}。": "認証の有効期限：{date}。",
   "请先配置 Instagram 应用及回调地址。": "先にInstagramアプリとコールバックURLを設定してください。",
   "Instagram 账号连接不会发布照片。": "Instagramへの接続だけでは写真は投稿されません。",
-  "Instagram 配置教程": "Instagram設定ガイド"
+  "Instagram 配置教程": "Instagram設定ガイド",
+  "Instagram publishing": "Instagramへの投稿",
+  "Prepare Instagram post": "Instagram投稿画像を準備",
+  "Preparing images…": "画像を準備中…",
+  "Review the exact images before publishing.": "投稿前に実際の画像を確認してください。",
+  "Images become accessible to Instagram after publishing starts and expire after one hour.": "投稿開始後にInstagramが画像を取得できます。リンクは1時間で失効します。",
+  "Publish to @{username}": "@{username} に投稿",
+  "Publishing…": "投稿中…",
+  "Continue publishing": "投稿を続ける",
+  "Published · Instagram ID {id}": "投稿済み · Instagram ID {id}",
+  "Publishing outcome uncertain. Check Instagram; automatic retries are blocked.": "投稿結果が不明です。Instagramを確認してください。自動再試行は停止されています。",
+  "Could not finish. Check Instagram connection, approval, and image size.": "完了できませんでした。Instagram接続、承認状態、画像サイズを確認してください。",
+  "已批准，保留在发布队列中。": "承認済み。投稿キューに保存しました。",
+  "已批准草稿 · 预览后发布到 Instagram": "承認済み下書き · 確認してInstagramに投稿"
 }

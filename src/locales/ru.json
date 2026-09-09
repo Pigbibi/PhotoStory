@@ -221,5 +221,18 @@
   "授权有效期至 {date}。": "Авторизация истекает {date}.",
   "请先配置 Instagram 应用及回调地址。": "Сначала настройте приложение Instagram и URL обратного вызова.",
   "Instagram 账号连接不会发布照片。": "Подключение Instagram не публикует фотографии.",
-  "Instagram 配置教程": "Руководство по настройке Instagram"
+  "Instagram 配置教程": "Руководство по настройке Instagram",
+  "Instagram publishing": "Публикация в Instagram",
+  "Prepare Instagram post": "Подготовить публикацию Instagram",
+  "Preparing images…": "Подготовка изображений…",
+  "Review the exact images before publishing.": "Проверьте готовые изображения перед публикацией.",
+  "Images become accessible to Instagram after publishing starts and expire after one hour.": "Instagram получит доступ к изображениям после начала публикации. Ссылки действуют один час.",
+  "Publish to @{username}": "Опубликовать в @{username}",
+  "Publishing…": "Публикация…",
+  "Continue publishing": "Продолжить публикацию",
+  "Published · Instagram ID {id}": "Опубликовано · ID Instagram {id}",
+  "Publishing outcome uncertain. Check Instagram; automatic retries are blocked.": "Результат неизвестен. Проверьте Instagram; автоматические повторы заблокированы.",
+  "Could not finish. Check Instagram connection, approval, and image size.": "Не удалось завершить. Проверьте подключение Instagram, одобрение и размер изображений.",
+  "已批准，保留在发布队列中。": "Одобрено и сохранено в очереди публикаций.",
+  "已批准草稿 · 预览后发布到 Instagram": "Одобренные черновики · Проверить и опубликовать в Instagram"
 }

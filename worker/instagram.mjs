@@ -83,3 +83,18 @@ export async function finish(r,e){
   return auth.redirect('/?error=instagram_connection_failed',clear);
  }
 }
+
+// Server-only publishing credentials. Never include this object in an API response.
+export async function publishingAccount(e){
+ const c=config(e);if(!c)throw new Error('instagram_not_connected');
+ let saved;try{saved=await auth.unseal(e,await auth.get(e,'instagram'));}catch{throw new Error('instagram_not_connected');}
+ if(saved.client!==c.client||saved.username?.toLowerCase()!==c.username||saved.expires<Date.now()+600000||!identifier(saved.userId)||!saved.access||!SCOPES.every(s=>saved.permissions?.includes(s)))throw new Error('instagram_not_connected');
+ return {...saved,origin:c.origin};
+}
+export async function publishingRequest(account,path,body){
+ if(!/^\d{1,32}(?:\/(?:media|media_publish))?$/.test(path))throw new Error('publication_failed');
+ const url=new URL('https://graph.instagram.com/v26.0/'+path);
+ if(!body)url.searchParams.set('fields','status_code');
+ try{return await request(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+account.access},...(body?{body:new URLSearchParams(body)}:{})});}
+ catch{throw new Error('publication_failed');}
+}

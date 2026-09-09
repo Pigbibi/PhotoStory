@@ -5,3 +5,5 @@ CREATE TABLE IF NOT EXISTS photos (id TEXT PRIMARY KEY, data BLOB NOT NULL, mime
 CREATE TABLE IF NOT EXISTS photo_gc (photo_id TEXT PRIMARY KEY, expires INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, body TEXT NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, lease TEXT);
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_job ON jobs((1)) WHERE status IN ('pending','running');
+CREATE TABLE IF NOT EXISTS publications (draft_id TEXT PRIMARY KEY, id TEXT NOT NULL UNIQUE, version INTEGER NOT NULL, status TEXT NOT NULL, body TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS publication_images (publication_id TEXT NOT NULL, photo_id TEXT NOT NULL, data BLOB NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(publication_id,photo_id));

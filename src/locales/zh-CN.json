@@ -221,5 +221,18 @@
   "授权有效期至 {date}。": "授权有效期至 {date}。",
   "请先配置 Instagram 应用及回调地址。": "请先配置 Instagram 应用及回调地址。",
   "Instagram 账号连接不会发布照片。": "Instagram 账号连接不会发布照片。",
-  "Instagram 配置教程": "Instagram 配置教程"
+  "Instagram 配置教程": "Instagram 配置教程",
+  "Instagram publishing": "Instagram 发布",
+  "Prepare Instagram post": "生成 Instagram 发布图",
+  "Preparing images…": "正在生成图片…",
+  "Review the exact images before publishing.": "发布前，请检查这些实际成品图。",
+  "Images become accessible to Instagram after publishing starts and expire after one hour.": "开始发布后，Instagram 可临时读取这些图片，链接一小时后失效。",
+  "Publish to @{username}": "发布到 @{username}",
+  "Publishing…": "正在发布…",
+  "Continue publishing": "继续发布",
+  "Published · Instagram ID {id}": "已发布 · Instagram ID {id}",
+  "Publishing outcome uncertain. Check Instagram; automatic retries are blocked.": "发布结果不确定。请检查 Instagram；已阻止自动重试。",
+  "Could not finish. Check Instagram connection, approval, and image size.": "未能完成。请检查 Instagram 连接、批准状态和图片大小。",
+  "已批准，保留在发布队列中。": "已批准，保留在发布队列中。",
+  "已批准草稿 · 预览后发布到 Instagram": "已批准草稿 · 预览后发布到 Instagram"
 }

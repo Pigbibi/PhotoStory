@@ -1,3 +1,4 @@
+import * as publishing from './publishing.mjs';
 import * as instagram from './instagram.mjs';
 import {original,reviewedDraft,sourceRecord,recoverSource} from './originals.mjs';
 import {strictApproval} from './auto-review.mjs';
@@ -212,7 +213,7 @@ async function route(r, e) {
       githubConfigured: auth.configured(e),
       microsoftConfigured: auth.msConfigured(e),
       onedriveConnected: s ? Boolean(await auth.get(e, "microsoft")) : false,
-      publishingEnabled: false,
+      publishingEnabled: s ? (await instagram.status(e)).connected : false,
       instagram: s ? await instagram.status(e) : undefined,
       captionLanguage: s ? (e.AI_CAPTION_LANGUAGE||"en") : undefined,
     });
@@ -221,6 +222,10 @@ async function route(r, e) {
     return auth.githubStart(r, e);
   if (p === "/auth/github/callback" && r.method === "GET")
     return auth.githubFinish(r, e);
+  if(p.startsWith('/delivery/')&&r.method==='GET'){
+    const parts=p.split('/');if(parts.length!==4||!validId(parts[2])||!validId(parts[3]))return failure('not_found',404);
+    return publishing.media(e,parts[2],parts[3]);
+  }
   if (p.startsWith("/internal/")) return internal(r, e, p);
   if (p.startsWith("/api/") || p.startsWith("/auth/")) {
     const user = await auth.session(r, e);
@@ -248,11 +253,34 @@ async function route(r, e) {
       return auth.microsoftStart(r, e, user);
     if (p === "/auth/microsoft/callback" && r.method === "GET")
       return auth.microsoftFinish(r, e, user);
+    if(p.startsWith('/api/publish/')){
+      const parts=p.slice(13).split('/'),[id,publicationId,action,photoId]=parts;
+      if(!parts.every(validId))return failure('not_found',404);
+      if(parts.length===1&&r.method==='GET')return json(await publishing.view(e,id));
+      if(parts.length===2&&publicationId==='prepare'&&r.method==='POST')return json(await publishing.prepare(e,id,(await readJSON(r)).version));
+      if(parts.length===4&&action==='images'){
+        if(r.method==='GET')return publishing.privateImage(e,id,publicationId,photoId);
+        if(r.method==='POST'){
+          if(r.headers.get('Content-Type')!=='image/jpeg')throw new Error('invalid_publish_image');
+          const reader=r.body?.getReader();if(!reader)throw new Error('invalid_publish_image');
+          const parts=[];let size=0;
+          while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>publishing.MAX_PUBLISH_IMAGE){await reader.cancel();throw new Error('invalid_publish_image');}parts.push(value);}
+          const data=new Uint8Array(size);let at=0;for(const part of parts){data.set(part,at);at+=part.length;}
+          return json(await publishing.upload(e,id,publicationId,photoId,data));
+        }
+      }
+      if(parts.length===3&&r.method==='POST'){
+        const b=await readJSON(r);
+        if(action==='begin')return json(await publishing.begin(e,id,publicationId,b.version,b.username));
+        if(action==='advance')return json(await publishing.advance(e,id,publicationId));
+      }
+      return failure('not_found',404);
+    }
     if (p === "/api/drafts" && r.method === "GET") {
       const rows = await e.DB.prepare(
         "SELECT body FROM drafts ORDER BY id",
       ).all();
-      return json(rows.results.map((x) => JSON.parse(x.body)));
+      return json(await Promise.all(rows.results.map(async x=>{const d=JSON.parse(x.body);return {...d,publication:await publishing.view(e,d.id)};})));
     }
     if(p==='/api/settings' && r.method==='GET')return json(await settingsView(e));
     if(p==='/api/settings' && r.method==='PUT')return json(await saveSettings(e,await readJSON(r)));
@@ -315,7 +343,7 @@ async function route(r, e) {
       const current = JSON.parse(row.body),
         next = reviewDraft(current, await readJSON(r));
       const statements=[e.DB.prepare(
-        "UPDATE drafts SET body=?,version=? WHERE id=? AND version=?",
+        "UPDATE drafts SET body=?,version=? WHERE id=? AND version=? AND NOT EXISTS(SELECT 1 FROM publications WHERE publications.draft_id=drafts.id AND status!='prepared')",
       )
         .bind(JSON.stringify(next), next.version, id, current.version)];
       for(const removed of current.photos.filter(p=>!next.photos.some(q=>q.id===p.id))){
@@ -352,6 +380,10 @@ export default {
         "invalid_language",
         "invalid_framing",
         "invalid_settings",
+        "instagram_not_connected",
+        "invalid_publish_image",
+        "publication_conflict",
+        "publication_incomplete",
         "invalid_action",
         "invalid_batch_size",
         "invalid_progress",

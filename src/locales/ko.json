@@ -221,5 +221,18 @@
   "授权有效期至 {date}。": "인증 만료일: {date}.",
   "请先配置 Instagram 应用及回调地址。": "먼저 Instagram 앱과 콜백 URL을 설정하세요.",
   "Instagram 账号连接不会发布照片。": "Instagram을 연결해도 사진이 게시되지는 않습니다.",
-  "Instagram 配置教程": "Instagram 설정 안내"
+  "Instagram 配置教程": "Instagram 설정 안내",
+  "Instagram publishing": "Instagram 게시",
+  "Prepare Instagram post": "Instagram 게시 이미지 준비",
+  "Preparing images…": "이미지 준비 중…",
+  "Review the exact images before publishing.": "게시 전에 실제 이미지를 확인하세요.",
+  "Images become accessible to Instagram after publishing starts and expire after one hour.": "게시가 시작되면 Instagram이 이미지에 접근할 수 있으며 링크는 1시간 후 만료됩니다.",
+  "Publish to @{username}": "@{username}에 게시",
+  "Publishing…": "게시 중…",
+  "Continue publishing": "게시 계속",
+  "Published · Instagram ID {id}": "게시 완료 · Instagram ID {id}",
+  "Publishing outcome uncertain. Check Instagram; automatic retries are blocked.": "게시 결과가 불확실합니다. Instagram을 확인하세요. 자동 재시도는 차단되었습니다.",
+  "Could not finish. Check Instagram connection, approval, and image size.": "완료하지 못했습니다. Instagram 연결, 승인 상태, 이미지 크기를 확인하세요.",
+  "已批准，保留在发布队列中。": "승인되어 게시 대기열에 보관되었습니다.",
+  "已批准草稿 · 预览后发布到 Instagram": "승인된 초안 · 미리 보고 Instagram에 게시"
 }

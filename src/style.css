@@ -629,3 +629,7 @@ footer span:last-child { margin-left:0; margin-inline-start:auto; }
 }
 
 .settings code { direction:ltr; unicode-bidi:isolate; display:inline-block; max-width:100%; }
+.publication { grid-column: 2 / -1; padding: 1.5rem; border-top: 1px solid var(--line, #ddd); }
+.publication-preview { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 20px 0; }
+.publication-preview img { display:block; width:100%; height:auto; background:white; }
+@media(max-width:850px) { .publication { grid-column:1 / -1; } .publication-preview { grid-template-columns:repeat(2,minmax(0,1fr)); } }

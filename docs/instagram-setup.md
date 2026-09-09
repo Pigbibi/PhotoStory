@@ -5,9 +5,9 @@
 ## Current release
 
 PhotoStory selects, reviews and exports photos, and can connect an Instagram
-professional account through OAuth. **Publishing is still not implemented.**
-Manual and strict AI approval prepare drafts; neither posts them. Download an
-approved draft as a ZIP and upload it with the Instagram app.
+professional account through OAuth. Approved drafts support manual single-image
+and carousel publishing. Approval alone never posts: prepare the output and click
+the account-labelled Publish button. ZIP export remains available.
 
 Connecting verifies the exact username configured by the administrator, the
 professional account type, the app-scoped identity and both required permissions.
@@ -140,7 +140,7 @@ sanitized errors.
 6. This release obtains a long-lived token but does not refresh it automatically.
    Use **Reconnect Instagram** before it expires. To revoke access, use Instagram's
    **Apps and websites** settings. The displayed expiry is the stored grant's
-   expiry, not a continuous check for revocation; no publishing is enabled.
+   expiry, not a continuous check for revocation. Publishing checks the saved account and token expiry again.
 
 The implementation follows Meta's [Business Login documentation](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login)
 and [account identity endpoint](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/get-started),
@@ -159,3 +159,44 @@ If consent returns but the connection fails, inspect the private, expiring
 This deployment's Workers runtime rejects `redirect: "error"` before sending the
 request. PhotoStory uses `redirect: "manual"` and rejects non-success responses,
 including every redirect, so credentials are never forwarded to a redirect target.
+
+
+## Deploy and use manual publishing
+
+1. Before upgrading the Worker, apply the additive tables in `worker/schema.sql`
+   with `npx wrangler d1 execute photostory --remote --file worker/schema.sql`.
+   Use your deployment config via `--config` if it differs from the public template.
+   This creates `publications` and `publication_images` without replacing existing data.
+2. Run tests and build, then deploy the Worker. Existing Instagram OAuth secrets,
+   D1, and the allowlisted GitHub login are sufficient; no R2 bucket or new paid
+   service is needed. Keep the normal processor/maintenance timer running.
+3. Connect the intended professional Instagram account and approve a draft.
+   Click **Prepare Instagram post**. The browser obtains version-checked originals
+   and renders the same framing as ZIP export. Inspect the final images and caption.
+4. Click **Publish to @username**. Only this action starts Meta requests and makes
+   temporary output URLs accessible. Originals and Microsoft download URLs remain
+   private. Images use 1080px-wide RGB JPEG, a uniform aspect ratio, no EXIF/GPS,
+   and at most 1.8 MB per image (a local D1 storage limit). ICC color profiles are allowed.
+5. Keep the page open while publishing. If it closes between completed steps,
+   **Continue publishing** resumes the recorded progress without recreating completed
+   containers. Published results show the Instagram media ID. Check the actual
+   account for the first live acceptance test; mocked API tests do not prove a post.
+
+Once publishing starts, draft edits/trash and duplicate publication are blocked.
+Each external operation is claimed durably before sending; timeouts, crashes or
+ambiguous results stop in an uncertain state. Never delete that record to retry.
+Check Instagram and the known container/media IDs through an administrator first;
+there is deliberately no automatic replay of a possibly successful publish call.
+Temporary image URLs expire after one hour. Maintenance removes expired JPEG blobs
+independently of review-trash retention; the publication record remains for duplicate
+prevention and history. Unfinished preparations stay private and expire too.
+
+This release has no scheduled posting, automatic token refresh, or unattended
+strict-AI publishing. The existing scheduled job feature only creates/reviews drafts.
+Meta app roles/access review still govern who can use the integration.
+
+API sequence follows Meta's [content publishing guide](https://developers.facebook.com/documentation/instagram-platform/content-publishing):
+create image containers, wait for `FINISHED`, create the carousel if needed, then
+call `media_publish` once. Pending containers are polled at one-minute intervals,
+with at most five unfinished checks; approved image alt text is included. Tokens are server-only bearer headers; provider error
+messages and credential-bearing URLs are never returned to the website.

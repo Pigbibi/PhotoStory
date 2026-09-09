@@ -221,5 +221,18 @@
   "授权有效期至 {date}。": "تنتهي صلاحية التفويض في {date}.",
   "请先配置 Instagram 应用及回调地址。": "قم أولاً بإعداد تطبيق Instagram ورابط إعادة التوجيه.",
   "Instagram 账号连接不会发布照片。": "ربط Instagram لا ينشر الصور.",
-  "Instagram 配置教程": "دليل إعداد Instagram"
+  "Instagram 配置教程": "دليل إعداد Instagram",
+  "Instagram publishing": "النشر على Instagram",
+  "Prepare Instagram post": "تجهيز منشور Instagram",
+  "Preparing images…": "جارٍ تجهيز الصور…",
+  "Review the exact images before publishing.": "راجع الصور النهائية قبل النشر.",
+  "Images become accessible to Instagram after publishing starts and expire after one hour.": "يمكن لـ Instagram الوصول إلى الصور عند بدء النشر. تنتهي صلاحية الروابط بعد ساعة.",
+  "Publish to @{username}": "النشر على @{username}",
+  "Publishing…": "جارٍ النشر…",
+  "Continue publishing": "متابعة النشر",
+  "Published · Instagram ID {id}": "تم النشر · معرّف Instagram {id}",
+  "Publishing outcome uncertain. Check Instagram; automatic retries are blocked.": "نتيجة النشر غير مؤكدة. تحقق من Instagram؛ إعادة المحاولة التلقائية محظورة.",
+  "Could not finish. Check Instagram connection, approval, and image size.": "تعذر الإكمال. تحقق من اتصال Instagram والموافقة وحجم الصور.",
+  "已批准，保留在发布队列中。": "تمت الموافقة والحفظ في قائمة النشر.",
+  "已批准草稿 · 预览后发布到 Instagram": "مسودات معتمدة · معاينة ونشر على Instagram"
 }

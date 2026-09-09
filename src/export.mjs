@@ -14,7 +14,7 @@ async function request(draft,photoId){
   throw new Error(['source_unavailable','source_changed','original_format','original_too_large','approval_required','version_conflict','reauthorization_required'].includes(code)?code:'export_failed');
  }return r;
 }
-export async function exportDraft(draft,onProgress){
+export async function renderDraft(draft,onProgress){
  const approved=await(await request(draft)).json();
  const files=Object.create(null);
  for(let i=0;i<approved.photos.length;i++){
@@ -37,6 +37,10 @@ export async function exportDraft(draft,onProgress){
  await request(approved);
  files['caption.txt']=strToU8(approved.caption+'\n\n'+approved.hashtags+'\n');
  files['alt-text.txt']=strToU8(approved.photos.map((p,i)=>String(i+1).padStart(2,'0')+': '+p.alt).join('\n')+'\n');
+ return {approved,files};
+}
+export async function exportDraft(draft,onProgress){
+ const {approved,files}=await renderDraft(draft,onProgress);
  const result=new Blob([zipSync(files,{level:0})],{type:'application/zip'});
  const url=URL.createObjectURL(result),a=document.createElement('a');
  try{a.href=url;a.download='PhotoStory-'+approved.id+'-v'+approved.version+'.zip';a.click();}

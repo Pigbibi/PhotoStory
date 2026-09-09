@@ -17,7 +17,7 @@ with db:
   cur=db.execute(s['sql'],args)
   rows=[dict(r) for r in cur.fetchall()] if cur.description else []
   out.append({'results':rows,'meta':{'changes':max(cur.rowcount,0)}})
-print(json.dumps(out))`,path],{input:JSON.stringify(statements.map(s=>({sql:s.sql,args:s.args.map(x=>x instanceof ArrayBuffer?{blob:Buffer.from(x).toString('base64')}:x)}))),encoding:'utf8'});
+print(json.dumps(out,default=lambda v:list(v) if isinstance(v,bytes) else None))`,path],{input:JSON.stringify(statements.map(s=>({sql:s.sql,args:s.args.map(x=>x instanceof ArrayBuffer?{blob:Buffer.from(x).toString('base64')}:x)}))),encoding:'utf8'});
    if(p.status) throw new Error(p.stderr);
    return JSON.parse(p.stdout);
  };

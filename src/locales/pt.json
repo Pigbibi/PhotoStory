@@ -221,5 +221,18 @@
   "授权有效期至 {date}。": "A autorização expira em {date}.",
   "请先配置 Instagram 应用及回调地址。": "Configure primeiro o aplicativo do Instagram e a URL de retorno.",
   "Instagram 账号连接不会发布照片。": "Conectar o Instagram não publica fotos.",
-  "Instagram 配置教程": "Guia de configuração do Instagram"
+  "Instagram 配置教程": "Guia de configuração do Instagram",
+  "Instagram publishing": "Publicação no Instagram",
+  "Prepare Instagram post": "Preparar publicação no Instagram",
+  "Preparing images…": "Preparando imagens…",
+  "Review the exact images before publishing.": "Confira as imagens finais antes de publicar.",
+  "Images become accessible to Instagram after publishing starts and expire after one hour.": "O Instagram pode acessar as imagens ao iniciar a publicação. Os links expiram após uma hora.",
+  "Publish to @{username}": "Publicar em @{username}",
+  "Publishing…": "Publicando…",
+  "Continue publishing": "Continuar publicação",
+  "Published · Instagram ID {id}": "Publicado · ID do Instagram {id}",
+  "Publishing outcome uncertain. Check Instagram; automatic retries are blocked.": "Resultado incerto. Verifique o Instagram; novas tentativas automáticas estão bloqueadas.",
+  "Could not finish. Check Instagram connection, approval, and image size.": "Não foi possível concluir. Verifique a conexão do Instagram, a aprovação e o tamanho das imagens.",
+  "已批准，保留在发布队列中。": "Aprovado e mantido na fila de publicação.",
+  "已批准草稿 · 预览后发布到 Instagram": "Rascunhos aprovados · Conferir e publicar no Instagram"
 }

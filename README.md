@@ -6,11 +6,11 @@ An open-source, private photo editorial desk by **Pigbibi**, licensed under **MI
 Turn OneDrive camera backups into landscape photo drafts with captions
 and hashtags (English by default), then review each post in a Cloudflare-hosted website.
 
-**v0.1 is a review application, not an Instagram publisher.** There is no publishing
-endpoint or scheduled posting in this version. Optional Instagram OAuth connects
-and verifies the intended professional account; its token is encrypted on the
-server and is not used to publish. Manual approval is
-the default; strict AI auto-review is an optional owner setting.
+**Manual Instagram publishing is available for approved photo drafts.** Prepare
+original-based JPEGs, review the exact output, then explicitly publish to the
+connected professional account. Both single images and carousels (up to eight
+photos) are supported. Manual approval remains the default; strict AI auto-review
+is optional and does not automatically publish posts.
 The public demo uses one clearly labelled AI-generated image; no personal photos
 or live model results are included in this repository.
 
@@ -208,7 +208,7 @@ gates, allowed photo references, timestamp handling and token origin boundaries.
 Real GitHub OAuth, Microsoft consent/refresh, your actual folder format, Codex
 visual results and VPS operation require your deployment configuration and an
 explicit live run. Unit tests and the demo do not verify those integrations.
-Instagram scheduling/publishing is intentionally not implemented in v0.1.
+Scheduled Instagram posting is not enabled. Validate your first manual post with your own account.
 
 ## License
 
@@ -288,7 +288,7 @@ references are collected when their preview is removed by normal retention clean
 An unverified old source requires rescanning and review; do not manually substitute
 its current version. No additional Microsoft permissions or storage service is needed.
 
-Instagram publishing remains a separate integration and is not enabled by export.
+Export itself does not publish. Use the separate Instagram publishing panel after approval.
 
 ## Review mode: manual or strict AI
 
@@ -311,8 +311,7 @@ the same configured service/model, not an independent provider or a safety guara
 The server binds the result to the draft text, photo IDs/order and default framing;
 client-supplied approval status cannot bypass these checks. Approved posts are
 labelled as AI-reviewed in the private queue. Changing text, photos or framing
-revokes approval and requires manual re-review. There is still **no Instagram
-publishing**. Scores are a selection rule, not a calibrated probability of safety.
+revokes approval and requires manual re-review. Publishing still requires an explicit action in the final preview. Scores are a selection rule, not a calibrated probability of safety.
 
 Instagram app preparation and credential handling: [setup guide](docs/instagram-setup.md).
 

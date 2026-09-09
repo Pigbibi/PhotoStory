@@ -1,3 +1,4 @@
+import {Publishing} from './Publishing.jsx';
 import {localizedDraftText} from './i18n-core.mjs';
 import {I18nProvider,LanguageSwitcher,useI18n} from "./i18n.jsx";
 import React, { useState, useEffect } from "react";
@@ -110,7 +111,7 @@ function App() {
       setDrafts((ds) => ds.map((x) => (x.id === next.id ? next : x)));
       setMessage(
         action === "approve"
-          ? "已批准，保留在发布队列中。当前尚未启用发布。"
+          ? "已批准，保留在发布队列中。"
           : action === 'trash' ? '已移入回收站，保留 30 天，可恢复到待审核。'
           : action === 'restore' ? '已恢复到待审核，需要重新确认后才能批准。'
           : action === "return"
@@ -197,7 +198,7 @@ function App() {
               ? t("GitHub 登录 · OneDrive 只读 · Codex 选片")
               :view==='trash'?t('恢复后重新审核 · 到期仅清理本站预览 · OneDrive 原图保留')
               : view === "queue"
-                ? t("已批准的草稿 · Instagram 发布尚未启用")
+                ? t("已批准草稿 · 预览后发布到 Instagram")
                 : t("按时间与地点整理 · 风景选片 · 文案")}
           </p>
         </section>
@@ -274,6 +275,8 @@ function App() {
                 demo={demo}
                 busy={busy}
                 update={update}
+                onPublication={p=>setDrafts(ds=>ds.map(d=>d.id===current.id?{...d,publication:p}:d))}
+                publishingEnabled={session?.publishingEnabled}
               />
             ) : (
               <div className="empty">
@@ -304,7 +307,9 @@ function App() {
     </>
   );
 }
-function Editor({ draft, demo, busy, update }) {
+function Editor({ draft, demo, busy, update, onPublication, publishingEnabled }) {
+  const locked=Boolean(draft.publication&&draft.publication.status!=='prepared');
+  busy=busy||locked;
   const {t,date,locale}=useI18n();
   const [form, setForm] = useState(structuredClone(draft)),
     [index, setIndex] = useState(0),
@@ -315,7 +320,8 @@ function Editor({ draft, demo, busy, update }) {
     catch(err){setExportError(true);console.warn('PhotoStory export: '+(['source_unavailable','source_changed','original_format','original_too_large','original_too_small','approval_required','version_conflict','reauthorization_required'].includes(err?.message)?err.message:'export_failed'));}
     finally{setExporting(false);}
   };
-  const dirty = JSON.stringify(form) !== JSON.stringify(draft),
+  const content=({publication,...value})=>value;
+  const dirty = JSON.stringify(content(form)) !== JSON.stringify(content(draft)),
     photo = form.photos[index] || form.photos[0];
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setFrame = patch => set("photos",form.photos.map(p=>p.id===photo.id?{...p,frame:{...photoFrame(p.frame),...patch}}:p));
@@ -372,7 +378,7 @@ function Editor({ draft, demo, busy, update }) {
           </div>}
           <p className="muted">{t("同一篇使用统一画布。逐张检查裁剪后的主体；留边模式保留完整画面。这里只保存构图参数和预览，正式发布图仍需从 OneDrive 原图生成。")}</p>
         </fieldset>
-        {draft.status!=='trash' && <div className="photo-tools">
+        {draft.status!=='trash' && <div className="photo-tools" inert={locked}>
           <button onClick={() => move(-1)} disabled={index === 0}>{t("前移")}</button>
           <button
             onClick={() => move(1)}
@@ -400,7 +406,7 @@ function Editor({ draft, demo, busy, update }) {
         <label className="title-label">{t("主题")}<input
             className="title-input"
             dir="auto"
-            readOnly={draft.status==='trash'}
+            readOnly={draft.status==='trash'||locked}
             value={localizedDraftText(form,'title',locale)}
             maxLength={160}
             onChange={(e) => setForm(f=>({...f,title:e.target.value,translations:undefined}))}
@@ -411,7 +417,7 @@ function Editor({ draft, demo, busy, update }) {
         <hr />
         <label>{t("文案")}<textarea dir="auto"
             value={form.caption}
-            readOnly={draft.status==='trash'}
+            readOnly={draft.status==='trash'||locked}
             rows={4}
             maxLength={1800}
             onChange={(e) => set("caption", e.target.value)}
@@ -421,7 +427,7 @@ function Editor({ draft, demo, busy, update }) {
           Hashtags
           <textarea dir="auto"
             value={form.hashtags}
-            readOnly={draft.status==='trash'}
+            readOnly={draft.status==='trash'||locked}
             rows={3}
             maxLength={350}
             onChange={(e) => set("hashtags", e.target.value)}
@@ -464,6 +470,7 @@ function Editor({ draft, demo, busy, update }) {
         <button className="text-button" disabled={busy||dirty} onClick={()=>update(draft,'trash')}>{t("不采用，移入回收站")}</button>
         </>}
       </section>
+      {!demo&&draft.status==='approved'&&publishingEnabled&&<Publishing draft={draft} onChange={onPublication} disabled={dirty} />}
     </>
   );
 }
