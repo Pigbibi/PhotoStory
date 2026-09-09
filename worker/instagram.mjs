@@ -31,7 +31,7 @@ export async function start(r,e){
 async function request(url,options={}){
  // Meta's token exchange requires server-side query parameters. Never log these
  // URLs or return provider errors, redirects, codes or tokens to the browser.
- const r=await fetch(url,{...options,redirect:'error',signal:AbortSignal.timeout(20000)});
+ const r=await fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(20000)});
  if(!r.ok||!r.body)throw Object.assign(new Error('instagram_connection_failed'),{httpStatus:r.status});
  const reader=r.body.getReader(),parts=[];let size=0;
  while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>65536){await reader.cancel();throw new Error('instagram_connection_failed');}parts.push(value);}

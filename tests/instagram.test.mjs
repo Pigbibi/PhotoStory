@@ -16,7 +16,7 @@ function finish(env,state,session='session',extra='code=fixture-code'){
 }
 function provider(t,{username='landscapes',permissions=scopes,type='MEDIA_CREATOR',id='123',fail=false}={}){
  const calls=[];t.mock.method(globalThis,'fetch',async(url,o)=>{
-  const u=new URL(url);calls.push(u.pathname);assert.equal(o.redirect,'error');
+  const u=new URL(url);calls.push(u.pathname);assert.equal(o.redirect,'manual');
   if(fail)return new Response('private provider detail',{status:400});
   if(u.hostname==='api.instagram.com'){
    assert.equal(o.method,'POST');assert.equal(o.body.get('client_secret'),'fixture-secret');assert.equal(o.body.get('redirect_uri'),'https://example.test/auth/instagram/callback');return Response.json({data:[{access_token:'short-fixture',user_id:'123',permissions}]});
@@ -83,4 +83,14 @@ test('Instagram failure diagnostics retain only bounded stage metadata and expir
  assert.ok(row);assert.deepEqual(JSON.parse(row.value),{stage:'short_token_request',httpStatus:400,category:'validation'});
  assert.ok(row.expires>Date.now()&&row.expires<=Date.now()+600000);
  assert.ok(!row.value.includes('private'));
+});
+test('Instagram exchanges reject redirects without forwarding credentials',async t=>{
+ const {env,DB}=await fixture(t);const {state}=await begin(env);let calls=0;
+ t.mock.method(globalThis,'fetch',async(url,options)=>{
+  calls++;assert.equal(options.redirect,'manual');
+  return new Response(null,{status:302,headers:{Location:'https://untrusted.example/receive'}});
+ });
+ await finish(env,state);assert.equal(calls,1);
+ const diagnostic=JSON.parse((await DB.prepare("SELECT value FROM state WHERE key='instagram-diagnostic'").first()).value);
+ assert.equal(diagnostic.httpStatus,302);assert.equal(await DB.prepare("SELECT value FROM state WHERE key='instagram'").first(),null);
 });

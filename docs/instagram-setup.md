@@ -151,3 +151,11 @@ public distribution still depends on Meta's applicable access review.
 Keep posting disabled during setup. The first end-to-end test must name the target
 account and use one explicitly approved draft. Account authorization, draft
 approval and permission to publish are separate steps.
+
+### Runtime troubleshooting
+
+If consent returns but the connection fails, inspect the private, expiring
+`instagram-diagnostic` D1 record; never enable raw token-exchange URL logging.
+This deployment's Workers runtime rejects `redirect: "error"` before sending the
+request. PhotoStory uses `redirect: "manual"` and rejects non-success responses,
+including every redirect, so credentials are never forwarded to a redirect target.
