@@ -5,7 +5,7 @@ export function sourceRecord(value){
  return {item:value.item,version:value.version};
 }
 export function downloadHost(value){
- try{const u=new URL(value);return u.protocol==='https:'&&(!u.port||u.port==='443')&&!u.username&&!u.password&&(['.1drv.com','.onedrive.com','.sharepoint.com','.storage.live.com','.livefilestore.com'].some(s=>u.hostname.endsWith(s))||/^[a-z0-9]+-mediap\.svc\.ms$/.test(u.hostname));}catch{return false;}
+ try{const u=new URL(value);return u.protocol==='https:'&&(!u.port||u.port==='443')&&!u.username&&!u.password&&(u.hostname==='my.microsoftpersonalcontent.com'||['.1drv.com','.onedrive.com','.sharepoint.com','.storage.live.com','.livefilestore.com'].some(s=>u.hostname.endsWith(s))||/^[a-z0-9]+-mediap\.svc\.ms$/.test(u.hostname));}catch{return false;}
 }
 async function bytes(response,limit){
  if(!response.ok||!response.body)throw new Error('source_unavailable');

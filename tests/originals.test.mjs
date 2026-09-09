@@ -14,8 +14,9 @@ async function fixture(t){
  return {...v,pid};
 }
 test('download URLs reject arbitrary hosts, userinfo, ports and lookalikes',()=>{
- for(const url of ['http://files.1drv.com/x','https://evil.invalid','https://files.1drv.com.evil.invalid','https://u@files.1drv.com/x','https://files.1drv.com:444/x'])assert.equal(downloadHost(url),false);
+ for(const url of ['http://files.1drv.com/x','https://evil.invalid','https://files.1drv.com.evil.invalid','https://u@files.1drv.com/x','https://files.1drv.com:444/x','https://my.microsoftpersonalcontent.com.evil.invalid/x','https://evil.microsoftpersonalcontent.com/x','http://my.microsoftpersonalcontent.com/x','https://user@my.microsoftpersonalcontent.com/x'])assert.equal(downloadHost(url),false);
  assert.equal(downloadHost('https://files.1drv.com/x'),true);
+ assert.equal(downloadHost('https://my.microsoftpersonalcontent.com/x'),true);
 });
 test('original requires current approval and never leaks bearer token to download host',async t=>{
  const {env,DB,pid}=await fixture(t);let calls=0;
