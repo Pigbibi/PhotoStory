@@ -39,7 +39,7 @@ def parse_args():
 def main():
     os.umask(0o027)
     args = parse_args()
-    if not 1 <= len(args.image) <= 24:
+    if not 0 <= len(args.image) <= 24:
         raise ValueError('invalid_image_count')
     # Serialize the fixed mailbox and reject contention instead of replaying work.
     with (BRIDGE / 'input' / 'client.lock').open('a') as lock:

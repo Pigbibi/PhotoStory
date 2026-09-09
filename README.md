@@ -320,3 +320,20 @@ The machine-only `/internal/photo-sources` recovery endpoint accepts `dryRun: tr
 to validate existing scan references against OneDrive without saving mappings.
 Only proceed with recovery after this preflight succeeds; a changed source must
 be scanned and reviewed again.
+
+Draft titles and selection explanations are display metadata. The processor
+translates them into all 13 interface languages through the same isolated AI
+service, using text only. Switching the website language does not change the
+original title, caption, photo order, framing, version, or approval. Editing a
+title clears its cached translations and requires approval again. Missing
+translations fall back to the original text; arbitrary user text is never looked
+up in the static UI dictionary.
+
+For existing drafts, an administrator can export private `id`, `title`, `reason`
+records and run `scripts/translate_labels.py --input labels.json --output translated.json`
+with the configured `CODEX_GATEWAY_COMMAND` (up to five drafts per invocation).
+Merge only each result's `translations` field into its matching database record,
+conditionally on the unchanged source title, reason and version. Never replace
+an entire approved draft. Keep both JSON files private and remove temporary
+copies after verification. Upgrade both isolated gateway scripts before using
+text-only translation. No new AI credentials or provider are required.

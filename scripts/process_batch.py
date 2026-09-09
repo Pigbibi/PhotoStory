@@ -29,7 +29,7 @@ def failure_reason(error):
     allowed = {'folder_limit', 'folder_not_found', 'gateway_failed', 'gateway_not_configured',
                'group_contract', 'https_required', 'image_too_large', 'invalid_graph_origin',
                'page_limit', 'photo_limit', 'redirect_blocked', 'response_too_large',
-               'screen_contract', 'setup_required', 'thumbnail_missing', 'thumbnail_origin'}
+               'screen_contract', 'translation_contract', 'setup_required', 'thumbnail_missing', 'thumbnail_origin'}
     return str(error) if isinstance(error, Stop) and str(error) in allowed else 'unknown'
 
 
@@ -346,6 +346,8 @@ def run():
                 drafts = drafts[:source.get('draftLimit',3)]
             else:
                 drafts = []
+            from translate_labels import translate_labels
+            drafts=translate_labels(drafts,gateway,cwd)
             auto_reviews=review_drafts(drafts,allowed,source,cwd,gateway)
             used = {p["id"] for d in drafts for p in d["photos"]}
             photos = [{"id":pid, "safety":"allow", "flags":[], "jpeg":base64.b64encode(assets[pid]).decode(),"source":next(p.get("source") for p in candidates if p["id"]==pid)} for pid in used]

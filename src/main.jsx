@@ -1,3 +1,4 @@
+import {localizedDraftText} from './i18n-core.mjs';
 import {I18nProvider,LanguageSwitcher,useI18n} from "./i18n.jsx";
 import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
@@ -50,7 +51,7 @@ async function api(path, method = "GET", body) {
   return data;
 }
 function App() {
-  const {t}=useI18n();
+  const {t,locale}=useI18n();
   const [session, setSession] = useState(null),
     [view, setView] = useState("review"),
     [demo, setDemo] = useState(false),
@@ -244,7 +245,7 @@ function App() {
                     alt=""
                   />
                   <span>
-                    {d.title}
+                    {localizedDraftText(d,'title',locale)}
                     <small>
                       {t("{count} 张",{count:d.photos.length})}{" · "}
                       {d.status === 'trash'?t('回收站'):d.status === "approved" ? t("已批准") : t("待审核")}
@@ -304,7 +305,7 @@ function App() {
   );
 }
 function Editor({ draft, demo, busy, update }) {
-  const {t,date}=useI18n();
+  const {t,date,locale}=useI18n();
   const [form, setForm] = useState(structuredClone(draft)),
     [index, setIndex] = useState(0),
     [exporting,setExporting]=useState(false),[exportProgress,setExportProgress]=useState(''),[exportError,setExportError]=useState(false);
@@ -393,16 +394,16 @@ function Editor({ draft, demo, busy, update }) {
             ? t("AI 生成的示例照片，尚未连接 OneDrive。")
             : t("照片为私有预览。原始文件保留在 OneDrive。")}
         </p>
-        <p className="selection-reason">{form.reason}</p>
+        <p className="selection-reason">{localizedDraftText(form,'reason',locale)}</p>
       </section>
       <section className="editor" aria-label={t("帖子编辑")}>
         <label className="title-label">{t("主题")}<input
             className="title-input"
             dir="auto"
             readOnly={draft.status==='trash'}
-            value={form.title}
+            value={localizedDraftText(form,'title',locale)}
             maxLength={160}
-            onChange={(e) => set("title", e.target.value)}
+            onChange={(e) => setForm(f=>({...f,title:e.target.value,translations:undefined}))}
           />
         </label>
         {draft.status==='approved' && draft.approvalSource==='strict_ai_v1' && <p className="muted">{t("由严格 AI 自动审核批准")}</p>}

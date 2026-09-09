@@ -1,3 +1,4 @@
+import {LANGUAGES} from './languages.mjs';
 import {aspectValue,photoFrame} from './framing.mjs';
 const idPattern = /^[A-Za-z0-9_-]{1,128}$/;
 export function validId(value) {
@@ -11,6 +12,16 @@ function text(value, name, max, required = true) {
   )
     throw new Error(`invalid_${name}`);
   return value.trim();
+}
+function translations(value) {
+  if(value===undefined)return {};
+  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('invalid_translation');
+  const result={};
+  for(const [locale,label] of Object.entries(value)){
+    if(!Object.hasOwn(LANGUAGES,locale)||!label||typeof label!=='object')throw new Error('invalid_translation');
+    result[locale]={title:text(label.title,'title',160),reason:text(label.reason,'reason',600,false)};
+  }
+  return {translations:result};
 }
 export function validateDraft(input) {
   if (!input || !validId(input.id)) throw new Error("invalid_id");
@@ -33,6 +44,7 @@ export function validateDraft(input) {
   return {
     id: input.id,
     title,
+    ...translations(input.translations),
     caption,
     hashtags,
     photos,
@@ -57,6 +69,7 @@ export function reviewDraft(current, input, now=Date.now()) {
     ...input,
     id: current.id,
     reason: current.reason,
+    translations:input.title===current.title?current.translations:undefined,
   });
   if (next.photos.some((p) => !current.photos.some((c) => c.id === p.id)))
     throw new Error("unknown_photo");

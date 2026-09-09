@@ -59,7 +59,7 @@ def main():
     (outbox / 'response.json').unlink(missing_ok=True)
     request = json.loads(read_regular(inbox / 'request.json', 1024))
     request_id, count = request['id'], request['images']
-    if str(uuid.UUID(request_id)) != request_id or type(count) is not int or not 1 <= count <= 24:
+    if str(uuid.UUID(request_id)) != request_id or type(count) is not int or not 0 <= count <= 24:
         raise ValueError('invalid_request')
     # Copy bounded regular inputs into AI-owned storage before the model sees them.
     with tempfile.TemporaryDirectory(prefix='call-', dir='/var/lib/photostory-ai') as tmp:

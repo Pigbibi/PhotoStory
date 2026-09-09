@@ -21,6 +21,22 @@ class BridgeTests(unittest.TestCase):
             link.symlink_to(p)
             with self.assertRaises(OSError): b.read_regular(link, 4)
 
+    def test_text_only_request_uses_same_isolated_mailbox_and_cleans_inputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            (root/'input').mkdir();(root/'output').mkdir()
+            (root/'prompt').write_text('Translate titles');(root/'schema').write_text('{}')
+            args=SimpleNamespace(image=[],prompt_file=root/'prompt',output_schema=root/'schema',out=root/'result')
+            def run(*args,**kwargs):
+                request=json.loads((root/'input/request.json').read_text())
+                self.assertEqual(request['images'],0)
+                (root/'output/response.json').write_text(json.dumps({'id':request['id'],'body':{'labels':[]}}))
+                return SimpleNamespace(returncode=0)
+            with patch.object(b,'BRIDGE',root),patch.object(b,'parse_args',return_value=args),patch.object(b.subprocess,'run',side_effect=run):
+                b.main()
+            self.assertEqual(json.loads((root/'result').read_text()),{'labels':[]})
+            self.assertEqual([p.name for p in (root/'input').iterdir()],['client.lock'])
+
     def test_failed_or_stale_service_reply_cleans_private_inputs(self):
         for returncode in (0, 1):
             with self.subTest(returncode=returncode), tempfile.TemporaryDirectory() as tmp:
@@ -52,6 +68,7 @@ class RuntimeModes(unittest.TestCase):
         gateway = runtime.command_for('aigateway-cli', work, 2)
         self.assertEqual(gateway[gateway.index('--providers') + 1], 'codex')
         self.assertEqual(gateway.count('--image'), 2)
+        self.assertNotIn('--image',runtime.command_for('aigateway-cli',work,0))
         with self.assertRaises(ValueError): runtime.command_for('unknown', work, 2)
 
 class ExistingAuth(unittest.TestCase):
