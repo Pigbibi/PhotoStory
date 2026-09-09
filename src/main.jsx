@@ -22,6 +22,8 @@ const dayInShanghai = (offset) =>
 const errors = {
   unauthorized: "请先使用 GitHub 登录。",
   github_not_configured: "尚未配置 GitHub 登录，请按连接设置完成应用注册。",
+  instagram_not_configured: "请先配置 Instagram 应用及回调地址。",
+  instagram_connection_failed: "授权未完成，请重新连接。",
   microsoft_not_configured: "尚未配置 Microsoft 应用，请按连接设置完成注册。",
   version_conflict: "草稿已被更新，请刷新后重新审核。",
   save_before_approval: "请先保存修改，再确认批准。",
@@ -73,7 +75,9 @@ function App() {
   };
   useEffect(() => {
     load();
-    const error = new URLSearchParams(location.search).get("error");
+    const params=new URLSearchParams(location.search);
+    const error = params.get("error");
+    if(params.get("instagram")==="connected"||error?.startsWith("instagram_")){setView("settings");history.replaceState(null,"",location.pathname);}
     if (error) {
       setMessage(errors[error] || t("授权未完成，请重新连接。"));
       history.replaceState(null, "", location.pathname);
@@ -657,7 +661,15 @@ function Settings({ session, notify }) {
           </>
         )}
         <h2>04 / Instagram</h2>
-        <p>{t("尚未启用。首版只生成和审核草稿，不会对外发布。后续确认账户与规则后再接入。")}</p>
+        <p>{t("Instagram 账号连接不会发布照片。")}</p>
+        {session?.user && <>
+          {session.instagram?.connected && <p>{t("已连接：@{username}",{username:session.instagram.username})}</p>}
+          {session.instagram?.expires && <p>{t("授权有效期至 {date}。",{date:date(session.instagram.expires)})}</p>}
+          {session.instagram?.configured
+            ? <a className="button secondary" href="/auth/instagram/start">{t(session.instagram.username ? "重新连接 Instagram" : "连接 Instagram")}</a>
+            : <p>{t("请先配置 Instagram 应用及回调地址。")}</p>}
+        </>}
+        <p><a href={locale.startsWith('zh') ? "https://github.com/Pigbibi/PhotoStory/blob/main/docs/instagram-setup.zh-CN.md" : "https://github.com/Pigbibi/PhotoStory/blob/main/docs/instagram-setup.md"} target="_blank" rel="noreferrer">{t("Instagram 配置教程")}</a></p>
       </section>
       {session?.user && <LifecycleSettings api={api} notify={notify} folder={folder} onStatus={setBacklogPaused}/>}
     </div>

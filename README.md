@@ -7,7 +7,9 @@ Turn OneDrive camera backups into landscape photo drafts with captions
 and hashtags (English by default), then review each post in a Cloudflare-hosted website.
 
 **v0.1 is a review application, not an Instagram publisher.** There is no publishing
-endpoint, Instagram token, or scheduled posting in this version. Manual approval is
+endpoint or scheduled posting in this version. Optional Instagram OAuth connects
+and verifies the intended professional account; its token is encrypted on the
+server and is not used to publish. Manual approval is
 the default; strict AI auto-review is an optional owner setting.
 The public demo uses one clearly labelled AI-generated image; no personal photos
 or live model results are included in this repository.

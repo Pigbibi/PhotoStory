@@ -1,3 +1,4 @@
+import * as instagram from './instagram.mjs';
 import {original,reviewedDraft,sourceRecord,recoverSource} from './originals.mjs';
 import {strictApproval} from './auto-review.mjs';
 import {jobLanguages} from './languages.mjs';
@@ -212,6 +213,7 @@ async function route(r, e) {
       microsoftConfigured: auth.msConfigured(e),
       onedriveConnected: s ? Boolean(await auth.get(e, "microsoft")) : false,
       publishingEnabled: false,
+      instagram: s ? await instagram.status(e) : undefined,
       captionLanguage: s ? (e.AI_CAPTION_LANGUAGE||"en") : undefined,
     });
   }
@@ -228,6 +230,8 @@ async function route(r, e) {
       r.headers.get("Origin") !== u.origin
     )
       return failure("invalid_origin", 403);
+    if(p==="/auth/instagram/start"&&r.method==="GET")return instagram.start(r,e);
+    if(p==="/auth/instagram/callback"&&r.method==="GET")return instagram.finish(r,e);
     if (p === "/auth/logout" && r.method === "POST") {
       await auth.remove(
         e,

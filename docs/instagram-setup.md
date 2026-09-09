@@ -4,15 +4,15 @@
 
 ## Current release
 
-PhotoStory currently selects, reviews and exports photos. **It does not connect to
-Instagram or publish posts yet.** Manual and strict AI approval both prepare drafts;
-neither mode posts them. Download an approved draft as a ZIP and upload its JPEGs
-and caption with the Instagram app.
+PhotoStory selects, reviews and exports photos, and can connect an Instagram
+professional account through OAuth. **Publishing is still not implemented.**
+Manual and strict AI approval prepare drafts; neither posts them. Download an
+approved draft as a ZIP and upload it with the Instagram app.
 
-The steps below prepare your own Meta application. App registration alone does not
-connect your Instagram account. Callback configuration, token storage and a live
-publishing test will be documented alongside the implementation; do not invent a
-callback URL or add unused Instagram secrets to this release.
+Connecting verifies the exact username configured by the administrator, the
+professional account type, the app-scoped identity and both required permissions.
+Tokens stay encrypted on the server. OAuth failures leave an existing connection
+unchanged and are not retried automatically.
 
 ## Register a developer account
 
@@ -49,7 +49,7 @@ requirements can change.
 In **Customize → API setup with Instagram login**, Meta creates a separate
 Instagram app name (for example, `PhotoStory-IG`), Instagram App ID and Instagram
 App Secret. These are distinct from the parent Meta application's credentials;
-use the credentials named by the Instagram login flow when that integration ships.
+use these Instagram-specific credentials for the variables below.
 Do not reveal or generate a token merely to complete this preparation step.
 
 The setup wizard can offer **Add all required permissions** for messaging, listing
@@ -79,12 +79,12 @@ acceptance is still pending.
 
 The wizard also has a **Webhook callback URL** and a separate **Set up Instagram
 business login** section. A webhook callback is not an OAuth redirect URI. Do not
-paste an OAuth callback into the webhook field; PhotoStory's current release does
-not implement either Instagram endpoint.
+paste an OAuth callback into the webhook field. PhotoStory implements the OAuth
+callback below; it does not implement Instagram webhooks.
 
 ## Account and permission choices
 
-The planned integration uses **Instagram API with Instagram Login**, for a
+The integration uses **Instagram API with Instagram Login**, for a
 Business or Creator account. Its basic profile permission is
 `instagram_business_basic`; content publishing uses
 `instagram_business_content_publish`. Do not request messages, comments, ads or
@@ -105,12 +105,48 @@ share the maintainer's credentials, accounts or approvals. Public examples must
 contain placeholders only, without account emails, passwords, access tokens,
 client secrets, authorization codes or screenshots containing them.
 
-When the integration is available, store client secrets in Cloudflare encrypted
-Secrets and provider tokens encrypted on the server. Never use `VITE_*` variables,
-frontend bundles, URLs, committed `.env` files or chat messages for credentials.
-Configure the exact HTTPS callback provided by that release; avoid wildcard
-callbacks. A callback must validate a one-time, expiring state bound to the owner
-session before exchanging an authorization code.
+Store `INSTAGRAM_CLIENT_SECRET` in Cloudflare encrypted Secrets. The Worker stores
+the provider token encrypted with the existing `TOKEN_ENCRYPTION_KEY`; do not
+rotate that key casually, because it also protects the existing OneDrive token.
+Never put credentials in `VITE_*` variables, frontend bundles, browser links,
+committed `.env` files or chat messages. Meta's long-lived-token API requires
+server-to-server query parameters; these requests never reach the browser and
+must not be logged. The Worker disables redirect following and returns fixed,
+sanitized errors.
+
+## Configure and connect your deployment
+
+1. Deploy the current code before registering a callback. In your own Worker vars,
+   set `INSTAGRAM_CLIENT_ID` to the **Instagram App ID**, `INSTAGRAM_USERNAME` to
+   the exact intended username without `@`, and `INSTAGRAM_REDIRECT_URI` to
+   `https://YOUR_WORKER.YOUR_SUBDOMAIN.workers.dev/auth/instagram/callback` (or
+   the same path on your own HTTPS domain). The public config leaves these empty
+   to disable the optional integration. Local HTTP callbacks are not supported.
+2. In Cloudflare → your Worker → Settings → Variables and Secrets, add
+   `INSTAGRAM_CLIENT_SECRET` as a **Secret**, using the **Instagram App Secret**
+   from the Instagram use-case panel. Do not use the parent Meta app's secret.
+3. In the Meta Instagram use case → **Set up Instagram business login**, add that
+   exact URL as the valid OAuth redirect URI. Check for a trailing slash added by
+   the console: the callback must end in `/auth/instagram/callback`, without an
+   extra slash. Do not use wildcards and do not fill the Webhook callback field.
+4. Sign into PhotoStory with the allowed GitHub owner account. Open **Connection
+   Settings → Instagram → Connect Instagram**. Log into the intended Instagram
+   account and review the two requested permissions before authorizing.
+5. On return, the website shows the verified username and authorization expiry.
+   A different username, a personal account, missing permissions, mismatched
+   identity, cancelled consent or invalid state prevents connection. OAuth state
+   is one-use, expires after ten minutes and is bound to the owner's exact login
+   session. Do not sign out of PhotoStory midway through the flow.
+6. This release obtains a long-lived token but does not refresh it automatically.
+   Use **Reconnect Instagram** before it expires. To revoke access, use Instagram's
+   **Apps and websites** settings. The displayed expiry is the stored grant's
+   expiry, not a continuous check for revocation; no publishing is enabled.
+
+The implementation follows Meta's [Business Login documentation](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login)
+and [account identity endpoint](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/get-started),
+using Graph API `v26.0`. Test the connection with your own app-role account first;
+public distribution still depends on Meta's applicable access review.
+
 
 Keep posting disabled during setup. The first end-to-end test must name the target
 account and use one explicitly approved draft. Account authorization, draft

@@ -214,5 +214,12 @@
   "下载成品 ZIP": "Download ZIP",
   "正在生成…": "Preparing…",
   "从已批准原图生成统一 1080px 宽 JPEG，不保留 GPS；同时附上文案。": "Creates JPEGs from approved originals on a consistent 1080px-wide canvas, removes GPS metadata, and includes the caption.",
-  "导出失败：请确认批准和原图版本；仅支持 JPEG/PNG，单张最多 25 MB，且清晰度足够。": "Export failed. Check approval and the original file version. Only JPEG/PNG files up to 25 MB with sufficient resolution are supported."
+  "导出失败：请确认批准和原图版本；仅支持 JPEG/PNG，单张最多 25 MB，且清晰度足够。": "Export failed. Check approval and the original file version. Only JPEG/PNG files up to 25 MB with sufficient resolution are supported.",
+  "连接 Instagram": "Connect Instagram",
+  "重新连接 Instagram": "Reconnect Instagram",
+  "已连接：@{username}": "Connected: @{username}",
+  "授权有效期至 {date}。": "Authorization expires on {date}.",
+  "请先配置 Instagram 应用及回调地址。": "Configure the Instagram app and callback URL first.",
+  "Instagram 账号连接不会发布照片。": "Connecting Instagram does not publish photos.",
+  "Instagram 配置教程": "Instagram setup guide"
 }

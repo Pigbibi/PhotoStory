@@ -4,13 +4,12 @@
 
 ## 当前版本能做什么
 
-PhotoStory 目前支持选片、审核和成品下载，**尚未实现 Instagram 连接或发布**。
-人工审核和严格 AI 审核都只处理草稿，不会发帖。现在可以下载已批准草稿的 ZIP，
-再用 Instagram 手机应用上传其中的 JPEG 和文案。
+PhotoStory 支持选片、审核、成品下载，并可通过 OAuth 连接 Instagram 专业账号。
+**尚未实现 Instagram 发布**。人工审核和严格 AI 审核都只处理草稿，不会发帖。
+可以下载已批准草稿的 ZIP，再用 Instagram 手机应用上传 JPEG 和文案。
 
-下面先准备你自己的 Meta 应用。应用注册成功不等于已经连接 Instagram。
-回调地址、令牌存储和真实发布验证的具体配置会随实现补充；当前版本不要编造
-回调地址，也不需要添加尚未使用的 Instagram 密钥。
+连接时会核对管理员预设的准确用户名、专业账号类型、应用范围身份及两项必要权限。
+令牌仅在服务端加密保存；授权失败不会覆盖已有连接，也不会自动重试。
 
 ## 注册开发者账户
 
@@ -38,8 +37,7 @@ PhotoStory 目前支持选片、审核和成品下载，**尚未实现 Instagram
 
 在「定制 → 包含 Instagram 账户关联登录的 API 设置」中，Meta 会生成独立的
 Instagram 应用名称（例如 `PhotoStory-IG`）、Instagram 应用编号和应用密钥。
-它们与外层 Meta 应用的凭据不同，接入实现后应按 Instagram 登录方案要求使用
-对应凭据。准备阶段不需要为了完成向导而显示密钥或生成令牌。
+它们与外层 Meta 应用的凭据不同，下面的配置必须使用 Instagram 登录方案对应的凭据。只在向 Cloudflare Secret 保存时读取应用密钥，不需要在控制台额外生成访问令牌。
 
 向导可能提供「Add all required permissions」按钮，其中列出了基础资料、
 评论和私信权限。照片发布应用应改为进入「权限和功能」，仅添加
@@ -61,12 +59,12 @@ Meta 提供的邀请管理入口是 [应用和网站](https://www.instagram.com/
 再继续账号授权。不要仅因为邀请尚未接受就移除账号并重复邀请。
 
 向导还分别提供 Webhook 的「回调网址」和「设置 Instagram 业务登录」。Webhook
-回调不是 OAuth 登录回调，不要将登录回调地址填进 Webhook 框；PhotoStory 当前
-版本尚未实现这两个 Instagram 接口。
+回调不是 OAuth 登录回调，不要将登录回调地址填进 Webhook 框；PhotoStory 实现了下面的 OAuth 登录回调，
+尚未实现 Instagram Webhook。
 
 ## 账户与权限
 
-计划接入的是 **Instagram API with Instagram Login**，适用于 Business 或
+使用的是 **Instagram API with Instagram Login**，适用于 Business 或
 Creator 专业账户。基础资料权限为 `instagram_business_basic`，发布权限为
 `instagram_business_content_publish`。仅发布风景照时，不应顺带申请私信、评论、
 广告或洞察权限。名称相近的 Facebook Login 接入方案使用不同配置，不能混用。
@@ -82,10 +80,39 @@ Creator 专业账户。基础资料权限为 `instagram_business_basic`，发布
 或授权。公开示例只能放占位值，不放个人联系邮箱、密码、令牌、Client Secret、
 授权码或包含这些内容的截图。
 
-接入功能实现后，Client Secret 应放 Cloudflare 加密 Secret，授权令牌在服务端
-加密保存。不要使用 `VITE_*` 变量、前端代码、网址、提交到 Git 的 `.env` 或聊天
-传递凭据。回调必须使用该版本给出的完整 HTTPS 地址，不使用通配符；服务端必须
-验证绑定管理员会话、一次性且有有效期的 state，再交换授权码。
+`INSTAGRAM_CLIENT_SECRET` 应放 Cloudflare 加密 Secret。授权令牌使用现有
+`TOKEN_ENCRYPTION_KEY` 在服务端加密；不要随意更换这个密钥，它还保护着 OneDrive
+已有令牌。不要使用 `VITE_*`、前端代码、浏览器链接、提交到 Git 的 `.env` 或聊天
+传递凭据。Meta 的长期令牌接口要求服务端请求携带查询参数，这些请求不会发送到
+浏览器，不能写入日志；Worker 禁止跟随跳转，失败信息只返回固定的脱敏提示。
+
+## 配置并连接自己的部署
+
+1. 先部署当前代码，再登记回调。Worker 的普通变量设置：`INSTAGRAM_CLIENT_ID`
+   填 **Instagram 应用编号**，`INSTAGRAM_USERNAME` 填准确用户名（不带 `@`），
+   `INSTAGRAM_REDIRECT_URI` 填
+   `https://YOUR_WORKER.YOUR_SUBDOMAIN.workers.dev/auth/instagram/callback`，
+   或自有 HTTPS 域名下的同一路径。公开配置默认留空，表示禁用这个可选功能；
+   不支持本机 HTTP 回调。
+2. Cloudflare → 对应 Worker → Settings → Variables and Secrets，新增
+   `INSTAGRAM_CLIENT_SECRET` 并选择 **Secret**，值使用 Instagram 用例中的
+   **Instagram 应用密钥**，不要用外层 Meta 应用密钥。
+3. Meta Instagram 用例 →「设置 Instagram 业务登录」，将上述完整地址加入有效
+   OAuth 跳转 URI。检查控制台是否自动补了末尾斜杠：地址必须以
+   `/auth/instagram/callback` 结尾，不加斜杠，不使用通配符，不填写 Webhook 回调框。
+4. 在 PhotoStory 使用允许的 GitHub 管理员账号登录，打开「连接设置 → Instagram
+   → 连接 Instagram」，登录目标 Instagram 账号，查看两项权限后授权。
+5. 返回网站后会显示核对过的用户名和授权到期时间。用户名不符、个人账号、缺少权限、
+   身份不匹配、取消授权或 state 无效都会阻止连接。state 绑定管理员的具体登录
+   会话，有效期十分钟且只能用一次；授权途中不要退出 PhotoStory。
+6. 当前版本会获取长期令牌，但尚未自动续期。到期前使用「重新连接 Instagram」。
+   撤销授权请在 Instagram 的「应用和网站」中操作。网站显示的是保存的授权到期时间，
+   并非持续探测撤销状态；连接不会启用发布。
+
+实现依据 Meta 的[业务登录文档](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login)
+及[账号身份接口](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/get-started)，
+账号信息接口使用 Graph API `v26.0`。先用自己已加入应用角色的账号验证，面向其他
+用户提供服务仍须满足 Meta 的相应审核要求。
 
 配置期间保持发布关闭。第一次真实发布测试必须明确目标账号，并使用一篇明确批准
 的草稿。账号授权、草稿批准和允许发布是三个独立步骤。

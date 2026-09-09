@@ -106,3 +106,15 @@ and are encoded to new JPEGs without source EXIF/GPS metadata. Downloaded ZIPs a
 local files under the owner’s control and are not covered by website trash cleanup. Interface translation
 catalogs are static public strings; private draft text is not sent for translation
 when the user switches the interface language.
+
+## Optional Instagram connection
+
+The owner can authorize the configured Instagram professional account. The Worker
+verifies its username, account type, identity and required basic/publishing scopes,
+then encrypts the access token in D1 with the existing encryption key. Only the
+verified username and stored expiry are displayed to the owner. Tokens, client
+secrets, authorization codes and provider errors are not returned in frontend API
+responses or sent to AI. Meta's token exchange uses private server requests; do not enable request-URL
+logging for those requests. Tokens are not refreshed automatically in this release.
+Revocation is managed in Instagram's Apps and websites settings. No photos or
+captions are uploaded to Instagram by connecting, and publishing remains disabled.
