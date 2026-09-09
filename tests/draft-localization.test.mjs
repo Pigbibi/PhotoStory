@@ -9,7 +9,7 @@ test('draft display uses UI language without changing approved content',()=>{
  assert.equal(localizedDraftText(d,'reason','ja'),'海の景色');
  assert.equal(localizedDraftText(d,'title','fr'),'海岸');
  assert.equal(d.title,'海岸');assert.equal(d.status,'approved');
- const saved=reviewDraft(d,{...d,action:'save'});
+ const saved=reviewDraft(d,{...d,translations:undefined,action:'save'});
  assert.equal(saved.status,'approved');assert.deepEqual(saved.translations,d.translations);
 });
 test('editing title removes stale translations and invalidates approval',()=>{

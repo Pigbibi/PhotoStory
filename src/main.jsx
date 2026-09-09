@@ -106,7 +106,7 @@ function App() {
             drafts.find((x) => x.id === d.id),
             { ...d, action },
           )
-        : await api("/api/drafts/" + d.id, "PATCH", { ...d, action });
+        : await api("/api/drafts/" + d.id, "PATCH", { ...d, translations:undefined, action });
       setDrafts((ds) => ds.map((x) => (x.id === next.id ? next : x)));
       setMessage(
         action === "approve"
