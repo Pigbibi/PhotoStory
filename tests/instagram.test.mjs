@@ -80,7 +80,7 @@ test('Instagram failure diagnostics retain only bounded stage metadata and expir
  const {env,DB}=await fixture(t);const {state}=await begin(env);provider(t,{fail:true});
  await finish(env,state);
  const row=await DB.prepare("SELECT value,expires FROM state WHERE key='instagram-diagnostic'").first();
- assert.ok(row);assert.deepEqual(JSON.parse(row.value),{stage:'short_token_request',httpStatus:400});
+ assert.ok(row);assert.deepEqual(JSON.parse(row.value),{stage:'short_token_request',httpStatus:400,category:'validation'});
  assert.ok(row.expires>Date.now()&&row.expires<=Date.now()+600000);
  assert.ok(!row.value.includes('private'));
 });

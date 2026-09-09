@@ -36,7 +36,7 @@ async function request(url,options={}){
  const reader=r.body.getReader(),parts=[];let size=0;
  while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>65536){await reader.cancel();throw new Error('instagram_connection_failed');}parts.push(value);}
  const bytes=new Uint8Array(size);let at=0;for(const part of parts){bytes.set(part,at);at+=part.length;}
- return JSON.parse(new TextDecoder().decode(bytes));
+ try{return JSON.parse(new TextDecoder().decode(bytes));}catch{throw Object.assign(new Error('instagram_connection_failed'),{httpStatus:r.status,category:'invalid_json'});}
 }
 function single(value){
  if(value&&Array.isArray(value.data)){if(value.data.length!==1)throw new Error('instagram_connection_failed');return value.data[0];}
@@ -75,7 +75,7 @@ export async function finish(r,e){
   return auth.redirect('/?instagram=connected',clear);
  }catch(err){
   // Store no provider text, URLs, codes, identities or credentials.
-  try{await auth.put(e,'instagram-diagnostic',{stage,...(shape?{shape}:{}),...(Number.isInteger(err?.httpStatus)?{httpStatus:err.httpStatus}:{})},Date.now()+600000);}catch{}
+  try{await auth.put(e,'instagram-diagnostic',{stage,...(shape?{shape}:{}),...(Number.isInteger(err?.httpStatus)?{httpStatus:err.httpStatus}:{}),category:err?.category==='invalid_json'?'invalid_json':['TypeError','TimeoutError','AbortError','SyntaxError'].includes(err?.name)?err.name:'validation'},Date.now()+600000);}catch{}
   return auth.redirect('/?error=instagram_connection_failed',clear);
  }
 }
