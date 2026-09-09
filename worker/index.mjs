@@ -1,3 +1,5 @@
+import {strictApproval} from './auto-review.mjs';
+import {jobLanguages} from './languages.mjs';
 import { jobInput, progressInput } from "./jobs.mjs";
 import {settingsView,saveSettings,maintenance,RETENTION} from './lifecycle.mjs';
 import { validateDraft, reviewDraft, validId } from "./review.mjs";
@@ -84,6 +86,10 @@ async function internal(r, e, p) {
     return json({
       accessToken: await auth.microsoftToken(e),
       knownPhotoIds: used.results.map((x) => x.id),
+      reviewMode: "manual",
+      strictAutoEnabled: view.settings.reviewMode==="strict_auto",
+      captionLanguage: "en",
+      editorLanguage: "zh-CN", // Legacy jobs keep their original prompt language.
       ...JSON.parse(job.body),
       draftLimit: Math.max(0,Math.min(3,view.settings.pendingLimit-view.pending)),
     });
@@ -160,12 +166,14 @@ async function internal(r, e, p) {
           ),
         );
       }
-      stmts.push(
-        e.DB.prepare("INSERT INTO drafts(id,body,version) VALUES(?,?,1)").bind(
-          d.id,
-          JSON.stringify(d),
-        ),
-      );
+      const evidence=Array.isArray(b.autoReviews)?b.autoReviews.filter(x=>x?.draftId===d.id):[];
+      const eligible=evidence.length===1&&strictApproval(d,evidence[0],previous.reviewMode);
+      const approved={...d,status:"approved",approvalSource:"strict_ai_v1"};
+      // Re-read the owner's mode inside the write transaction: switching to
+      // manual during inference must prevent automatic approval at commit.
+      stmts.push(e.DB.prepare("INSERT INTO drafts(id,body,version) SELECT ?,CASE WHEN ?=1 AND json_extract((SELECT value FROM state WHERE key='automation'),'$.reviewMode')='strict_auto' THEN ? ELSE ? END,1")
+        .bind(d.id,eligible?1:0,JSON.stringify(approved),JSON.stringify(d)));
+
     }
     stmts.push(
       e.DB.prepare(
@@ -188,6 +196,7 @@ async function route(r, e) {
       microsoftConfigured: auth.msConfigured(e),
       onedriveConnected: s ? Boolean(await auth.get(e, "microsoft")) : false,
       publishingEnabled: false,
+      captionLanguage: s ? (e.AI_CAPTION_LANGUAGE||"en") : undefined,
     });
   }
   if (p === "/auth/github/start" && r.method === "GET")
@@ -245,7 +254,7 @@ async function route(r, e) {
     if (p === "/api/jobs" && r.method === "POST") {
       if (!(await auth.get(e, "microsoft")))
         return failure("onedrive_not_connected", 409);
-      const input = jobInput(await readJSON(r));
+      const input = {...jobInput(await readJSON(r)),...jobLanguages(e),reviewMode:(await settingsView(e)).settings.reviewMode};
       const running = await e.DB.prepare(
         "SELECT id FROM jobs WHERE status IN ('pending','running') LIMIT 1",
       ).first();
@@ -307,6 +316,8 @@ export default {
         "microsoft_exchange_failed",
         "invalid_dates",
         "invalid_range",
+        "invalid_language",
+        "invalid_framing",
         "invalid_settings",
         "invalid_action",
         "invalid_batch_size",

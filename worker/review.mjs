@@ -1,3 +1,4 @@
+import {aspectValue,photoFrame} from './framing.mjs';
 const idPattern = /^[A-Za-z0-9_-]{1,128}$/;
 export function validId(value) {
   return typeof value === "string" && idPattern.test(value);
@@ -27,7 +28,7 @@ export function validateDraft(input) {
     if (!validId(p.id)) throw new Error("invalid_photo");
     if (seen.has(p.id)) throw new Error("duplicate_photo");
     seen.add(p.id);
-    return { id: p.id, alt: text(p.alt ?? "Landscape photo", "alt", 300) };
+    return { id: p.id, alt: text(p.alt ?? "Landscape photo", "alt", 300), frame: photoFrame(p.frame) };
   });
   return {
     id: input.id,
@@ -35,6 +36,7 @@ export function validateDraft(input) {
     caption,
     hashtags,
     photos,
+    aspect: aspectValue(input.aspect),
     status: "draft",
     version: 1,
     reason: text(input.reason ?? "", "reason", 600, false),
@@ -58,14 +60,16 @@ export function reviewDraft(current, input, now=Date.now()) {
   });
   if (next.photos.some((p) => !current.photos.some((c) => c.id === p.id)))
     throw new Error("unknown_photo");
-  const unchanged = ["title", "caption", "hashtags", "photos"].every(
-    (k) => JSON.stringify(next[k]) === JSON.stringify(current[k]),
+  const normalizedCurrent = validateDraft(current);
+  const unchanged = ["title", "caption", "hashtags", "photos", "aspect"].every(
+    (k) => JSON.stringify(next[k]) === JSON.stringify(normalizedCurrent[k]),
   );
   if (input.action === "approve" && !unchanged)
     throw new Error("save_before_approval");
   return {
     ...next,
     version: current.version + 1,
+    ...(unchanged && input.action==="save" && current.status==="approved" && current.approvalSource ? {approvalSource:current.approvalSource} : {}),
     status:
       input.action === "approve"
         ? "approved"

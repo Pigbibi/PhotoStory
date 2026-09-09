@@ -1,7 +1,8 @@
+import {jobLanguages} from './languages.mjs';
 import {get,put} from './auth.mjs';
 import {jobInput} from './jobs.mjs';
 export const DAY=86400000, RETENTION=30*DAY;
-export const defaults={version:0,enabled:false,frequency:'weekly',weekday:1,monthDay:1,hour:9,
+export const defaults={reviewMode:"manual",version:0,enabled:false,frequency:'weekly',weekday:1,monthDay:1,hour:9,
   folder:'',range:'1m',maxPhotos:20,analysisLimit:100,pendingLimit:20,cleanupEnabled:true,nextRun:null};
 export function nextRun(s,now){
   const local=new Date(now+8*3600000);
@@ -18,7 +19,8 @@ export function nextRun(s,now){
   }
 }
 export function settingsInput(b,now=Date.now()){
-  const s={};
+  const s={reviewMode:b.reviewMode??"manual"};
+  if(!["manual","strict_auto"].includes(s.reviewMode))throw new Error("invalid_settings");
   for(const k of ['enabled','cleanupEnabled']){
     if(typeof b[k]!=='boolean')throw new Error('invalid_settings');s[k]=b[k];
   }
@@ -71,7 +73,7 @@ export async function maintenance(e,now=Date.now(),temporaryCleanup=null){
   }
   const s=view.settings;
   if(!s.enabled||s.nextRun>now||view.active||view.backlogPaused||!await get(e,'microsoft'))return;
-  const id=crypto.randomUUID(),body={...jobInput(s,new Date(now)),analysisLimit:s.analysisLimit,scheduled:true};
+  const id=crypto.randomUUID(),body={...jobInput(s,new Date(now)),...jobLanguages(e),reviewMode:s.reviewMode,analysisLimit:s.analysisLimit,scheduled:true};
   // Claim this schedule slot and advance its date in the same transaction. Missed
   // periods collapse to one run; a failed job is never automatically retried.
   await e.DB.batch([

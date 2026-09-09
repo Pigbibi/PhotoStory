@@ -21,8 +21,9 @@ Microsoft access/refresh tokens are encrypted with AES-GCM in D1. The encryption
 key stays in Worker Secrets. GitHub access tokens are used only for the identity
 lookup and are not persisted. The implementation requests no repo scope.
 
-PhotoStory stores selected JPEG review previews and English draft text until the
-deployment owner removes them. There is no automatic retention purge in v0.1.
+PhotoStory stores selected JPEG review previews and draft text in the configured
+languages. Pending and approved drafts are retained; trash and unreferenced previews
+follow the configurable retention policy described in the README.
 There is no public photo URL or original-image download/publishing route. All
 responses use no-store and private routes do not accept third-party origins.
 Do not enable analytics or request-body logging for private payloads.
@@ -31,7 +32,9 @@ AI safety classification is fallible. The prompt conservatively excludes private
 interiors, documents, identifiable people/children, sexual imagery, personal details
 and uncertain images. It cannot guarantee every sensitive detail will be detected.
 Only 768px-or-smaller previews are screened, which can hide small details; uncertainty
-must be rejected. Human review remains the final decision.
+must be rejected. Manual review is the default. Strict AI auto-review can be enabled explicitly for
+new jobs; its additional pass is fallible and does not guarantee privacy. It never
+publishes. Changing the reviewed content revokes approval. See the README for gates.
 
 The scanner does not claim complete library analysis. It skips videos, screenshots
 identified by filename, remote shortcuts, and photos without an explicit capture
@@ -93,3 +96,9 @@ preview. The daily VPS residue cleaner checks the owner switch and service state
 holds the mailbox lock, skips symlinks, and only removes fixed PhotoStory temporary
 targets older than 24 hours. It never clears the inventory or Codex login directory.
 See [full retention behavior](lifecycle.zh-CN.md).
+
+Interface language preferences store only a language code in browser localStorage.
+Draft framing stores a canvas ratio and per-photo mode/position in private D1,
+not new public images. It never modifies OneDrive originals. Interface translation
+catalogs are static public strings; private draft text is not sent for translation
+when the user switches the interface language.

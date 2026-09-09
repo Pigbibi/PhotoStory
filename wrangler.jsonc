@@ -13,7 +13,7 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": true,
   },
-  "vars": { "ALLOWED_GITHUB_USERS": "YOUR_GITHUB_USERNAME" },
+  "vars": { "ALLOWED_GITHUB_USERS": "YOUR_GITHUB_USERNAME", "AI_CAPTION_LANGUAGE": "en", "AI_EDITOR_LANGUAGE": "en" },
   "d1_databases": [
     {
       "binding": "DB",

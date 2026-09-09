@@ -3,11 +3,12 @@
 [简体中文](README.zh-CN.md)
 
 An open-source, private photo editorial desk by **Pigbibi**, licensed under **MIT**.
-Turn OneDrive camera backups into landscape photo drafts with English captions
-and hashtags, then review each post in a Cloudflare-hosted website.
+Turn OneDrive camera backups into landscape photo drafts with captions
+and hashtags (English by default), then review each post in a Cloudflare-hosted website.
 
 **v0.1 is a review application, not an Instagram publisher.** There is no publishing
-endpoint, Instagram token, scheduled posting, or automatic approval in this version.
+endpoint, Instagram token, or scheduled posting in this version. Manual approval is
+the default; strict AI auto-review is an optional owner setting.
 The public demo uses one clearly labelled AI-generated image; no personal photos
 or live model results are included in this repository.
 
@@ -29,7 +30,8 @@ or live model results are included in this repository.
 6. Review, edit, reorder, remove, save, approve, or return a draft. Editing approved
    content revokes that approval. Approval conflicts across tabs are rejected.
 
-The UI is Chinese; generated posting text is English. The app's display brand is
+The interface and generated posting text default to English. The header language
+switch offers 13 languages independently of AI output settings. The app's display brand is
 Fieldnotes; the software project is PhotoStory. The configured date interval uses
 Asia/Shanghai and an exclusive end date. Capture timestamps must include a timezone;
 missing capture time is skipped rather than replaced with upload time.
@@ -174,13 +176,14 @@ See [privacy and limits](docs/privacy.md) before supplying real photos.
 - Safety is checked before aesthetics and grouping; uncertain, missing and invalid
   decisions never become drafts. Unknown/duplicate photo IDs are rejected.
 - Models can still make mistakes. A score is not proof of safety or objective
-  beauty. Inspect every real preview and caption before approving.
+  beauty. Manual review is the default. Optional strict AI review reduces risk but cannot
+  guarantee privacy or good taste; the owner remains responsible for enabling it.
 - Previews must reach Codex to be screened. Sensitive source images may therefore
   be processed by your configured Codex path even when later excluded. This is not
   an on-device privacy filter and does not change Codex's service data policies.
 - Only selected safe previews and drafts enter private D1 storage. No private
   data is stored in the repository, public assets, GitHub artifacts or browser
-  localStorage. The public generated demo never enters the real draft backend.
+  localStorage (only the interface language preference is stored there). The public generated demo never enters the real draft backend.
 - Batch processor logs only generic status/counts. Rejected previews are removed
   from its private temporary directory; all temporary input/output is removed when
   the process exits normally. No cross-provider fallback is allowed.
@@ -213,3 +216,74 @@ accounts, keys and service permissions.
 Linux VPS isolation setup: [two-user systemd deployment](deploy/systemd/README.md).
 
 AI modes and setup: [Chinese step-by-step guide](docs/ai-setup.zh-CN.md), including API cost considerations and current support limits.
+
+## AI caption language
+
+The website defaults to **English**. Use the header language selector to switch
+instantly; it stores only a language code in this browser. Arabic uses RTL layout.
+Documentation is maintained in English and Simplified Chinese only.
+
+Set these **non-secret Worker vars** in `wrangler.jsonc` (or your private deployment
+config / Cloudflare Settings → Variables and Secrets), then deploy:
+
+| Variable | Default | Controls |
+| --- | --- | --- |
+| `AI_CAPTION_LANGUAGE` | `en` | Caption, 3–5 hashtags, and photo alt text |
+| `AI_EDITOR_LANGUAGE` | `en` | Short draft title and selection explanation |
+
+Both accept: `en`, `zh-CN`, `zh-TW`, `ja`, `ko`, `es`, `fr`, `de`, `pt`, `it`,
+`ru`, `ar`, `hi`. These are also the interface languages. For example, use
+`AI_CAPTION_LANGUAGE="en"` and `AI_EDITOR_LANGUAGE="zh-CN"` for English posts
+with Chinese editing notes. Invalid codes reject new job creation before AI use.
+The same variables apply to manual and scheduled jobs; browser clients cannot
+override them. No additional AI provider, login, or paid API is introduced.
+
+Language settings are frozen when a job is created. Changing them affects new jobs
+only and never rewrites existing drafts. Jobs created before this feature retain
+English captions and Chinese editing notes. Previously processed photos remain
+cached; changing language alone does not create duplicate drafts or reanalyze them.
+Deploy the updated Worker and VPS processor together before creating new jobs.
+Model-generated language is best effort; review text before approving it.
+
+## Consistent carousel framing
+
+In the review editor, choose one canvas ratio for the whole draft: **4:5 portrait**,
+**1:1 square**, or **3:2 landscape**. Each photo can keep its full image with white
+borders (default) or fill the canvas by cropping. Crop mode provides horizontal and
+vertical position sliders. The main preview and filmstrip use the same saved frame.
+Position percentages are measured across the available overflow; when an axis has
+no overflow, moving its slider has no visual effect. Images are never stretched.
+
+Save and inspect every frame before approval. Changing the ratio or any photo's
+framing revokes prior approval, just like changing the caption. Framing survives
+reordering, trash, and restore; the OneDrive originals remain untouched.
+
+This version saves **composition parameters and review previews only**. It does not
+export full-resolution images or publish to Instagram. A future export/publishing
+path must fetch the matching originals, apply the saved canvas and crop positions,
+and verify the resulting files against the publishing channel's current requirements.
+Do not use the 768px review previews as full-quality publishing files.
+
+## Review mode: manual or strict AI
+
+In Connection Settings → production/retention rules, choose **Manual approval**
+(default) or **Strict AI auto-review**, then save. This setting applies to new
+manual and scheduled jobs independently of whether periodic production is enabled.
+It never retrospectively approves existing drafts. Switching back to manual also
+blocks automatic approval by any batch still in flight, checked in the database
+write transaction.
+
+Strict mode requires every selected photo to have an initial aesthetic score of
+**9/10 or higher**, be outdoor scenery, and have no privacy flags. It then makes a
+**separate AI call** to inspect the complete post and its actual default 4:5,
+white-bordered previews. Privacy, grounded text and locations, coherent theme,
+composition, and absence of repetitive frames must all pass; any uncertainty,
+missing field, malformed response, low score, or extra-review failure leaves the
+post for manual review. This extra call consumes additional Codex quota. It uses
+the same configured service/model, not an independent provider or a safety guarantee.
+
+The server binds the result to the draft text, photo IDs/order and default framing;
+client-supplied approval status cannot bypass these checks. Approved posts are
+labelled as AI-reviewed in the private queue. Changing text, photos or framing
+revokes approval and requires manual re-review. There is still **no Instagram
+publishing**. Scores are a selection rule, not a calibrated probability of safety.
