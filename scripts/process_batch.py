@@ -23,6 +23,14 @@ class Stop(Exception):
     pass
 
 
+def failure_reason(error):
+    allowed = {'folder_limit', 'folder_not_found', 'gateway_failed', 'gateway_not_configured',
+               'group_contract', 'https_required', 'image_too_large', 'invalid_graph_origin',
+               'page_limit', 'photo_limit', 'redirect_blocked', 'response_too_large',
+               'screen_contract', 'setup_required', 'thumbnail_missing', 'thumbnail_origin'}
+    return str(error) if isinstance(error, Stop) and str(error) in allowed else 'unknown'
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         raise Stop("redirect_blocked")
@@ -297,7 +305,8 @@ def run():
             completion_started = True
             result = call("/internal/complete", {**auth, "drafts":drafts, "photos":photos})
             print("Completed; draft count:", result["count"])
-    except Exception:
+    except Exception as error:
+        print("Stopped; reason:", failure_reason(error))
         # An ambiguous completion is left running for readback, never re-submitted.
         if not completion_started:
             try:

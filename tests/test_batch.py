@@ -42,4 +42,11 @@ class ScreeningTests(unittest.TestCase):
     def test_graph_pagination_cannot_exfiltrate_token(self):
         with self.assertRaises(b.Stop): b.graph('https://evil.invalid/next','secret')
 
+
+class FailureReportingTests(unittest.TestCase):
+    def test_only_fixed_failure_reasons_are_reported(self):
+        self.assertEqual(b.failure_reason(b.Stop('photo_limit')), 'photo_limit')
+        self.assertEqual(b.failure_reason(b.Stop('provider secret response')), 'unknown')
+        self.assertEqual(b.failure_reason(RuntimeError('provider secret response')), 'unknown')
+
 if __name__=='__main__': unittest.main()
