@@ -1,4 +1,5 @@
 import { jobInput, progressInput } from "./jobs.mjs";
+import {settingsView,saveSettings,maintenance,RETENTION} from './lifecycle.mjs';
 import { validateDraft, reviewDraft, validId } from "./review.mjs";
 import * as auth from "./auth.mjs";
 const json = (body, status = 200) =>
@@ -51,7 +52,15 @@ async function machine(r, e) {
 }
 async function internal(r, e, p) {
   if (!(await machine(r, e))) return failure("unauthorized", 401);
+  if(p==='/internal/cleanup-policy' && r.method==='GET')return json({enabled:(await settingsView(e)).settings.cleanupEnabled});
+  if(p==='/internal/maintenance' && r.method==='POST'){
+    const b=await readJSON(r);
+    await maintenance(e,Date.now(),b.temporaryCleanup);
+    return json({ok:true});
+  }
   if (p === "/internal/claim" && r.method === "POST") {
+    const view=await settingsView(e);
+    if(view.backlogPaused)return json(null);
     const lease = auth.random();
     const row = await e.DB.prepare(
       "UPDATE jobs SET status='running',lease=? WHERE id=(SELECT id FROM jobs WHERE status='pending' ORDER BY created LIMIT 1) AND status='pending' RETURNING id,body",
@@ -71,10 +80,12 @@ async function internal(r, e, p) {
   if (!job) return failure("job_conflict", 409);
   if (p === "/internal/source" && r.method === "POST") {
     const used = await e.DB.prepare("SELECT id FROM photos").all();
+    const view=await settingsView(e);
     return json({
       accessToken: await auth.microsoftToken(e),
       knownPhotoIds: used.results.map((x) => x.id),
       ...JSON.parse(job.body),
+      draftLimit: Math.max(0,Math.min(3,view.settings.pendingLimit-view.pending)),
     });
   }
   if (p === "/internal/checkpoint" && r.method === "POST") {
@@ -86,11 +97,12 @@ async function internal(r, e, p) {
     return json({ok:true});
   }
   if (p === "/internal/fail" && r.method === "POST") {
-    await e.DB.prepare(
+    await e.DB.batch([e.DB.prepare(
       "UPDATE jobs SET status='failed',lease=NULL WHERE id=? AND status='running'",
     )
-      .bind(job.id)
-      .run();
+      .bind(job.id),
+      e.DB.prepare("UPDATE state SET value=json_set(value,'$.enabled',json('false'),'$.nextRun',NULL,'$.pausedReason','failed','$.version',json_extract(value,'$.version')+1) WHERE key='automation' AND json_extract(value,'$.lastJobId')=?").bind(job.id),
+    ]);
     return json({ ok: true });
   }
   if (p === "/internal/complete" && r.method === "POST") {
@@ -106,6 +118,7 @@ async function internal(r, e, p) {
     const progress=progressInput(b.progress,previous.progress);
     if(progress.batches!==(previous.progress?.batches||0)+1 || progress.processed-(previous.progress?.processed||0)>previous.maxPhotos || b.more!==(progress.processed<progress.total)) throw new Error("invalid_progress");
     if(progress.phase!==(b.more?"processing":"complete")) throw new Error("invalid_progress");
+    if(previous.analysisLimit && (!Number.isInteger(b.progress.analyzed)||progress.analyzed>previous.analysisLimit||progress.analyzed-(previous.progress?.analyzed||0)!==progress.processed-(previous.progress?.processed||0)))throw new Error('invalid_progress');
     const drafts = b.drafts.map(validateDraft),
       seen = new Set();
     if (new Set(drafts.map((d) => d.id)).size !== drafts.length)
@@ -157,7 +170,7 @@ async function internal(r, e, p) {
     stmts.push(
       e.DB.prepare(
         "UPDATE jobs SET body=json_set(body,'$.progress',json(?),'$.lastBatch',?),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE ? END,lease=NULL WHERE id=? AND lease=? AND status='running'",
-      ).bind(JSON.stringify(progress),b.batchId,b.more?'pending':'complete',job.id,job.lease),
+      ).bind(JSON.stringify(progress),b.batchId,b.more?(previous.analysisLimit && progress.analyzed>=previous.analysisLimit?'limited':'pending'):'complete',job.id,job.lease),
     );
     await e.DB.batch(stmts);
     return json({ ok: true, count: drafts.length });
@@ -212,13 +225,15 @@ async function route(r, e) {
       ).all();
       return json(rows.results.map((x) => JSON.parse(x.body)));
     }
+    if(p==='/api/settings' && r.method==='GET')return json(await settingsView(e));
+    if(p==='/api/settings' && r.method==='PUT')return json(await saveSettings(e,await readJSON(r)));
     if (p === "/api/jobs" && r.method === "GET") {
       const rows = await e.DB.prepare(
         "SELECT id,status,created,body FROM jobs ORDER BY created DESC LIMIT 10",
       ).all();
       return json(rows.results.map(({body,...row})=>{
         const v=JSON.parse(body);
-        return {...row,folder:v.folder,selection:v.selection,maxPhotos:v.maxPhotos,locationHint:v.locationHint||"",progress:v.progress,stopRequested:Boolean(v.stopRequested)};
+        return {...row,folder:v.folder,selection:v.selection,maxPhotos:v.maxPhotos,locationHint:v.locationHint||"",progress:v.progress,stopRequested:Boolean(v.stopRequested),scheduled:Boolean(v.scheduled),analysisLimit:v.analysisLimit};
       }));
     }
     if (p.startsWith("/api/jobs/") && p.endsWith("/stop") && r.method==="POST") {
@@ -264,12 +279,16 @@ async function route(r, e) {
       if (!row) return failure("not_found", 404);
       const current = JSON.parse(row.body),
         next = reviewDraft(current, await readJSON(r));
-      const updated = await e.DB.prepare(
+      const statements=[e.DB.prepare(
         "UPDATE drafts SET body=?,version=? WHERE id=? AND version=?",
       )
-        .bind(JSON.stringify(next), next.version, id, current.version)
-        .run();
-      if (updated.meta.changes !== 1) return failure("version_conflict", 409);
+        .bind(JSON.stringify(next), next.version, id, current.version)];
+      for(const removed of current.photos.filter(p=>!next.photos.some(q=>q.id===p.id))){
+        statements.push(e.DB.prepare("INSERT INTO photo_gc(photo_id,expires) SELECT ?,? WHERE EXISTS(SELECT 1 FROM drafts WHERE id=? AND body=?) ON CONFLICT(photo_id) DO UPDATE SET expires=excluded.expires")
+          .bind(removed.id,Date.now()+RETENTION,id,JSON.stringify(next)));
+      }
+      const updated=await e.DB.batch(statements);
+      if (updated[0].meta.changes !== 1) return failure("version_conflict", 409);
       return json(next);
     }
     return failure("not_found", 404);
@@ -288,6 +307,8 @@ export default {
         "microsoft_exchange_failed",
         "invalid_dates",
         "invalid_range",
+        "invalid_settings",
+        "invalid_action",
         "invalid_batch_size",
         "invalid_progress",
         "invalid_location_hint",

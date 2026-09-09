@@ -1,0 +1,19 @@
+[Unit]
+Description=Clean stale PhotoStory temporary files while idle
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/photostory/processor.env
+ExecStart=/usr/bin/python3 /opt/photostory/app/scripts/cleanup_temp.py
+UMask=0077
+TimeoutStartSec=2min
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+PrivateTmp=yes
+ReadWritePaths=/var/lib/photostory /var/lib/photostory-bridge/input /var/lib/photostory-bridge/output /var/lib/photostory-ai
+StandardOutput=journal
+StandardError=null

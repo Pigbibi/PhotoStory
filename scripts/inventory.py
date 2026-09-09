@@ -110,7 +110,7 @@ class Inventory:
 
     def progress(self):
         row=self.db.execute("SELECT count(*) AS total,coalesce(sum(status!='pending'),0) AS processed FROM photos").fetchone()
-        return {'phase':'scanning','total':row['total'],'processed':row['processed'],'batches':self.get('batches') or 0}
+        return {'phase':'scanning','total':row['total'],'processed':row['processed'],'batches':self.get('batches') or 0,'analyzed':self.get('analyzed') or 0}
 
     def stage_batch(self,photos):
         if self.get('inflight'): raise ValueError('batch_outcome_unknown')
@@ -130,6 +130,7 @@ class Inventory:
         progress=self.progress()
         progress['processed']+=len(self.get('inflight')['photos'])
         progress['batches']+=1
+        progress['analyzed']+=len(self.get('inflight')['photos'])
         progress['phase']='complete' if progress['processed']==progress['total'] else 'processing'
         return progress
 
@@ -143,6 +144,7 @@ class Inventory:
                 if photo.get('fingerprint'):
                     self.db.execute('INSERT OR IGNORE INTO cache.analyzed VALUES(?,?,?)',(photo['fingerprint'],batch['digests'].get(photo['id']),self.policy))
             self.set('batches',(self.get('batches') or 0)+1)
+            self.set('analyzed',(self.get('analyzed') or 0)+len(batch['photos']))
             self.set('inflight',None)
 
     def close(self): self.db.close()

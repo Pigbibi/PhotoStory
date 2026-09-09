@@ -5,12 +5,37 @@ sys.path.insert(0,str(Path(__file__).parents[1]/'scripts'))
 import process_batch as b
 
 class PipelineTests(unittest.TestCase):
+    def test_scheduled_run_stops_at_remaining_analysis_budget(self):
+        remote={'status':'pending','progress':{'phase':'scanning','total':0,'processed':0,'batches':0}}
+        seen=[]
+        def request(url,**kwargs):
+            data=kwargs['body'];endpoint=url.rsplit('/',1)[-1]
+            if endpoint=='maintenance':return b'{"ok":true}'
+            if endpoint=='claim':
+                if remote['status']!='pending':return b'null'
+                remote['status']='running';result={'id':'budget','lease':'lease'}
+            elif endpoint=='source':result={**remote,'pipeline':2,'folder':'Photos','start':None,'end':None,'knownPhotoIds':[],'maxPhotos':20,'analysisLimit':7,'accessToken':'dummy'}
+            elif endpoint=='checkpoint':remote.update(progress=data['progress'],status='pending');result={}
+            elif endpoint=='complete':remote.update(progress=data['progress'],status='limited',lastBatch=data['batchId']);result={'count':0}
+            else:raise AssertionError(endpoint)
+            return json.dumps(result).encode()
+        def graph(url,token):
+            if '/root:/' in url:return {'id':'root','folder':{}}
+            return {'value':[{'id':str(i),'parentReference':{'driveId':'drive'},'image':{},'photo':{'takenDateTime':'2026-08-20T00:00:00Z'},'eTag':'v1'} for i in range(30)]}
+        def gateway(prompt,records,*args):
+            seen.extend(records);return {'photos':[{'id':p['id'],'decision':'exclude'} for p in records]}
+        with tempfile.TemporaryDirectory() as tmp,patch.dict(b.os.environ,{'PHOTOSTORY_URL':'https://example.test','PHOTOSTORY_BATCH_TOKEN':'dummy','CODEX_GATEWAY_COMMAND':'/unused','PHOTOSTORY_STATE_DIR':tmp},clear=True),patch.object(b,'request',side_effect=request),patch.object(b,'graph',side_effect=graph),patch.object(b,'gateway',side_effect=gateway),patch.object(b,'thumbnail',side_effect=lambda p,t:p['id'].encode()),contextlib.redirect_stdout(io.StringIO()):
+            while remote['status']=='pending':b.run()
+        self.assertEqual(len(seen),7);self.assertEqual(remote['progress']['analyzed'],7)
+        self.assertEqual(remote['status'],'limited')
+
     def test_large_range_exclusions_and_lost_ack_never_repeat_completed_ai(self):
         config={'pipeline':2,'folder':'Photos','start':None,'end':None,'maxPhotos':100,'knownPhotoIds':[],'accessToken':'dummy'}
         remote={'id':'job','status':'pending','progress':{'phase':'scanning','total':0,'processed':0,'batches':0}}
         seen=[]; commits=[]; lose_ack=[True]
         def request(url,**kwargs):
             body=kwargs['body']; endpoint=url.rsplit('/',1)[-1]
+            if endpoint=='maintenance':return b'{"ok":true}'
             if endpoint=='claim':
                 if remote['status']!='pending': return b'null'
                 remote['status']='running'; result={'id':remote['id'],'lease':'lease'}

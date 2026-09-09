@@ -40,8 +40,15 @@ export function validateDraft(input) {
     reason: text(input.reason ?? "", "reason", 600, false),
   };
 }
-export function reviewDraft(current, input) {
+export function reviewDraft(current, input, now=Date.now()) {
   if (input.version !== current.version) throw new Error("version_conflict");
+  if(input.action==='trash' && ['draft','approved'].includes(current.status))
+    return {...current,status:'trash',trashedAt:now,version:current.version+1};
+  if(input.action==='restore' && current.status==='trash'){
+    const {trashedAt,...rest}=current;
+    return {...rest,status:'draft',version:current.version+1};
+  }
+  if(current.status==='trash')throw new Error('invalid_action');
   if (!["save", "approve", "return"].includes(input.action))
     throw new Error("invalid_action");
   const next = validateDraft({

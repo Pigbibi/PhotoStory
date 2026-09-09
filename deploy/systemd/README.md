@@ -45,8 +45,24 @@ metadata scan or AI batch. Keep `/var/lib/photostory` (the SQLite inventory/cach
 private and persistent across steps and upgrades.
 For automatic continuation, install `photostory-batch.timer` alongside the units,
 reload systemd and run `sudo systemctl enable --now photostory-batch.timer`. It
-polls after the previous service invocation finishes, and never creates a new job
-or retries a failed job. Stop the timer before upgrading active runtime code.
+polls after the previous service invocation finishes. The processor creates a new
+job only when the owner enables a due weekly/monthly schedule; it never retries a
+failed job. Stop the timer before upgrading active runtime code and allow the
+current batch to finish.
+
+For daily stale-file cleanup, install `photostory-cleanup.service` and `.timer`,
+validate the units, reload systemd, then enable `photostory-cleanup.timer`. Its
+04:20 Asia/Shanghai check is separate from the Worker's 04:00 recycle-bin cleanup.
+The root cleanup unit consumes the existing restricted environment file, checks
+the website's cleanup switch, and skips active work. It removes only PhotoStory's
+fixed temporary targets older than 24 hours, not original photos, inventories,
+other services or persistent Codex login files. It writes a root-owned 0640 status
+report readable by `photostory-bridge`; the next scanner tick uploads sanitized
+counts/status. No new credentials or broader sudoers entry are required.
+
+On upgrade, run the additive `photo_gc` table definition from `worker/schema.sql`
+before deploying this Worker. Review drafts remain indefinitely; discarded drafts
+are recoverable for 30 days. See [lifecycle behavior](../../docs/lifecycle.zh-CN.md).
 
 ## Boundaries and verification
 

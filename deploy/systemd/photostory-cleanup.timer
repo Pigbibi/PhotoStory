@@ -1,0 +1,10 @@
+[Unit]
+Description=Check stale PhotoStory temporary files daily
+
+[Timer]
+OnCalendar=*-*-* 20:20:00 UTC
+Persistent=true
+Unit=photostory-cleanup.service
+
+[Install]
+WantedBy=timers.target

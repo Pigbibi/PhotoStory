@@ -37,6 +37,10 @@ export function progressInput(value, previous={}) {
     if(!Number.isSafeInteger(n)||n<0||n>1e9||n<(previous[key]||0)) throw new Error('invalid_progress');
     result[key]=n;
   }
+  if(value.analyzed!==undefined){
+    if(!Number.isSafeInteger(value.analyzed)||value.analyzed<0||value.analyzed<(previous.analyzed||0)||value.analyzed>result.processed)throw new Error('invalid_progress');
+    result.analyzed=value.analyzed;
+  }
   if(result.processed>result.total) throw new Error('invalid_progress');
   return result;
 }

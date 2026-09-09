@@ -151,12 +151,22 @@ or another restricted environment mechanism. Then run:
 ```
 
 One invocation handles a bounded step: at most 50 Graph pages or one AI batch.
-The supplied optional systemd timer continues owner-created jobs; it never creates
-new scans. Install it using the systemd deployment guide. This adapter intentionally uses the local backend. Any separate service integration must preserve AIGateway's GitHub Actions OIDC repository/workflow/ref allowlists and HTTPS protections. A private
+The supplied optional systemd timer continues owner-created jobs and checks the
+owner's weekly/monthly schedule, which is disabled by default. Scheduled runs have
+a separate total analysis budget (default 100); the pending-review threshold
+(default 20 drafts) pauses further batches. Install the timers using the systemd
+deployment guide. This adapter intentionally uses the local backend. Any separate service integration must preserve AIGateway's GitHub Actions OIDC repository/workflow/ref allowlists and HTTPS protections. A private
 GitHub Action may not be callable from public repositories; the documented VPS CLI
 path avoids depending on access to a private action from this public project.
 
 ## Privacy and selection policy
+
+Review drafts and approved drafts have no automatic expiry. Discarded drafts enter
+a 30-day recycle bin and can be restored as unapproved drafts. Daily cleanup removes
+expired trash and only previews with no remaining draft reference. Photos removed
+while editing also get a 30-day grace period. Temporary-residue cleanup uses a
+separate idle-only VPS unit. Neither cleanup process deletes OneDrive originals.
+See [lifecycle and scheduling](docs/lifecycle.zh-CN.md) for configuration and upgrade steps.
 
 The policy is in `scripts/process_batch.py` (`SCREEN_PROMPT`, `GROUP_PROMPT`).
 See [privacy and limits](docs/privacy.md) before supplying real photos.

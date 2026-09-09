@@ -50,7 +50,8 @@ gateway's repository/ref permissions or disable authentication.
 
 One job may be active at a time. Large ranges are divided into metadata and AI
 steps, each with a new lease. The optional VPS timer continues pending steps, not
-failed calls. It never creates a new scan or publishes photos. Owners can stop
+failed calls. New scans are created only by the owner or an explicitly enabled
+weekly/monthly schedule. It never publishes photos. Owners can stop
 subsequent steps; a currently running batch is allowed to finish. Requests are not
 automatically retried. If a
 completion upload has an uncertain result, the worker leaves the job for readback
@@ -81,3 +82,14 @@ processed state; it does not call the model again for that acknowledged batch.
 A pending local AI batch with no matching remote acknowledgement stops instead.
 Do not expose the inventory directory to the AI service. The default batch limit
 is a per-step resource limit, not a monthly cost or total-library analysis limit.
+
+Scheduled jobs have an additional total analysis limit (default 100) and stop when
+it is reached. The pending-review threshold pauses future claims, with an already
+running batch allowed to finish. Review and approved drafts do not expire.
+Trash is recoverable for 30 days; cleanup checks every remaining draft reference
+before deleting preview bytes. Editing a photo out also schedules a 30-day grace
+period. Cleanup and restore transactions cannot leave a restored draft without its
+preview. The daily VPS residue cleaner checks the owner switch and service state,
+holds the mailbox lock, skips symlinks, and only removes fixed PhotoStory temporary
+targets older than 24 hours. It never clears the inventory or Codex login directory.
+See [full retention behavior](lifecycle.zh-CN.md).

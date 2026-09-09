@@ -593,3 +593,8 @@ footer span:last-child {
 .settings select { width:100%; padding:12px; border:1px solid var(--line, #ddd); border-radius:6px; background:var(--paper, #fff); color:inherit; font:inherit; }
 .jobs li { flex-wrap:wrap; gap:8px; }
 .jobs .job-progress { flex-basis:100%; margin:0; font-size:13px; }
+.settings .lifecycle { grid-column:1 / -1; }
+.settings .check { display:flex; align-items:center; gap:10px; margin:20px 0 12px; }
+.settings .check input { width:18px; height:18px; margin:0; }
+.lifecycle .date-fields { flex-wrap:wrap; }
+.lifecycle .date-fields label { flex:1; min-width:140px; }

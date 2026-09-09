@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { reviewDraft } from "../worker/review.mjs";
+import LifecycleSettings from './LifecycleSettings.jsx';
 import "./style.css";
 const demoDraft = {
   id: "demo-coast",
@@ -26,6 +27,7 @@ const errors = {
   onedrive_not_connected: "请先连接 OneDrive。",
   invalid_dates: "请选择有效日期，结束日期不能早于开始日期。",
   invalid_range: "请选择有效的照片范围。",
+  invalid_settings: "请检查制作规则中的文件夹、时间和数量范围。",
   invalid_batch_size: "每批照片数量需在 1 到 100 之间。",
   github_not_allowed: "此 GitHub 账号不在管理员允许名单中。",
   request_failed: "操作没有完成。请检查连接状态；未自动重试。",
@@ -99,6 +101,8 @@ function App() {
       setMessage(
         action === "approve"
           ? "已批准，保留在发布队列中。当前尚未启用发布。"
+          : action === 'trash' ? '已移入回收站，保留 30 天，可恢复到待审核。'
+          : action === 'restore' ? '已恢复到待审核，需要重新确认后才能批准。'
           : action === "return"
             ? "已退回待审核。"
             : "修改已保存。",
@@ -111,7 +115,7 @@ function App() {
   };
   const current = drafts.find((d) => d.id === selected),
     filtered = drafts.filter((d) =>
-      view === "queue" ? d.status === "approved" : d.status === "draft",
+      view === 'trash'?d.status==='trash':view === "queue" ? d.status === "approved" : d.status === "draft",
     );
   return (
     <>
@@ -123,6 +127,7 @@ function App() {
           {[
             ["review", "待审核"],
             ["queue", "发布队列"],
+            ['trash','回收站'],
             ["settings", "连接设置"],
           ].map(([v, label]) => (
             <button
@@ -132,7 +137,7 @@ function App() {
                 setView(v);
                 if (v !== "settings" && session?.user && !demo) load();
                 const ds = drafts.filter((d) =>
-                  v === "queue"
+                  v === 'trash'?d.status==='trash':v === "queue"
                     ? d.status === "approved"
                     : d.status === "draft",
                 );
@@ -171,6 +176,7 @@ function App() {
           <h1>
             {view === "settings"
               ? "让故事，从连接开始。"
+              :view==='trash'?'不着急，留三十天再决定。'
               : view === "queue"
                 ? "准备好，留给下一次分享。"
                 : "把旅途，整理成故事。"}
@@ -178,6 +184,7 @@ function App() {
           <p>
             {view === "settings"
               ? "GitHub 登录 · OneDrive 只读 · Codex 选片"
+              :view==='trash'?'恢复后重新审核 · 到期仅清理本站预览 · OneDrive 原图保留'
               : view === "queue"
                 ? "已批准的草稿 · Instagram 发布尚未启用"
                 : "按时间与地点整理 · 风景选片 · 英文文案"}
@@ -244,14 +251,14 @@ function App() {
                     {d.title}
                     <small>
                       {d.photos.length} 张 ·{" "}
-                      {d.status === "approved" ? "已批准" : "待审核"}
+                      {d.status === 'trash'?'回收站':d.status === "approved" ? "已批准" : "待审核"}
                     </small>
                   </span>
                 </button>
               ))}
               {!filtered.length && (
                 <p className="muted">
-                  {view === "queue"
+                  {view === 'trash'?'回收站是空的。':view === "queue"
                     ? "还没有批准的草稿。"
                     : "还没有待审核草稿。连接 OneDrive 后可创建第一批选片任务。"}
                 </p>
@@ -347,7 +354,7 @@ function Editor({ draft, demo, busy, update }) {
             </button>
           ))}
         </div>
-        <div className="photo-tools">
+        {draft.status!=='trash' && <div className="photo-tools">
           <button onClick={() => move(-1)} disabled={index === 0}>
             前移
           </button>
@@ -369,7 +376,7 @@ function Editor({ draft, demo, busy, update }) {
           >
             移出这篇
           </button>
-        </div>
+        </div>}
         <p className="muted">
           {demo
             ? "AI 生成的示例照片，尚未连接 OneDrive。"
@@ -382,6 +389,7 @@ function Editor({ draft, demo, busy, update }) {
           主题
           <input
             className="title-input"
+            readOnly={draft.status==='trash'}
             value={form.title}
             maxLength={160}
             onChange={(e) => set("title", e.target.value)}
@@ -393,6 +401,7 @@ function Editor({ draft, demo, busy, update }) {
           英文文案
           <textarea
             value={form.caption}
+            readOnly={draft.status==='trash'}
             rows={4}
             maxLength={1800}
             onChange={(e) => set("caption", e.target.value)}
@@ -402,12 +411,16 @@ function Editor({ draft, demo, busy, update }) {
           Hashtags
           <textarea
             value={form.hashtags}
+            readOnly={draft.status==='trash'}
             rows={3}
             maxLength={350}
             onChange={(e) => set("hashtags", e.target.value)}
           />
         </label>
-        <div className="approval-note">
+        {draft.status==='trash'?<>
+          <p>保留至 {new Date(draft.trashedAt+30*86400000).toLocaleDateString('zh-CN',{timeZone:'Asia/Shanghai'})}，之后在启用清理时移除。</p>
+          <button className="button primary" disabled={busy} onClick={()=>update(draft,'restore')}>恢复到待审核</button>
+        </>:<><div className="approval-note">
           <strong>发布前，请看每一张照片。</strong>
           <p>
             检查人物、私人信息、地点和文案。AI 可能漏判，批准仍需要你的判断。
@@ -441,6 +454,8 @@ function Editor({ draft, demo, busy, update }) {
             ? "请先保存修改，再批准这个版本。修改已批准的内容会重新进入待审核。"
             : "批准后进入队列，连接 Instagram 后才能发布。"}
         </p>
+        <button className="text-button" disabled={busy||dirty} onClick={()=>update(draft,'trash')}>不采用，移入回收站</button>
+        </>}
       </section>
     </>
   );
@@ -453,6 +468,7 @@ function Settings({ session, notify }) {
     [maxPhotos,setMaxPhotos] = useState(50),
     [locationHint,setLocationHint] = useState(""),
     [jobs, setJobs] = useState([]),
+    [backlogPaused,setBacklogPaused]=useState(false),
     [busy, setBusy] = useState(false);
   const refresh = async (restore=false) => {
     try {
@@ -658,11 +674,14 @@ function Settings({ session, notify }) {
                         complete: "已完成",
                         failed: "处理失败，未自动重试",
                         cancelled: "已停止后续批次",
+                        limited: "已达到本次分析上限，剩余照片留到下个周期",
                       }[j.status]
                     }
                   </strong>
                   {j.progress && <p className="job-progress">
                     {j.progress.phase==="scanning" ? `正在扫描 · 已发现 ${j.progress.total} 张候选` : `已处理 ${j.progress.processed} / ${j.progress.total} 张 · ${j.progress.batches} 批`}
+                    {j.analysisLimit && ` · 本次分析 ${j.progress.analyzed||0} / ${j.analysisLimit} 张`}
+                    {j.status==='pending' && backlogPaused && ' · 待审核已达阈值，暂停后续批次'}
                   </p>}
                   {["pending","running"].includes(j.status) && (
                     <button className="text-button" disabled={j.stopRequested} onClick={()=>stopJob(j.id)}>
@@ -679,6 +698,7 @@ function Settings({ session, notify }) {
           尚未启用。首版只生成和审核草稿，不会对外发布。后续确认账户与规则后再接入。
         </p>
       </section>
+      {session?.user && <LifecycleSettings api={api} notify={notify} folder={folder} onStatus={setBacklogPaused}/>}
     </div>
   );
 }
