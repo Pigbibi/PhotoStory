@@ -64,6 +64,16 @@ Roles** to assign its **Instagram Tester** role. Use the intended account's exac
 username and follow the invitation acceptance step in Instagram. Meta/Facebook
 developer sign-in and Instagram account sign-in are separate sessions.
 
+After adding the username, the Meta roles table shows **Pending** until the
+Instagram account accepts. Meta links to [Apps and websites](https://www.instagram.com/accounts/manage_access/)
+for invitation management. Sign in as the intended Instagram account and accept
+its PhotoStory / PhotoStory-IG tester invitation. If the embedded browser cannot
+load Instagram's login page, open that same official link in your normal browser;
+do not send passwords or verification codes to the deployment operator. Return
+to the Meta roles page afterward and verify that Pending has cleared before
+attempting account authorization. Do not remove and re-invite merely because
+acceptance is still pending.
+
 The wizard also has a **Webhook callback URL** and a separate **Set up Instagram
 business login** section. A webhook callback is not an OAuth redirect URI. Do not
 paste an OAuth callback into the webhook field; PhotoStory's current release does

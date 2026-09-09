@@ -51,6 +51,13 @@ Instagram 应用名称（例如 `PhotoStory-IG`）、Instagram 应用编号和�
 分配「Instagram Tester」身份。填写该账号的准确用户名，并按提示在 Instagram
 接受邀请。Meta／Facebook 开发者登录与 Instagram 账号登录是不同的登录过程。
 
+添加用户名后，Meta 的身份表格会显示「待添加」。账号接受邀请后这个状态才会解除。
+Meta 提供的邀请管理入口是 [应用和网站](https://www.instagram.com/accounts/manage_access/)。
+使用目标 Instagram 账号登录，找到 PhotoStory／PhotoStory-IG 的测试邀请并接受。
+如果内置浏览器无法加载 Instagram 登录页，在平时使用的浏览器中打开同一个官方链接；
+不要向部署人员发送密码或验证码。完成后回到 Meta 身份页面核对「待添加」已解除，
+再继续账号授权。不要仅因为邀请尚未接受就移除账号并重复邀请。
+
 向导还分别提供 Webhook 的「回调网址」和「设置 Instagram 业务登录」。Webhook
 回调不是 OAuth 登录回调，不要将登录回调地址填进 Webhook 框；PhotoStory 当前
 版本尚未实现这两个 Instagram 接口。
