@@ -34,6 +34,27 @@ PhotoStory 目前支持选片、审核和成品下载，**尚未实现 Instagram
    添加账号前先核对该应用的实际要求；初始页面显示「未发现要求」不等于已经通过
    面向公众的权限审核。
 
+## 配置 Instagram 用例
+
+在「定制 → 包含 Instagram 账户关联登录的 API 设置」中，Meta 会生成独立的
+Instagram 应用名称（例如 `PhotoStory-IG`）、Instagram 应用编号和应用密钥。
+它们与外层 Meta 应用的凭据不同，接入实现后应按 Instagram 登录方案要求使用
+对应凭据。准备阶段不需要为了完成向导而显示密钥或生成令牌。
+
+向导可能提供「Add all required permissions」按钮，其中列出了基础资料、
+评论和私信权限。照片发布应用应改为进入「权限和功能」，仅添加
+`instagram_business_basic` 和 `instagram_business_content_publish`，不勾选
+评论、私信、洞察和广告权限。显示「准备测试」只代表应用权限的配置状态，
+不等于账号已经授权，也不代表可以面向公众使用。
+
+添加 Instagram 账号前，控制台要求先进入「应用身份 → 用户身份」，给目标账号
+分配「Instagram Tester」身份。填写该账号的准确用户名，并按提示在 Instagram
+接受邀请。Meta／Facebook 开发者登录与 Instagram 账号登录是不同的登录过程。
+
+向导还分别提供 Webhook 的「回调网址」和「设置 Instagram 业务登录」。Webhook
+回调不是 OAuth 登录回调，不要将登录回调地址填进 Webhook 框；PhotoStory 当前
+版本尚未实现这两个 Instagram 接口。
+
 ## 账户与权限
 
 计划接入的是 **Instagram API with Instagram Login**，适用于 Business 或

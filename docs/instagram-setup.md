@@ -44,6 +44,31 @@ requirements can change.
    adding an account. Never assume that creating an app or seeing no initial
    requirements means that public access has been approved.
 
+## Configure the Instagram use case
+
+In **Customize → API setup with Instagram login**, Meta creates a separate
+Instagram app name (for example, `PhotoStory-IG`), Instagram App ID and Instagram
+App Secret. These are distinct from the parent Meta application's credentials;
+use the credentials named by the Instagram login flow when that integration ships.
+Do not reveal or generate a token merely to complete this preparation step.
+
+The setup wizard can offer **Add all required permissions** for messaging, listing
+basic profile, comments and messages. A photo publisher should instead open
+**Permissions and features** and add only `instagram_business_basic` and
+`instagram_business_content_publish`. Leave comments, messages, insights and ads
+unselected. An app permission marked ready for testing is not account consent or
+approval to serve the public.
+
+Before adding the Instagram account, the console directs you to **App roles →
+Roles** to assign its **Instagram Tester** role. Use the intended account's exact
+username and follow the invitation acceptance step in Instagram. Meta/Facebook
+developer sign-in and Instagram account sign-in are separate sessions.
+
+The wizard also has a **Webhook callback URL** and a separate **Set up Instagram
+business login** section. A webhook callback is not an OAuth redirect URI. Do not
+paste an OAuth callback into the webhook field; PhotoStory's current release does
+not implement either Instagram endpoint.
+
 ## Account and permission choices
 
 The planned integration uses **Instagram API with Instagram Login**, for a
