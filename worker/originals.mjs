@@ -51,7 +51,8 @@ export async function original(e,draftId,photoId,version){
 export async function recoverSource(e,id,item,fingerprint,policy){
  sourceRecord({item,version:fingerprint});
  if(typeof policy!=='string'||!/^[a-f0-9]{64}$/.test(policy))throw new Error('source_unavailable');
- const token=await microsoftToken(e);
+ let token;
+ try{token=await microsoftToken(e);}catch{throw new Error('source_authentication_failed');}
  const r=await fetch('https://graph.microsoft.com/v1.0/me/drive/items/'+encodeURIComponent(item)+'?$select=id,parentReference,eTag',{headers:{Authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(20000)});
  const meta=JSON.parse(new TextDecoder().decode(await bytes(r,1024*1024)));
  if(meta.id!==item||typeof meta.eTag!=='string'||!meta.parentReference?.driveId||await hash(meta.parentReference.driveId+':'+item)!==id)throw new Error('source_changed');

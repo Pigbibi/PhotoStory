@@ -333,6 +333,7 @@ export default {
     } catch (err) {
       const known = new Set([
         "source_unavailable",
+        "source_authentication_failed",
         "source_changed",
         "original_format",
         "original_too_large",

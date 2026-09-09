@@ -64,3 +64,9 @@ test('legacy source preflight validates Graph but never writes a mapping',async 
  assert.equal((await send(false)).status,200);
  assert.ok(await DB.prepare('SELECT value FROM state WHERE key=?').bind('photo-source:'+pid).first());
 });
+test('source recovery reports an authentication failure without provider details',async t=>{
+ const {recoverSource}=await import('../worker/originals.mjs');const {env,DB,pid}=await fixture(t);
+ await DB.prepare("UPDATE state SET value=? WHERE key='microsoft'").bind(JSON.stringify(await seal(env,{access:'expired-fixture',refresh:'fixture-refresh',expires:0}))).run();
+ t.mock.method(globalThis,'fetch',async()=>new Response('private provider error',{status:400}));
+ await assert.rejects(recoverSource(env,pid,'item','a'.repeat(64),'b'.repeat(64)),/^Error: source_authentication_failed$/);
+});
