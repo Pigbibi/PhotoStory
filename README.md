@@ -112,12 +112,18 @@ enforced by the scanner, not a Microsoft folder-scoped OAuth grant. The applicat
 recurses only under the selected root, skips remote shortcuts and screenshot
 filenames, and applies capture-date bounds. Review previews contain no EXIF/GPS.
 
+The `AUTH_LIMITER` binding in the template is required for OAuth login. Choose an account-unique rate-limit namespace ID. It limits starts to 20 per minute per Cloudflare location. Reapply `worker/schema.sql` when upgrading to add the expiry index; auth activity incrementally removes expired state without deleting Microsoft tokens.
+
+The narrow Miniflare → sharp override pins patched 0.35.4 until upstream updates its exact dependency.
+
 ### Connect your existing Codex VPS
 
 This project does not ship or access Pigbibi's private AIGateway service. Deployers
 must provide their own gateway. The adapter consumes this existing CLI contract:
 `--prompt-file`, repeated `--image`, `--output-schema`, `--out`, `--providers codex`,
 `--sandbox read-only`, `--ask-for-approval never`, `--cwd`, and bounded timeout.
+
+Before connecting real photos, use a dedicated runtime whose model process cannot read unrelated home/config/credential files. Read-only access alone is insufficient. The adapter uses an environment allowlist and forces local Codex; this is not filesystem isolation. Verify the gateway’s effective tool, network and filesystem restrictions.
 
 On the trusted VPS, install the small Python dependency in a virtual environment:
 
@@ -144,9 +150,7 @@ or another restricted environment mechanism. Then run:
 ```
 
 One invocation claims at most one queued job. No timer, scheduler, daemon, or remote
-configuration change is installed automatically. When using AIGateway's `service`
-backend instead, its existing GitHub Actions OIDC repository/workflow/ref allowlists
-and HTTPS requirements still apply; never disable those protections. A private
+configuration change is installed automatically. This adapter intentionally uses the local backend. Any separate service integration must preserve AIGateway's GitHub Actions OIDC repository/workflow/ref allowlists and HTTPS protections. A private
 GitHub Action may not be callable from public repositories; the documented VPS CLI
 path avoids depending on access to a private action from this public project.
 

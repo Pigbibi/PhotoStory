@@ -145,3 +145,63 @@ test("invalid OAuth state cannot reach token exchange", async () => {
   assert.equal(r.status, 400);
   assert.deepEqual(await r.json(), { error: "invalid_oauth_state" });
 });
+
+test("configured OAuth fails closed without its abuse limiter", async () => {
+  let writes = 0;
+  const e = {
+    GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret", ALLOWED_GITHUB_USERS: "Pigbibi",
+    DB: { prepare: () => ({ bind: () => ({ run: async () => { writes++; } }) }) },
+  };
+  const r = await worker.fetch(request("/auth/github/start"), e);
+  assert.equal(r.status, 503);
+  assert.equal(writes, 0);
+});
+
+test("rate-limited OAuth never creates database state", async () => {
+  let writes = 0;
+  const e = {
+    GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret", ALLOWED_GITHUB_USERS: "Pigbibi",
+    AUTH_LIMITER: { limit: async () => ({ success: false }) },
+    DB: { prepare: () => ({ bind: () => ({ run: async () => { writes++; } }) }) },
+  };
+  const r = await worker.fetch(request("/auth/github/start"), e);
+  assert.equal(r.status, 429);
+  assert.equal(r.headers.get("retry-after"), "60");
+  assert.equal(writes, 0);
+});
+
+test("allowed OAuth uses fixed limiter key and cleans expired records before insertion", async () => {
+  const calls = [];
+  const e = {
+    GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret", ALLOWED_GITHUB_USERS: "Pigbibi",
+    AUTH_LIMITER: { limit: async (input) => { calls.push(input); return { success: true }; } },
+    DB: { prepare: (sql) => ({ bind: (...args) => ({ run: async () => { calls.push({ sql, args }); } }) }) },
+  };
+  const r = await worker.fetch(request("/auth/github/start?attackerKey=arbitrary"), e);
+  assert.equal(r.status, 302);
+  assert.deepEqual(calls[0], { key: "photostory:oauth-start" });
+  assert.match(calls[1].sql, /DELETE FROM state/);
+  assert.match(calls[1].sql, /expires <= \?/);
+  assert.match(calls[2].sql, /INSERT INTO state/);
+  const target = new URL(r.headers.get("location"));
+  assert.equal(target.searchParams.get("code_challenge_method"), "S256");
+  assert.equal(target.searchParams.has("scope"), false);
+});
+
+test("expiry cleanup preserves live sessions and encrypted provider tokens in SQLite", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { readFileSync } = await import("node:fs");
+  const { put } = await import("../worker/auth.mjs");
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec(readFileSync(new URL("../worker/schema.sql", import.meta.url), "utf8"));
+    const insert = db.prepare("INSERT INTO state VALUES(?,?,?)");
+    insert.run("oauth:expired", "{}", Date.now() - 1);
+    insert.run("session:live", "{}", Date.now() + 60000);
+    insert.run("microsoft", "encrypted-fixture", null);
+    const env = { DB: { prepare: (sql) => ({ bind: (...args) => ({ run: async () => db.prepare(sql).run(...args) }) }) } };
+    await put(env, "oauth:new", { verifier: "fixture" }, Date.now() + 60000);
+    assert.deepEqual(db.prepare("SELECT key FROM state ORDER BY key").all().map(r => r.key), ["microsoft", "oauth:new", "session:live"]);
+    assert.equal(db.prepare("SELECT value FROM state WHERE key='microsoft'").get().value, "encrypted-fixture");
+  } finally { db.close(); }
+});

@@ -17,5 +17,10 @@
   "devDependencies": {
     "vite": "^7.1.0",
     "wrangler": "^4.105.0"
+  },
+  "overrides": {
+    "miniflare": {
+      "sharp": "0.35.4"
+    }
   }
 }

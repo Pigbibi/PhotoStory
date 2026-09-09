@@ -4,6 +4,9 @@
   "main": "worker/index.mjs",
   "compatibility_date": "2026-05-01",
   "workers_dev": true,
+  "ratelimits": [
+    { "name": "AUTH_LIMITER", "namespace_id": "3847549", "simple": { "limit": 20, "period": 60 } },
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

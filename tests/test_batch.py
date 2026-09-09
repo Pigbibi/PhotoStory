@@ -26,6 +26,19 @@ class ScreeningTests(unittest.TestCase):
     def test_model_cannot_override_draft_id(self):
         d={'id':'evil','title':'Coast','caption':'Quiet coast.','hashtags':'#Coast','reason':'Coherent','photos':[{'id':'a','alt':'Coast'}]}
         self.assertEqual(b.validated_groups({'drafts':[d]},{'a'},'job')[0]['id'],'job-1')
+    def test_model_environment_has_no_host_credentials_or_configuration_injection(self):
+        from unittest.mock import patch
+        with patch.dict(b.os.environ, {
+            "PATH": "/usr/bin", "HOME": "/restricted-home", "LANG": "C.UTF-8",
+            "AWS_SECRET_ACCESS_KEY": "dummy", "PHOTOSTORY_BATCH_TOKEN": "dummy",
+            "GH_TOKEN": "dummy", "LD_PRELOAD": "/untrusted.so", "PYTHONPATH": "/untrusted",
+            "CODEX_GATEWAY_BACKEND": "ssh", "CODEX_GATEWAY_FAKE_RESULT": "fake",
+        }, clear=True):
+            env = b.gateway_environment()
+        self.assertEqual(env["HOME"], "/restricted-home")
+        self.assertEqual(env["CODEX_GATEWAY_BACKEND"], "local")
+        for key in ("AWS_SECRET_ACCESS_KEY", "PHOTOSTORY_BATCH_TOKEN", "GH_TOKEN", "LD_PRELOAD", "PYTHONPATH", "CODEX_GATEWAY_FAKE_RESULT"):
+            self.assertNotIn(key, env)
     def test_graph_pagination_cannot_exfiltrate_token(self):
         with self.assertRaises(b.Stop): b.graph('https://evil.invalid/next','secret')
 

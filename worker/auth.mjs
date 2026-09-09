@@ -20,6 +20,11 @@ export async function hash(s) {
     .join("");
 }
 export async function put(e, key, value, expires = null) {
+  // D1 has no automatic TTL: retire expired auth records without touching tokens.
+  if (expires !== null)
+    await e.DB.prepare(
+      "DELETE FROM state WHERE key IN (SELECT key FROM state WHERE expires <= ? ORDER BY expires LIMIT 256)",
+    ).bind(Date.now()).run();
   await e.DB.prepare(
     "INSERT INTO state(key,value,expires) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,expires=excluded.expires",
   )
@@ -74,8 +79,19 @@ async function challenge(verifier) {
     .replaceAll("=", "");
 }
 // Session cookies and one-use OAuth state follow the invoice portal's server-side pattern.
+async function limitStart(e) {
+  // A fixed key bounds anonymous writes even when callers rotate arbitrary inputs.
+  if (!e.AUTH_LIMITER)
+    return new Response("Login protection is not configured.", { status: 503 });
+  const { success } = await e.AUTH_LIMITER.limit({ key: "photostory:oauth-start" });
+  return success ? null : new Response("Please retry login in a minute.", {
+    status: 429, headers: { "Retry-After": "60" },
+  });
+}
 export async function githubStart(r, e) {
   if (!configured(e) || !e.DB) return redirect("/?error=github_not_configured");
+  const limited = await limitStart(e);
+  if (limited) return limited;
   const state = random(),
     verifier = random();
   await put(
@@ -194,6 +210,8 @@ export const msConfigured = (e) =>
 const msBase = "https://login.microsoftonline.com/consumers/oauth2/v2.0/";
 export async function microsoftStart(r, e, user) {
   if (!msConfigured(e)) return redirect("/?error=microsoft_not_configured");
+  const limited = await limitStart(e);
+  if (limited) return limited;
   const state = random(),
     verifier = random();
   await put(

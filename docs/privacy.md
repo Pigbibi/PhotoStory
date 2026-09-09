@@ -49,3 +49,7 @@ running job while its VPS process may still be operating.
 Changing an approved draft's caption, tags, theme or photo order invalidates its
 approval; the next approval must target the saved version. Even an approved draft
 does not trigger any public action in v0.1.
+
+OAuth starts require the configured AUTH_LIMITER binding and are limited to 20 per minute per Cloudflare location using a fixed key. This mitigates abuse but is not a global hard quota. Expired authentication records are removed in bounded batches on later auth writes. Live sessions and encrypted Microsoft tokens are preserved.
+
+The model subprocess receives only allowlisted environment values and uses local Codex. HOME/CODEX_HOME and the runtime filesystem must be dedicated and restricted; environment filtering does not make host files unreadable. Complete that deployment check before providing real photos.

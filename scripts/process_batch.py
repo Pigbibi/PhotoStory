@@ -177,6 +177,17 @@ Never approve or publish. Return drafts only, with short descriptive English alt
 """
 
 
+def gateway_environment():
+    # An allowlist prevents unrelated host secrets and loader hooks reaching AI.
+    # HOME/CODEX_HOME must still belong to a dedicated, restricted VPS runtime.
+    keys = ("PATH", "HOME", "LANG", "LC_ALL", "TZ", "CODEX_HOME")
+    env = {key: os.environ[key] for key in keys if key in os.environ}
+    env.update(CODEX_GATEWAY_AUTO_INSTALL_CODEX="false",
+               CODEX_GATEWAY_PROVIDER_CHAIN="codex", CODEX_GATEWAY_SEARCH="false",
+               CODEX_GATEWAY_BACKEND="local")
+    return env
+
+
 def gateway(prompt, records, paths, schema, cwd):
     command = os.environ.get("CODEX_GATEWAY_COMMAND", "")
     if not command or not Path(command).is_file():
@@ -190,12 +201,7 @@ def gateway(prompt, records, paths, schema, cwd):
             "--ask-for-approval", "never", "--complexity", "medium", "--timeout-seconds", "600", "--cwd", str(cwd)]
     for path in paths:
         args += ["--image", str(path)]
-    env = os.environ.copy()
-    # The child must never inherit PhotoStory machine credentials or test output overrides.
-    for key in list(env):
-        if key.startswith("PHOTOSTORY_") or key.startswith("CODEX_GATEWAY_FAKE") or key in ("CODEX_GATEWAY_SEARCH", "CODEX_GATEWAY_PROMPT_OUT", "GEMINI_API_KEY", "OPENAI_API_KEY"):
-            env.pop(key, None)
-    env.update(CODEX_GATEWAY_AUTO_INSTALL_CODEX="false", CODEX_GATEWAY_PROVIDER_CHAIN="codex", CODEX_GATEWAY_SEARCH="false")
+    env = gateway_environment()
     result = subprocess.run(args, cwd=cwd, env=env, capture_output=True, timeout=660)
     if result.returncode or not output.is_file() or output.stat().st_size > 100_000:
         raise Stop("gateway_failed")
