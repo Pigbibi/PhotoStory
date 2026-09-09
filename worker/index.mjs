@@ -255,7 +255,9 @@ async function route(r, e) {
         .bind(id)
         .first();
       return row
-        ? new Response(row.data, { headers: { "Content-Type": row.mime } })
+        ? new Response(new Uint8Array(row.data), {
+            headers: { "Content-Type": row.mime },
+          })
         : failure("not_found", 404);
     }
     if (p.startsWith("/api/drafts/") && r.method === "PATCH") {

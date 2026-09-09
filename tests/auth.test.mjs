@@ -5,6 +5,32 @@ import { allowed, configured, seal, unseal } from "../worker/auth.mjs";
 const request = (path, options = {}) =>
   new Request("https://app.example" + path, options);
 const assets = { fetch: () => new Response("<html>public shell</html>") };
+test("D1 image byte arrays are returned as binary, not text", async () => {
+  const db = {
+    prepare: (sql) => ({
+      bind: () => ({
+        first: async () =>
+          sql.startsWith("SELECT value")
+            ? {
+                value: JSON.stringify({ login: "Pigbibi" }),
+                expires: Date.now() + 10000,
+              }
+            : { data: [255, 216, 255], mime: "image/jpeg" },
+      }),
+    }),
+  };
+  const response = await worker.fetch(
+    request("/api/photos/photo", {
+      headers: { Cookie: "__Host-photostory=test" },
+    }),
+    { DB: db, ALLOWED_GITHUB_USERS: "Pigbibi" },
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    [...new Uint8Array(await response.arrayBuffer())],
+    [255, 216, 255],
+  );
+});
 test("private photos, drafts, jobs reject anonymous requests", async () => {
   for (const p of ["/api/photos/private", "/api/drafts", "/api/jobs"]) {
     const r = await worker.fetch(request(p), { ASSETS: assets });
