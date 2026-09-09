@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import React, {useState} from 'react';
 import {useI18n} from './i18n.jsx';
 async function request(path,body){
  const r=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':body instanceof Uint8Array?'image/jpeg':'application/json'},body:body instanceof Uint8Array?body:JSON.stringify(body)});
