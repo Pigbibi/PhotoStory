@@ -154,3 +154,7 @@ Graph 核对旧指纹后写入，已有映射不可覆盖。原图记录随过�
 需要人工重新审核。**Instagram 发布仍未启用**。9/10 是筛选门槛，不是安全概率。
 
 Instagram 应用准备与凭据配置说明：[配置教程](docs/instagram-setup.zh-CN.md)。
+
+仅处理器可访问的 `/internal/photo-sources` 接口支持 `dryRun: true`，只核对旧扫描
+记录与 OneDrive 原图，不保存关联。预检通过后才能补关联；原图版本发生变化时
+需要重新扫描并审核，不能跳过版本检查。

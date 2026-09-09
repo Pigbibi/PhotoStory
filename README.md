@@ -313,3 +313,8 @@ revokes approval and requires manual re-review. There is still **no Instagram
 publishing**. Scores are a selection rule, not a calibrated probability of safety.
 
 Instagram app preparation and credential handling: [setup guide](docs/instagram-setup.md).
+
+The machine-only `/internal/photo-sources` recovery endpoint accepts `dryRun: true`
+to validate existing scan references against OneDrive without saving mappings.
+Only proceed with recovery after this preflight succeeds; a changed source must
+be scanned and reviewed again.

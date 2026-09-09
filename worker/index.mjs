@@ -59,15 +59,14 @@ async function internal(r, e, p) {
     if(r.method==='GET')return json((await e.DB.prepare("SELECT id FROM photos WHERE NOT EXISTS(SELECT 1 FROM state WHERE key='photo-source:'||photos.id) LIMIT 100").all()).results);
     if(r.method==='POST'){
       const b=await readJSON(r);
-      if(!Array.isArray(b.sources)||b.sources.length>100)throw new Error('invalid_request');
+      if(!Array.isArray(b.sources)||b.sources.length>10||(b.dryRun!==undefined&&typeof b.dryRun!=='boolean'))throw new Error('invalid_request');
       const statements=[];
-      if(b.sources.length>10)throw new Error('invalid_request');
       for(const p of b.sources){
         if(!validId(p.id)||!await e.DB.prepare('SELECT id FROM photos WHERE id=?').bind(p.id).first())throw new Error('source_unavailable');
         const source=await recoverSource(e,p.id,p.item,p.fingerprint,p.policy);
         statements.push(e.DB.prepare("INSERT OR IGNORE INTO state(key,value,expires) VALUES(?,?,NULL)").bind('photo-source:'+p.id,JSON.stringify(source)));
       }
-      if(statements.length)await e.DB.batch(statements);return json({ok:true});
+      if(statements.length&&!b.dryRun)await e.DB.batch(statements);return json({ok:true});
     }
   }
   if(p==='/internal/cleanup-policy'  && r.method==='GET')return json({enabled:(await settingsView(e)).settings.cleanupEnabled});

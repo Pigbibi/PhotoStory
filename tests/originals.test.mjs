@@ -52,3 +52,15 @@ test('legacy source recovery checks original identity and the scanned version fi
  await assert.rejects(recoverSource(env,pid,'item','b'.repeat(64),policy),/source_changed/);
  await assert.rejects(recoverSource(env,'c'.repeat(64),'item',fingerprint,policy),/source_changed/);
 });
+test('legacy source preflight validates Graph but never writes a mapping',async t=>{
+ const {env,DB,pid}=await fixture(t);env.BATCH_TOKEN='fixture-batch';
+ await DB.prepare('DELETE FROM state WHERE key=?').bind('photo-source:'+pid).run();
+ await DB.prepare("INSERT INTO photos VALUES(?,x'FFD8FF','image/jpeg')").bind(pid).run();
+ const policy='a'.repeat(64),fingerprint=await hash(policy+await hash(pid+'\0v1'));
+ t.mock.method(globalThis,'fetch',async()=>Response.json({id:'item',eTag:'v1',parentReference:{driveId:'drive'}}));
+ const send=dryRun=>worker.fetch(new Request('https://example.test/internal/photo-sources',{method:'POST',headers:{Authorization:'Bearer fixture-batch'},body:JSON.stringify({dryRun,sources:[{id:pid,item:'item',fingerprint,policy}]})}),env);
+ assert.equal((await send(true)).status,200);
+ assert.equal(await DB.prepare('SELECT value FROM state WHERE key=?').bind('photo-source:'+pid).first(),null);
+ assert.equal((await send(false)).status,200);
+ assert.ok(await DB.prepare('SELECT value FROM state WHERE key=?').bind('photo-source:'+pid).first());
+});
