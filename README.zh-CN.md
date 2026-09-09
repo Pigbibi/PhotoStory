@@ -70,3 +70,7 @@ Pigbibi 私有网关的权限。不自动切换 Gemini、付费 API 或其他服
 OneDrive 读取、VPS 看图或 Instagram 发布验证。
 
 更多细节见 [隐私说明](docs/privacy.md)。
+
+Linux VPS 可使用[双账户隔离部署说明](deploy/systemd/README.md)，将 OneDrive 读取凭据与 AI 进程分开。
+
+AI 模式、从零配置、复用已有服务与 API 成本说明：[完整教程](docs/ai-setup.zh-CN.md)。

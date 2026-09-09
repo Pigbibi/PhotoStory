@@ -1,6 +1,6 @@
 # PhotoStory security review
 
-Reviewed 2026-09-10 against commit `006c930`, source, dependency audit and the deployed anonymous endpoints. This is a bounded review, not a penetration-test certification. No personal photo or production OAuth token was used. The existing VPS gateway service settings were inspected read-only; no dedicated PhotoStory processor is configured yet.
+Reviewed 2026-09-10 against commit `006c930`, source, dependency audit and the deployed anonymous endpoints. This is a bounded review, not a penetration-test certification. No personal photo or production OAuth token was used. The initial review inspected the shared VPS gateway read-only. A dedicated PhotoStory processor was subsequently installed; see the deployment addendum below.
 
 The repository can be public while each deployment keeps its photos and credentials private. No credential patterns were found in the three Git revisions inspected; this does not prove the absence of every possible secret. Production npm dependencies have no reported advisories. Login resource limits and the development dependency advisory have now been repaired and verified locally. Before real photo processing, verify the remaining VPS filesystem/tool isolation described below.
 
@@ -47,3 +47,35 @@ Repair: Miniflare's exact sharp dependency is overridden to patch version 0.35.4
 - Existing gateway service hardening was inspected without changing it or calling AI. Its directory is not a Git checkout, so a deployed source revision was not established. Dedicated processor isolation, Microsoft consent, real photo selection and AI service retention were not verified. No claim of end-to-end readiness is made.
 
 References: [GitHub scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps), [Microsoft permissions](https://learn.microsoft.com/en-us/graph/permissions-reference), [Cloudflare rate limits](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/), [sharp advisory](https://github.com/advisories/GHSA-rgj7-g3m4-5g8c).
+
+## Deployment addendum — 2026-09-10
+
+GitHub login and Microsoft token exchange have now completed on the deployed site.
+Cloudflare holds OAuth client secrets, the token encryption key, and a separate
+batch credential. The matching batch credential is root-only on the VPS. Earlier
+secret-inventory statements above describe the initial review, not current setup.
+
+Dedicated scanner and AI users, fixed systemd units, and an exact-command sudoers
+rule are now installed. A real transient service using the AI unit's isolation
+properties verified non-root execution, hidden host home/scanner configuration,
+a read-only input directory, writable AI output, and accepted Codex command-line
+flags. The shared gateway service and its login state were not changed. The AI
+launcher disables model tools and ignores user configuration. Runtime flags remain
+version-dependent, and outbound networking is not restricted to a domain allowlist.
+
+Python regression tests verify bounded regular-file input, symlink rejection,
+stale-response rejection, and cleanup after failed calls. Existing gateway authentication is passed by systemd credentials; a per-call
+access-only snapshot excludes refresh authority and rejects near-expiry tokens.
+The original authentication file is not changed. The gateway code is copied into
+a private root-owned runtime directory rather than broadening access to the shared
+installation. Actual model invocation and private-photo selection still require
+live verification. These checks do not establish model privacy-classification accuracy.
+
+A synthetic 32px test image has now completed both the direct Codex CLI path and
+the existing AIGateway CLI path inside the dedicated service, with the expected
+schema-validated result. Existing gateway defaults selected a model no longer
+supported by this ChatGPT account; only PhotoStory's private model setting was
+changed to an available vision model. The original gateway service was unchanged.
+No personal photos were used for these smoke tests. VPS-to-Worker authentication
+also completed an empty queue check. PhotoStory now identifies its HTTP client
+with an application User-Agent; no Cloudflare protection was disabled.

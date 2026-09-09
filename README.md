@@ -192,3 +192,7 @@ Instagram scheduling/publishing is intentionally not implemented in v0.1.
 
 [MIT](LICENSE), copyright 2026 Pigbibi. Deploy your own instance with your own
 accounts, keys and service permissions.
+
+Linux VPS isolation setup: [two-user systemd deployment](deploy/systemd/README.md).
+
+AI modes and setup: [Chinese step-by-step guide](docs/ai-setup.zh-CN.md), including API cost considerations and current support limits.

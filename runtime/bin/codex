@@ -1,0 +1,23 @@
+#!/usr/bin/python3
+"""PhotoStory-only Codex launcher; leaves the system Codex installation untouched."""
+import os
+import sys
+
+RESTRICTIONS = [
+    '--ignore-user-config', '--ignore-rules', '--ephemeral',
+    '-c', 'web_search="disabled"', '-c', 'shell_environment_policy.inherit="none"',
+    '-c', 'mcp_servers={}',
+]
+for feature in ('shell_tool', 'unified_exec', 'view_image', 'apps', 'browser_use',
+                'browser_use_external', 'in_app_browser', 'computer_use', 'remote_plugin',
+                'hooks', 'multi_agent', 'skill_search', 'skill_mcp_dependency_install',
+                'workspace_dependencies', 'image_generation', 'code_mode_host'):
+    RESTRICTIONS += ['--disable', feature]
+
+if __name__ == '__main__':
+    args = sys.argv[1:]
+    if args == ['--version'] or args == ['exec', '--help']:
+        os.execv('/usr/local/bin/codex', ['codex', *args])
+    if not args or args[0] != 'exec':
+        raise SystemExit('Only noninteractive photo analysis is supported.')
+    os.execv('/usr/local/bin/codex', ['codex', '--ask-for-approval', 'never', 'exec', *RESTRICTIONS, *args[1:]])

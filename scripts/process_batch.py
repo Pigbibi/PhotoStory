@@ -31,7 +31,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def request(url, *, token=None, body=None, max_bytes=12_000_000):
     if urllib.parse.urlsplit(url).scheme != "https":
         raise Stop("https_required")
-    headers = {"Accept": "application/json"}
+    headers = {"Accept": "application/json", "User-Agent": "PhotoStory/0.1 (+https://github.com/Pigbibi/PhotoStory)"}
     if token:
         headers["Authorization"] = "Bearer " + token
     if body is not None:

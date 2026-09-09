@@ -1,0 +1,2 @@
+# Exact unit only: no wildcard or arbitrary systemd arguments.
+photostory ALL=(root) NOPASSWD: /usr/bin/systemctl start photostory-ai.service

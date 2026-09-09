@@ -586,9 +586,18 @@ function Settings({ session, notify }) {
       </section>
       <section>
         <h2>03 / Codex 处理器</h2>
-        <p>复用 AIGateway。只用 Codex，不自动切换付费 API 或其他模型服务。</p>
+        <p>选择适合你的部署方式。两种模式都只用 Codex，不自动切换付费 API。</p>
+        <details>
+          <summary>从零部署：Codex CLI 模式</summary>
+          <p>在独立 Linux VPS 上安装 Codex CLI 并登录已有账号，即可选片和生成英文文案，无需 AIGateway。</p>
+        </details>
+        <details>
+          <summary>已有服务：AIGateway 模式</summary>
+          <p>接入你已部署的兼容 AIGateway，复用其 Codex 能力。登录是否需要另行配置，取决于现有服务的运行账户和凭据管理。</p>
+        </details>
+        <p><a href="https://github.com/Pigbibi/PhotoStory/blob/main/docs/ai-setup.zh-CN.md" target="_blank" rel="noreferrer">查看 AI 配置教程、密钥和权限说明 ↗</a></p>
         <p>
-          后台处理器尚需在你的 VPS 上配置并启动。任务排队不代表 AI 已经运行。
+          运行模式在 VPS 上配置；本页的教程不会切换后台配置。任务排队不代表 AI 已经运行。
         </p>
         {session?.user && (
           <>

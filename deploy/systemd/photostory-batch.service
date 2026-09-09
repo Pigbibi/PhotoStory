@@ -1,0 +1,21 @@
+[Unit]
+Description=PhotoStory OneDrive batch processor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=photostory
+Group=photostory-bridge
+WorkingDirectory=/opt/photostory/app
+EnvironmentFile=/etc/photostory/processor.env
+Environment=CODEX_GATEWAY_COMMAND=/opt/photostory/app/scripts/systemd_gateway.py
+ExecStart=/opt/photostory/venv/bin/python /opt/photostory/app/scripts/process_batch.py
+UMask=0077
+TimeoutStartSec=3h
+ProtectHome=yes
+ProtectSystem=strict
+PrivateTmp=yes
+ReadWritePaths=/var/lib/photostory-bridge/input
+StandardOutput=journal
+StandardError=null
