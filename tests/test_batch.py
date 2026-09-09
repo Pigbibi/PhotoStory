@@ -59,4 +59,16 @@ class CandidateTests(unittest.TestCase):
         self.assertIsNone(b.candidate({**item,'photo':{}},all_source))
         self.assertIsNone(b.candidate({**item,'name':'Screenshot.png'},all_source))
 
+class ThumbnailOriginTests(unittest.TestCase):
+    def test_microsoft_regional_thumbnail_service(self):
+        for host in ('japaneast1-mediap.svc.ms','eastus1-mediap.svc.ms','sample.files.1drv.com'):
+            self.assertTrue(b.valid_thumbnail_url('https://'+host+'/transform/thumbnail?test=1'))
+    def test_untrusted_or_ambiguous_origins_are_rejected(self):
+        for url in ('https://japaneast1-mediap.svc.ms.evil.invalid/image',
+                    'https://evil-svc.ms/image','https://unrelated.svc.ms/image',
+                    'http://japaneast1-mediap.svc.ms/image',
+                    'https://japaneast1-mediap.svc.ms:8080/image',
+                    'https://name@japaneast1-mediap.svc.ms/image'):
+            self.assertFalse(b.valid_thumbnail_url(url))
+
 if __name__=='__main__': unittest.main()

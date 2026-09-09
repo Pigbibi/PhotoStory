@@ -1,5 +1,11 @@
 # Privacy and operating limits
 
+Thumbnail downloads allow HTTPS Microsoft image hosts, including regional
+`<region>-mediap.svc.ms` hosts returned by Graph. Microsoft documents `*.svc.ms`
+in its [OneDrive endpoint list](https://learn.microsoft.com/en-us/microsoft-365/enterprise/urls-and-ip-address-ranges?view=o365-worldwide).
+The scanner admits only the media subfamily, rejects unexpected ports and URL
+credentials, blocks redirects, and never forwards a Graph token to thumbnail URLs.
+
 The public website shell is not an authentication boundary. Every private API and
 photo response checks a server-side session. Sessions are random, HttpOnly, Secure,
 SameSite=Lax cookies backed by expiring D1 records. The configured username allowlist

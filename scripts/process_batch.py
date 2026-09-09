@@ -9,6 +9,7 @@ import io
 import math
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -93,6 +94,20 @@ def candidate(item, source):
     return {'id':pid,'item':item['id'],'captured':when.isoformat(),'taken':when.timestamp(),'area':area,'fingerprint':fingerprint}
 
 
+def valid_thumbnail_url(url):
+    try:
+        parsed=urllib.parse.urlsplit(url)
+        host=parsed.hostname or ''
+        if parsed.scheme!='https' or parsed.port not in (None,443) or parsed.username or parsed.password:
+            return False
+        # Microsoft Graph also returns regional media endpoints under svc.ms.
+        # Keep this narrower than Microsoft's published *.svc.ms endpoint family.
+        return bool(re.fullmatch(r'[a-z0-9]+-mediap\.svc\.ms',host)) or any(
+            host.endswith(s) for s in ('.1drv.com','.onedrive.com','.sharepoint.com','.storage.live.com','.livefilestore.com'))
+    except (ValueError,TypeError):
+        return False
+
+
 def thumbnail(photo, token):
     from PIL import Image, ImageOps
     result = graph(f"{GRAPH}/me/drive/items/{urllib.parse.quote(photo['item'], safe='')}/thumbnails", token)
@@ -100,8 +115,7 @@ def thumbnail(photo, token):
     if not sets or not sets[0].get("large", {}).get("url"):
         raise Stop("thumbnail_missing")
     url = sets[0]["large"]["url"]
-    host = urllib.parse.urlsplit(url).hostname or ""
-    if not any(host.endswith(s) for s in (".1drv.com", ".onedrive.com", ".sharepoint.com", ".storage.live.com", ".livefilestore.com")):
+    if not valid_thumbnail_url(url):
         raise Stop("thumbnail_origin")
     raw = request(url, max_bytes=5_000_000)  # Preauthenticated URL; never send the Graph token here.
     with Image.open(io.BytesIO(raw)) as image:
