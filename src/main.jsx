@@ -283,17 +283,17 @@ function App() {
             ) : (
               <div className="empty">
                 <h2>
-                  {view === "queue"
+                  {view==='trash'?'回收站里没有草稿。':view === "queue"
                     ? "慢慢挑，喜欢了再分享。"
                     : "从一次旅行开始。"}
                 </h2>
-                <p>先连接照片来源，再让 Codex 整理一组你愿意分享的故事。</p>
-                <button
+                <p>{view==='trash'?'不采用的草稿会在这里保留 30 天，期间可以恢复。':'先连接照片来源，再让 Codex 整理一组你愿意分享的故事。'}</p>
+                {view!=='trash' && <button
                   className="button secondary"
                   onClick={() => setView("settings")}
                 >
                   打开连接设置
-                </button>
+                </button>}
               </div>
             )}
           </div>

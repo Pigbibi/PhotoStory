@@ -7,7 +7,7 @@ export default function LifecycleSettings({api,notify,folder,onStatus}){
     catch(e){notify(e.message);}
   };
   useEffect(()=>{refresh(true);const timer=setInterval(()=>refresh(false),15000);return()=>clearInterval(timer);},[]);
-  useEffect(()=>{if(folder)setForm(f=>f&&!f.folder?{...f,folder}:f);},[folder]);
+  useEffect(()=>{if(folder)setForm(f=>f&&!f.folder?{...f,folder}:f);},[folder,form!==null]);
   if(!form)return <p>正在读取制作与保留规则…</p>;
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const save=async()=>{
