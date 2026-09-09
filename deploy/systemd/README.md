@@ -16,6 +16,7 @@ Create the following directories (owner / group / mode):
 
 | Path | Owner | Group | Mode |
 | --- | --- | --- | --- |
+| `/var/lib/photostory` | photostory | photostory-bridge | 0700 |
 | `/var/lib/photostory-ai` and its `codex` subdirectory | photostory-ai | photostory-bridge | 0700 |
 | `/var/lib/photostory-bridge` | root | root | 0755 |
 | `/var/lib/photostory-bridge/input` | photostory | photostory-bridge | 0750 |
@@ -39,8 +40,13 @@ entry permits the scanner to start **only** the fixed AI unit; the AI user has n
 such privilege. Do not add wildcard arguments or allow arbitrary transient units.
 
 After verifying isolation and Codex login, create one job in the website, then run
-`sudo systemctl start photostory-batch.service`. One invocation handles one job.
-Nothing is scheduled automatically by these files.
+`sudo systemctl start photostory-batch.service`. One invocation handles one bounded
+metadata scan or AI batch. Keep `/var/lib/photostory` (the SQLite inventory/cache)
+private and persistent across steps and upgrades.
+For automatic continuation, install `photostory-batch.timer` alongside the units,
+reload systemd and run `sudo systemctl enable --now photostory-batch.timer`. It
+polls after the previous service invocation finishes, and never creates a new job
+or retries a failed job. Stop the timer before upgrading active runtime code.
 
 ## Boundaries and verification
 

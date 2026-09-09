@@ -9,13 +9,14 @@ User=photostory
 Group=photostory-bridge
 WorkingDirectory=/opt/photostory/app
 EnvironmentFile=/etc/photostory/processor.env
+Environment=PHOTOSTORY_STATE_DIR=/var/lib/photostory
 Environment=CODEX_GATEWAY_COMMAND=/opt/photostory/app/scripts/systemd_gateway.py
 ExecStart=/opt/photostory/venv/bin/python /opt/photostory/app/scripts/process_batch.py
 UMask=0077
-TimeoutStartSec=3h
+TimeoutStartSec=4h
 ProtectHome=yes
 ProtectSystem=strict
 PrivateTmp=yes
-ReadWritePaths=/var/lib/photostory-bridge/input
+ReadWritePaths=/var/lib/photostory-bridge/input /var/lib/photostory
 StandardOutput=journal
 StandardError=null

@@ -1,0 +1,64 @@
+import sys
+from pathlib import Path
+sys.path.insert(0,str(Path(__file__).parents[1]/'scripts'))
+import tempfile, unittest
+from inventory import Inventory, event_batches
+
+class InventoryTests(unittest.TestCase):
+    def source(self): return {'folder':'Photos','start':None,'end':None,'knownPhotoIds':[]}
+    def record(self,i):
+        return {'id':str(i),'item':str(i),'captured':'2026-08-20T00:00:00+00:00','taken':1000+i,'area':None,'fingerprint':'version-'+str(i)}
+    def test_paged_scan_and_multiple_batches_resume_without_repeating(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            calls=[]
+            def graph(url):
+                calls.append(url)
+                if '/root:/' in url: return {'id':'root','folder':{}}
+                if url=='https://graph.microsoft.com/next': return {'value':[self.record(i) for i in range(200,250)]}
+                return {'value':[self.record(i) for i in range(200)],'@odata.nextLink':'https://graph.microsoft.com/next'}
+            inv=Inventory(tmp,'job',self.source(),'policy')
+            self.assertFalse(inv.scan(graph,lambda x:x,page_budget=1)); inv.close()
+            inv=Inventory(tmp,'job',self.source(),'policy')
+            self.assertTrue(inv.scan(graph,lambda x:x,page_budget=1))
+            self.assertEqual(len(calls),3)
+            seen=[]
+            for expected in (100,100,50):
+                batch=inv.next_batch(100); self.assertEqual(len(batch),expected)
+                seen += [x['id'] for x in batch]
+                bid=inv.stage_batch(batch)
+                inv.save_digests({})
+                inv.reconcile(bid) # Simulate commit succeeded but response/client was lost.
+            self.assertEqual(len(set(seen)),250)
+            self.assertEqual(inv.progress()['processed'],250)
+            self.assertEqual(inv.next_batch(100),[])
+            inv.close()
+            # A new overlapping job reuses completed analysis (including rejected photos).
+            inv=Inventory(tmp,'second',self.source(),'policy')
+            self.assertTrue(inv.scan(graph,lambda x:x,page_budget=10))
+            self.assertEqual(inv.next_batch(100),[]); inv.close()
+    def test_unknown_batch_outcome_never_replays_ai(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inv=Inventory(tmp,'job',self.source(),'policy')
+            inv.stage_batch([])
+            with self.assertRaisesRegex(ValueError,'batch_outcome_unknown'): inv.reconcile(None)
+            inv.close()
+    def test_missing_local_progress_does_not_restart_acknowledged_work(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError,'local_state_missing'):
+                Inventory(tmp,'missing',{**self.source(),'progress':{'total':10,'batches':1}},'policy')
+
+    def test_cursor_cycle_is_rejected_not_silently_completed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inv=Inventory(tmp,'job',self.source(),'policy')
+            def graph(url):
+                if '/root:/' in url: return {'id':'root','folder':{}}
+                return {'value':[],'@odata.nextLink':url}
+            with self.assertRaisesRegex(ValueError,'pagination_cycle'): inv.scan(graph,lambda x:x)
+            inv.close()
+    def test_event_boundaries_use_time_and_coarse_place_without_inventing_location(self):
+        a=self.record(0); b={**self.record(1),'taken':1001,'area':[0,0]}
+        c={**self.record(2),'taken':1002,'area':[20,20]}
+        d={**self.record(3),'taken':1002+24*3600}
+        self.assertEqual([len(x) for x in event_batches([a,b,c,d])],[2,1,1])
+
+if __name__=='__main__': unittest.main()

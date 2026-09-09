@@ -140,6 +140,7 @@ as `PHOTOSTORY_BATCH_TOKEN`. The VPS environment also needs:
 PHOTOSTORY_URL=https://YOUR-SITE
 CODEX_GATEWAY_COMMAND=/path/to/your/aigateway/bin/codex-gateway
 CODEX_GATEWAY_BACKEND=local
+PHOTOSTORY_STATE_DIR=/absolute/private/photostory-state
 ```
 
 Do not commit that file. Load it through your process manager's `EnvironmentFile`
@@ -149,8 +150,9 @@ or another restricted environment mechanism. Then run:
 .venv/bin/python scripts/process_batch.py
 ```
 
-One invocation claims at most one queued job. No timer, scheduler, daemon, or remote
-configuration change is installed automatically. This adapter intentionally uses the local backend. Any separate service integration must preserve AIGateway's GitHub Actions OIDC repository/workflow/ref allowlists and HTTPS protections. A private
+One invocation handles a bounded step: at most 50 Graph pages or one AI batch.
+The supplied optional systemd timer continues owner-created jobs; it never creates
+new scans. Install it using the systemd deployment guide. This adapter intentionally uses the local backend. Any separate service integration must preserve AIGateway's GitHub Actions OIDC repository/workflow/ref allowlists and HTTPS protections. A private
 GitHub Action may not be callable from public repositories; the documented VPS CLI
 path avoids depending on access to a private action from this public project.
 
@@ -172,9 +174,14 @@ See [privacy and limits](docs/privacy.md) before supplying real photos.
 - Batch processor logs only generic status/counts. Rejected previews are removed
   from its private temporary directory; all temporary input/output is removed when
   the process exits normally. No cross-provider fallback is allowed.
-- First batches default to at most 100 eligible photos (hard ceiling 300), with
-  bounded folder/page traversal. Exceeding the budget fails the whole batch; narrow
-  the date range instead of silently claiming complete coverage.
+- Choose the last 1/3/6/12 months, all eligible photos, or an inclusive custom date
+  range. Metadata discovery resumes across bounded steps; AI batches default to
+  50 photos, at most 100. Large ranges continue automatically with the timer.
+  The UI shows progress and can stop subsequent batches; the current batch finishes.
+- Private VPS SQLite state stores paging cursors, candidate IDs/times/coarse locations
+  and version/preview hashes. Completed analysis, including exclusions, is reused.
+  Preserve this state across deployments. Missing state or an uncertain AI outcome
+  stops affected work; do not blindly recreate or reset a running job.
 
 ## Validation and current release limits
 

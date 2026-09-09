@@ -1,3 +1,4 @@
+import { jobInput, progressInput } from "./jobs.mjs";
 import { validateDraft, reviewDraft, validId } from "./review.mjs";
 import * as auth from "./auth.mjs";
 const json = (body, status = 200) =>
@@ -48,35 +49,6 @@ async function machine(r, e) {
   if (!e.BATCH_TOKEN || !value?.startsWith("Bearer ")) return false;
   return (await auth.hash(value.slice(7))) === (await auth.hash(e.BATCH_TOKEN));
 }
-function jobInput(b) {
-  const start = Date.parse(b.start + "T00:00:00+08:00"),
-    end = Date.parse(b.end + "T00:00:00+08:00");
-  if (
-    !/^\d{4}-\d{2}-\d{2}$/.test(b.start) ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(b.end) ||
-    !Number.isFinite(start) ||
-    !Number.isFinite(end) ||
-    end <= start ||
-    end - start > 31 * 86400000
-  )
-    throw new Error("invalid_dates");
-  const folder = String(b.folder || "")
-    .trim()
-    .replace(/^\/+|\/+$/g, "");
-  if (
-    !folder ||
-    folder.length > 300 ||
-    folder.split("/").some((x) => !x || x === "." || x === "..") ||
-    /[\\?#]/.test(folder)
-  )
-    throw new Error("invalid_folder");
-  return {
-    folder,
-    start: b.start,
-    end: b.end,
-    maxPhotos: Math.min(300, Math.max(1, Number(b.maxPhotos) || 100)),
-  };
-}
 async function internal(r, e, p) {
   if (!(await machine(r, e))) return failure("unauthorized", 401);
   if (p === "/internal/claim" && r.method === "POST") {
@@ -105,6 +77,14 @@ async function internal(r, e, p) {
       ...JSON.parse(job.body),
     });
   }
+  if (p === "/internal/checkpoint" && r.method === "POST") {
+    const previous=JSON.parse(job.body), progress=progressInput(b.progress,previous.progress);
+    if(progress.batches !== (previous.progress?.batches||0)) throw new Error("invalid_progress");
+    const updated=await e.DB.prepare("UPDATE jobs SET body=json_set(body,'$.progress',json(?)),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE 'pending' END,lease=NULL WHERE id=? AND lease=? AND status='running'")
+      .bind(JSON.stringify(progress),job.id,job.lease).run();
+    if(updated.meta.changes!==1) return failure("job_conflict",409);
+    return json({ok:true});
+  }
   if (p === "/internal/fail" && r.method === "POST") {
     await e.DB.prepare(
       "UPDATE jobs SET status='failed',lease=NULL WHERE id=? AND status='running'",
@@ -121,6 +101,11 @@ async function internal(r, e, p) {
       b.photos.length > 300
     )
       throw new Error("invalid_batch");
+    const previous=JSON.parse(job.body);
+    if(previous.pipeline!==2 || !validId(b.batchId) || typeof b.more!=="boolean") throw new Error("invalid_batch");
+    const progress=progressInput(b.progress,previous.progress);
+    if(progress.batches!==(previous.progress?.batches||0)+1 || progress.processed-(previous.progress?.processed||0)>previous.maxPhotos || b.more!==(progress.processed<progress.total)) throw new Error("invalid_progress");
+    if(progress.phase!==(b.more?"processing":"complete")) throw new Error("invalid_progress");
     const drafts = b.drafts.map(validateDraft),
       seen = new Set();
     if (new Set(drafts.map((d) => d.id)).size !== drafts.length)
@@ -128,6 +113,7 @@ async function internal(r, e, p) {
     const photos = new Map(b.photos.map((p) => [p.id, p]));
     const stmts = [];
     for (const d of drafts) {
+      if(!d.id.startsWith(`${job.id}-${b.batchId}-`)) throw new Error("invalid_batch");
       const existing = await e.DB.prepare("SELECT id FROM drafts WHERE id=?")
         .bind(d.id)
         .first();
@@ -170,8 +156,8 @@ async function internal(r, e, p) {
     }
     stmts.push(
       e.DB.prepare(
-        "UPDATE jobs SET status='complete',lease=NULL WHERE id=? AND status='running'",
-      ).bind(job.id),
+        "UPDATE jobs SET body=json_set(body,'$.progress',json(?),'$.lastBatch',?),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE ? END,lease=NULL WHERE id=? AND lease=? AND status='running'",
+      ).bind(JSON.stringify(progress),b.batchId,b.more?'pending':'complete',job.id,job.lease),
     );
     await e.DB.batch(stmts);
     return json({ ok: true, count: drafts.length });
@@ -228,9 +214,18 @@ async function route(r, e) {
     }
     if (p === "/api/jobs" && r.method === "GET") {
       const rows = await e.DB.prepare(
-        "SELECT id,status,created FROM jobs ORDER BY created DESC LIMIT 10",
+        "SELECT id,status,created,body FROM jobs ORDER BY created DESC LIMIT 10",
       ).all();
-      return json(rows.results);
+      return json(rows.results.map(({body,...row})=>{
+        const v=JSON.parse(body);
+        return {...row,folder:v.folder,selection:v.selection,maxPhotos:v.maxPhotos,locationHint:v.locationHint||"",progress:v.progress,stopRequested:Boolean(v.stopRequested)};
+      }));
+    }
+    if (p.startsWith("/api/jobs/") && p.endsWith("/stop") && r.method==="POST") {
+      const id=p.slice(10,-5);
+      if(!validId(id)) return failure("not_found",404);
+      const updated=await e.DB.prepare("UPDATE jobs SET body=json_set(body,'$.stopRequested',json('true')),status=CASE WHEN status='pending' THEN 'cancelled' ELSE status END WHERE id=? AND status IN ('pending','running')").bind(id).run();
+      return updated.meta.changes===1?json({ok:true}):failure("job_conflict",409);
     }
     if (p === "/api/jobs" && r.method === "POST") {
       if (!(await auth.get(e, "microsoft")))
@@ -292,6 +287,10 @@ export default {
         "github_exchange_failed",
         "microsoft_exchange_failed",
         "invalid_dates",
+        "invalid_range",
+        "invalid_batch_size",
+        "invalid_progress",
+        "invalid_location_hint",
         "invalid_folder",
         "version_conflict",
         "save_before_approval",

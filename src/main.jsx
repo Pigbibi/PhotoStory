@@ -24,7 +24,9 @@ const errors = {
   save_before_approval: "请先保存修改，再确认批准。",
   job_in_progress: "已有选片任务，请等待它完成。",
   onedrive_not_connected: "请先连接 OneDrive。",
-  invalid_dates: "请选择不超过 31 天的有效日期范围。",
+  invalid_dates: "请选择有效日期，结束日期不能早于开始日期。",
+  invalid_range: "请选择有效的照片范围。",
+  invalid_batch_size: "每批照片数量需在 1 到 100 之间。",
   github_not_allowed: "此 GitHub 账号不在管理员允许名单中。",
   request_failed: "操作没有完成。请检查连接状态；未自动重试。",
 };
@@ -128,6 +130,7 @@ function App() {
               className={view === v ? "active" : ""}
               onClick={() => {
                 setView(v);
+                if (v !== "settings" && session?.user && !demo) load();
                 const ds = drafts.filter((d) =>
                   v === "queue"
                     ? d.status === "approved"
@@ -177,7 +180,7 @@ function App() {
               ? "GitHub 登录 · OneDrive 只读 · Codex 选片"
               : view === "queue"
                 ? "已批准的草稿 · Instagram 发布尚未启用"
-                : "最近一个月 · 风景选片 · 英文文案"}
+                : "按时间与地点整理 · 风景选片 · 英文文案"}
           </p>
         </section>
         {message && (
@@ -443,32 +446,47 @@ function Editor({ draft, demo, busy, update }) {
   );
 }
 function Settings({ session, notify }) {
-  const [folder, setFolder] = useState("手机相册"),
+  const [folder, setFolder] = useState(""),
+    [range,setRange] = useState("1m"),
     [start, setStart] = useState(() => dayInShanghai(-30)),
-    [end, setEnd] = useState(() => dayInShanghai(1)),
+    [end, setEnd] = useState(() => dayInShanghai(0)),
+    [maxPhotos,setMaxPhotos] = useState(50),
+    [locationHint,setLocationHint] = useState(""),
     [jobs, setJobs] = useState([]),
     [busy, setBusy] = useState(false);
-  const refresh = async () => {
+  const refresh = async (restore=false) => {
     try {
-      setJobs(await api("/api/jobs"));
-    } catch (e) {
-      notify(e.message);
-    }
+      const rows=await api("/api/jobs");
+      setJobs(rows);
+      if(restore && rows[0]) {
+        const last=rows[0];
+        setFolder(last.folder||"");
+        setRange(last.selection?.range||"1m");
+        if(last.selection?.start) setStart(last.selection.start);
+        if(last.selection?.end) setEnd(last.selection.end);
+        setMaxPhotos(Math.min(100,last.maxPhotos||50));
+        setLocationHint(last.locationHint||"");
+      }
+    } catch (e) { notify(e.message); }
   };
   useEffect(() => {
-    if (session?.user) refresh();
-  }, [session?.user]);
+    if (!session?.user) return;
+    refresh(true);
+    const timer=setInterval(()=>refresh(),15000);
+    return ()=>clearInterval(timer);
+  }, [session?.user?.login]);
   const createJob = async () => {
     setBusy(true);
     try {
-      await api("/api/jobs", "POST", { folder, start, end, maxPhotos: 100 });
-      notify("选片任务已排队。后台处理器运行后，草稿会出现在待审核页面。");
+      await api("/api/jobs", "POST", { folder, range, start, end, maxPhotos, locationHint });
+      notify("任务已排队。处理器会先扫描所选范围，再自动分批整理草稿。");
       await refresh();
-    } catch (e) {
-      notify(e.message);
-    } finally {
-      setBusy(false);
-    }
+    } catch (e) { notify(e.message); }
+    finally { setBusy(false); }
+  };
+  const stopJob=async id=>{
+    try { await api(`/api/jobs/${id}/stop`,"POST",{}); await refresh(); }
+    catch(e) { notify(e.message); }
   };
   const callback = (path) => location.origin + path;
   return (
@@ -547,9 +565,21 @@ function Settings({ session, notify }) {
           <input
             value={folder}
             onChange={(e) => setFolder(e.target.value)}
-            placeholder="手机相册"
+            placeholder="例如：Pictures/Camera Roll"
           />
         </label>
+        <label>
+          照片范围
+          <select value={range} onChange={e=>setRange(e.target.value)}>
+            <option value="1m">最近一个月</option>
+            <option value="3m">最近三个月</option>
+            <option value="6m">最近六个月</option>
+            <option value="12m">最近一年</option>
+            <option value="all">全部照片</option>
+            <option value="custom">自定义日期</option>
+          </select>
+        </label>
+        {range==="custom" && (
         <div className="date-fields">
           <label>
             开始日期
@@ -560,21 +590,33 @@ function Settings({ session, notify }) {
             />
           </label>
           <label>
-            结束日期（不包含当天）
+            结束日期（包含当天）
             <input
               type="date"
               value={end}
               onChange={(e) => setEnd(e.target.value)}
             />
           </label>
+        </div>)}
+        <div className="date-fields">
+          <label>每批最多分析
+            <select value={maxPhotos} onChange={e=>setMaxPhotos(Number(e.target.value))}>
+              <option value={20}>20 张</option><option value={50}>50 张</option><option value={100}>100 张</option>
+            </select>
+          </label>
+          <label>地点备注（可选）
+            <input value={locationHint} maxLength={160} onChange={e=>setLocationHint(e.target.value)} placeholder="国家或地区；留空则按画面描述" />
+          </label>
         </div>
         <p className="muted">
-          按拍摄时间筛选，时区 Asia/Shanghai。首次最多分析 100
-          张；超出时整批停止，缩小日期后再试。
+          按拍摄时间筛选，时区 Asia/Shanghai。先扫描整个范围，再自动分批分析；照片多不会整批失败。
+          以连续拍摄时间、可用的粗略地点和画面主题分组，没有可靠地点时不会编造地名。
+          已处理的相同版本照片会复用记录；无拍摄时间的文件会跳过。
         </p>
+        {range==="all" && <p className="approval-note">“全部”会持续分批处理这个文件夹内的合格照片，可能消耗较多 Codex 额度。可在任务列表停止后续批次。</p>}
         <button
           className="button primary"
-          disabled={!session?.onedriveConnected || busy}
+          disabled={!session?.onedriveConnected || busy || !folder.trim() || jobs.some(j=>["pending","running"].includes(j.status))}
           onClick={createJob}
         >
           创建选片任务
@@ -601,7 +643,7 @@ function Settings({ session, notify }) {
         </p>
         {session?.user && (
           <>
-            <button className="text-button" onClick={refresh}>
+            <button className="text-button" onClick={()=>refresh()}>
               刷新任务状态
             </button>
             <ul className="jobs">
@@ -615,9 +657,18 @@ function Settings({ session, notify }) {
                         running: "处理中",
                         complete: "已完成",
                         failed: "处理失败，未自动重试",
+                        cancelled: "已停止后续批次",
                       }[j.status]
                     }
                   </strong>
+                  {j.progress && <p className="job-progress">
+                    {j.progress.phase==="scanning" ? `正在扫描 · 已发现 ${j.progress.total} 张候选` : `已处理 ${j.progress.processed} / ${j.progress.total} 张 · ${j.progress.batches} 批`}
+                  </p>}
+                  {["pending","running"].includes(j.status) && (
+                    <button className="text-button" disabled={j.stopRequested} onClick={()=>stopJob(j.id)}>
+                      {j.stopRequested ? "本批结束后停止" : "停止后续批次"}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

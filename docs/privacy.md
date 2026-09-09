@@ -29,8 +29,10 @@ must be rejected. Human review remains the final decision.
 
 The scanner does not claim complete library analysis. It skips videos, screenshots
 identified by filename, remote shortcuts, and photos without an explicit capture
-timestamp. It ignores exact GPS to avoid leaking private locations into captions.
-It selects at most 24 screened candidates for the composition pass. Other photos
+timestamp. GPS is rounded to 0.1-degree cells before persistence or model input;
+exact GPS is never stored or used as a caption location. Time gaps and coarse
+spatial separation split candidate groups; visual themes further refine drafts.
+At most 24 screened candidates per batch enter the composition pass. Other photos
 are unselected, not deleted. Identical preview bytes and previously imported photo
 IDs are deduplicated; perceptual near-duplicates rely on the model and reviewer.
 
@@ -40,7 +42,11 @@ the model is not granted publishing permission. Use a dedicated trusted runtime
 and the gateway's existing credential isolation. This repo does not broaden the
 gateway's repository/ref permissions or disable authentication.
 
-One job may be active at a time. Requests are not automatically retried. If a
+One job may be active at a time. Large ranges are divided into metadata and AI
+steps, each with a new lease. The optional VPS timer continues pending steps, not
+failed calls. It never creates a new scan or publishes photos. Owners can stop
+subsequent steps; a currently running batch is allowed to finish. Requests are not
+automatically retried. If a
 completion upload has an uncertain result, the worker leaves the job for readback
 instead of resending or marking it safely failed. A process crash can leave a job
 running; an operator must inspect that exact job before recovery. Do not clear a
@@ -53,3 +59,19 @@ does not trigger any public action in v0.1.
 OAuth starts require the configured AUTH_LIMITER binding and are limited to 20 per minute per Cloudflare location using a fixed key. This mitigates abuse but is not a global hard quota. Expired authentication records are removed in bounded batches on later auth writes. Live sessions and encrypted Microsoft tokens are preserved.
 
 The model subprocess receives only allowlisted environment values and uses local Codex. HOME/CODEX_HOME and the runtime filesystem must be dedicated and restricted; environment filtering does not make host files unreadable. Complete that deployment check before providing real photos.
+
+Private VPS SQLite files retain candidate IDs, capture times, coarse location,
+paging cursors and processed version/preview hashes; no image bytes or model
+captions are stored in this inventory. This metadata has no automatic retention
+purge. The shared processed cache includes exclusions to avoid repeated analysis.
+It is keyed by source version and policy revision; files without version metadata
+cannot be reliably reused across jobs. Clearing the cache can cause reanalysis.
+All timestamps are interpreted using the selected deployment's documented
+Asia/Shanghai date boundaries; dates without a timezone are not guessed.
+
+A committed batch ID is saved with drafts in D1. If a response is lost after a
+successful commit, the next claimed step reconciles that ID before updating local
+processed state; it does not call the model again for that acknowledged batch.
+A pending local AI batch with no matching remote acknowledgement stops instead.
+Do not expose the inventory directory to the AI service. The default batch limit
+is a per-step resource limit, not a monthly cost or total-library analysis limit.

@@ -49,4 +49,14 @@ class FailureReportingTests(unittest.TestCase):
         self.assertEqual(b.failure_reason(b.Stop('provider secret response')), 'unknown')
         self.assertEqual(b.failure_reason(RuntimeError('provider secret response')), 'unknown')
 
+
+class CandidateTests(unittest.TestCase):
+    def test_all_and_custom_scope_use_capture_time_and_only_coarse_location(self):
+        item={'id':'one','parentReference':{'driveId':'drive'},'image':{},'photo':{'takenDateTime':'2026-08-26T18:00:00Z'},'location':{'latitude':13.756331,'longitude':100.501762},'eTag':'v1'}
+        all_source={'start':None,'end':None}
+        self.assertEqual(b.candidate(item,all_source)['area'],[13.8,100.5])
+        self.assertIsNone(b.candidate(item,{'start':'2026-08-16','end':'2026-08-27'})) # 02:00 on Aug 27 in Shanghai.
+        self.assertIsNone(b.candidate({**item,'photo':{}},all_source))
+        self.assertIsNone(b.candidate({**item,'name':'Screenshot.png'},all_source))
+
 if __name__=='__main__': unittest.main()

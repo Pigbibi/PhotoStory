@@ -589,3 +589,7 @@ footer span:last-child {
     font-size: 14px;
   }
 }
+
+.settings select { width:100%; padding:12px; border:1px solid var(--line, #ddd); border-radius:6px; background:var(--paper, #fff); color:inherit; font:inherit; }
+.jobs li { flex-wrap:wrap; gap:8px; }
+.jobs .job-progress { flex-basis:100%; margin:0; font-size:13px; }

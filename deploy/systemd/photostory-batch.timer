@@ -1,0 +1,10 @@
+[Unit]
+Description=Process owner-created PhotoStory jobs in bounded steps
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+Unit=photostory-batch.service
+
+[Install]
+WantedBy=timers.target
