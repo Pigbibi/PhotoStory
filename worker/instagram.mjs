@@ -43,6 +43,7 @@ function single(value){
  return value;
 }
 const identifier=v=>typeof v==='string'&&/^\d{1,32}$/.test(v);
+const normalizeId=v=>identifier(v)?v:Number.isSafeInteger(v)&&v>0?String(v):null;
 export async function finish(r,e){
  const c=config(e),u=new URL(r.url),state=u.searchParams.get('state');
  if(!c||u.origin!==c.origin||!state||state.length>200||auth.cookies(r)['__Host-ps-ig']!==state)throw new Error('invalid_oauth_state');
@@ -58,19 +59,21 @@ export async function finish(r,e){
   stage='short_token_request';
   const short=single(await request('https://api.instagram.com/oauth/access_token',{method:'POST',body}));
   stage='short_token_shape';shape={userIdType:typeof short?.user_id,permissionsType:typeof short?.permissions,permissionsArray:Array.isArray(short?.permissions)};
-  if(typeof short?.access_token!=='string'||!short.access_token||!identifier(short.user_id)||typeof short.permissions!=='string')throw new Error('instagram_connection_failed');
+  const scopedId=normalizeId(short?.user_id);
+  if(typeof short?.access_token!=='string'||!short.access_token||!scopedId)throw new Error('instagram_connection_failed');
   stage='permissions';shape=undefined;
-  const permissions=short.permissions.split(',').map(s=>s.trim());if(!SCOPES.every(s=>permissions.includes(s)))throw new Error('instagram_connection_failed');
+  const permissions=typeof short.permissions==='string'?short.permissions.split(',').map(s=>s.trim()):short.permissions;
+  if(!Array.isArray(permissions)||!permissions.every(s=>typeof s==='string')||!SCOPES.every(s=>permissions.includes(s)))throw new Error('instagram_connection_failed');
   const exchange=new URL('https://graph.instagram.com/access_token');exchange.search=new URLSearchParams({grant_type:'ig_exchange_token',client_secret:e.INSTAGRAM_CLIENT_SECRET,access_token:short.access_token});
   stage='long_token_request';const long=await request(exchange);stage='long_token_shape';
   if(typeof long?.access_token!=='string'||!long.access_token||!Number.isSafeInteger(long.expires_in)||long.expires_in<300||long.expires_in>7776000)throw new Error('instagram_connection_failed');
   const me=new URL('https://graph.instagram.com/v26.0/me');me.search=new URLSearchParams({fields:'id,user_id,username,account_type',access_token:long.access_token});
-  stage='profile_request';const profile=single(await request(me));stage='profile_identity';shape={idType:typeof profile?.id,userIdType:typeof profile?.user_id,scopedIdMatches:profile?.id===short.user_id,usernameMatches:profile?.username?.toLowerCase()===c.username,professional:['BUSINESS','MEDIA_CREATOR'].includes(String(profile?.account_type).toUpperCase())};
-  if(!profile||profile.id!==short.user_id||!identifier(profile.user_id)||!USERNAME.test(profile.username)||profile.username.toLowerCase()!==c.username||!['BUSINESS','MEDIA_CREATOR'].includes(String(profile.account_type).toUpperCase()))throw new Error('instagram_connection_failed');
+  stage='profile_request';const profile=single(await request(me));stage='profile_identity';shape={idType:typeof profile?.id,userIdType:typeof profile?.user_id,scopedIdMatches:normalizeId(profile?.id)===scopedId,usernameMatches:profile?.username?.toLowerCase()===c.username,professional:['BUSINESS','MEDIA_CREATOR'].includes(String(profile?.account_type).toUpperCase())};
+  if(!profile||normalizeId(profile.id)!==scopedId||!normalizeId(profile.user_id)||!USERNAME.test(profile.username)||profile.username.toLowerCase()!==c.username||!['BUSINESS','MEDIA_CREATOR'].includes(String(profile.account_type).toUpperCase()))throw new Error('instagram_connection_failed');
   stage='session';shape=undefined;
   if(!await auth.session(r,e))throw new Error('instagram_connection_failed');
   stage='storage';
-  await auth.put(e,'instagram',await auth.seal(e,{access:long.access_token,client:c.client,userId:profile.user_id,scopedId:profile.id,username:profile.username,accountType:profile.account_type,permissions:SCOPES,expires:Date.now()+long.expires_in*1000}));
+  await auth.put(e,'instagram',await auth.seal(e,{access:long.access_token,client:c.client,userId:normalizeId(profile.user_id),scopedId,username:profile.username,accountType:profile.account_type,permissions:SCOPES,expires:Date.now()+long.expires_in*1000}));
   await auth.remove(e,'instagram-diagnostic');
   return auth.redirect('/?instagram=connected',clear);
  }catch(err){

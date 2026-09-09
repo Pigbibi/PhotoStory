@@ -14,12 +14,12 @@ async function begin(env){
 function finish(env,state,session='session',extra='code=fixture-code'){
  return worker.fetch(new Request('https://example.test/auth/instagram/callback?state='+state+'&'+extra,{headers:{Cookie:'__Host-photostory='+session+'; __Host-ps-ig='+state}}),env);
 }
-function provider(t,{username='landscapes',permissions=scopes,type='MEDIA_CREATOR',id='123',fail=false}={}){
+function provider(t,{username='landscapes',permissions=scopes,type='MEDIA_CREATOR',id='123',shortId='123',fail=false}={}){
  const calls=[];t.mock.method(globalThis,'fetch',async(url,o)=>{
   const u=new URL(url);calls.push(u.pathname);assert.equal(o.redirect,'manual');
   if(fail)return new Response('private provider detail',{status:400});
   if(u.hostname==='api.instagram.com'){
-   assert.equal(o.method,'POST');assert.equal(o.body.get('client_secret'),'fixture-secret');assert.equal(o.body.get('redirect_uri'),'https://example.test/auth/instagram/callback');return Response.json({data:[{access_token:'short-fixture',user_id:'123',permissions}]});
+   assert.equal(o.method,'POST');assert.equal(o.body.get('client_secret'),'fixture-secret');assert.equal(o.body.get('redirect_uri'),'https://example.test/auth/instagram/callback');return Response.json({data:[{access_token:'short-fixture',user_id:shortId,permissions}]});
   }
   if(u.pathname==='/access_token'){assert.equal(u.searchParams.get('grant_type'),'ig_exchange_token');return Response.json({access_token:'long-fixture',expires_in:5184000,token_type:'bearer'});}
   assert.equal(u.pathname,'/v26.0/me');assert.equal(u.searchParams.get('fields'),'id,user_id,username,account_type');return Response.json({id,user_id:'456',username,account_type:type});
@@ -93,4 +93,16 @@ test('Instagram exchanges reject redirects without forwarding credentials',async
  await finish(env,state);assert.equal(calls,1);
  const diagnostic=JSON.parse((await DB.prepare("SELECT value FROM state WHERE key='instagram-diagnostic'").first()).value);
  assert.equal(diagnostic.httpStatus,302);assert.equal(await DB.prepare("SELECT value FROM state WHERE key='instagram'").first(),null);
+});
+
+test('Instagram accepts numeric safe IDs and arrays of permission names',async t=>{
+ const {env}=await fixture(t);const {state}=await begin(env);provider(t,{shortId:123,permissions:scopes.split(',')});
+ assert.equal((await finish(env,state)).headers.get('location'),'/?instagram=connected');
+});
+test('Instagram rejects unsafe numeric IDs and malformed permission arrays',async t=>{
+ for(const options of [{shortId:Number.MAX_SAFE_INTEGER+1},{permissions:[{permission:'instagram_business_basic'},'instagram_business_content_publish']},{permissions:['instagram_business_basic']}])await t.test('invalid provider shape',async t=>{
+  const {env,DB}=await fixture(t);const {state}=await begin(env);provider(t,options);
+  assert.equal((await finish(env,state)).headers.get('location'),'/?error=instagram_connection_failed');
+  assert.equal(await DB.prepare("SELECT value FROM state WHERE key='instagram'").first(),null);
+ });
 });
