@@ -67,6 +67,7 @@ export async function maintenance(e,now=Date.now(),temporaryCleanup=null){
       e.DB.prepare(`INSERT OR IGNORE INTO photo_gc(photo_id,expires) SELECT json_extract(p.value,'$.id'),? FROM drafts,json_each(drafts.body,'$.photos') p WHERE ${expired}`).bind(now,now-RETENTION),
       e.DB.prepare(`DELETE FROM drafts WHERE ${expired}`).bind(now-RETENTION),
       e.DB.prepare("DELETE FROM photos WHERE id IN (SELECT photo_id FROM photo_gc WHERE expires<=?) AND NOT EXISTS(SELECT 1 FROM drafts,json_each(drafts.body,'$.photos') p WHERE json_extract(p.value,'$.id')=photos.id)").bind(now),
+      e.DB.prepare("DELETE FROM state WHERE key LIKE 'photo-source:%' AND NOT EXISTS(SELECT 1 FROM photos WHERE state.key='photo-source:'||photos.id)").bind(),
       e.DB.prepare('DELETE FROM photo_gc WHERE NOT EXISTS(SELECT 1 FROM photos WHERE photos.id=photo_gc.photo_id)').bind(),
       e.DB.prepare("INSERT INTO state(key,value,expires) VALUES('cleanup',?,NULL) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify(cleanup)),
     ]);

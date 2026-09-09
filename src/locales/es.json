@@ -80,7 +80,7 @@
   "裁剪填满": "Recortar para llenar",
   "水平位置": "Posición horizontal",
   "垂直位置": "Posición vertical",
-  "同一篇使用统一画布。逐张检查裁剪后的主体；留边模式保留完整画面。这里只保存构图参数和预览，正式发布图仍需从 OneDrive 原图生成。": "Una misma publicación usa un lienzo uniforme. Comprueba el sujeto recortado de cada foto; el modo con márgenes conserva la imagen completa. Aquí solo se guardan los parámetros de composición y la previsualización; las imágenes finales de publicación deben generarse a partir de los originales de OneDrive.",
+  "同一篇使用统一画布。逐张检查裁剪后的主体；留边模式保留完整画面。这里只保存构图参数和预览，正式发布图仍需从 OneDrive 原图生成。": "Genera JPEG desde los originales aprobados en un lienzo uniforme de 1080px de ancho, elimina los metadatos GPS e incluye el texto.",
   "前移": "Mover hacia delante",
   "后移": "Mover hacia atrás",
   "移出这篇": "Quitar de esta publicación",
@@ -210,5 +210,9 @@
   "人工批准（默认）": "Aprobación manual (predeterminado)",
   "严格 AI 自动审核": "Revisión automática estricta con IA",
   "自动模式：每张美感至少 9/10，另一次 AI 复核整篇。任何不确定或错误留待人工；额外复核会消耗更多额度。仅批准新任务草稿，修改后重新审核。尚未启用 Instagram 发布。AI 不能保证零漏判。": "Modo automático: cada foto necesita una puntuación estética mínima de 9/10 y una revisión adicional del post completo por IA. Las dudas o los errores requieren revisión humana. La revisión adicional consume más cuota. Solo se aplica a tareas nuevas; los cambios requieren otra revisión. La publicación en Instagram no está habilitada. La IA puede pasar por alto riesgos.",
-  "由严格 AI 自动审核批准": "Aprobado mediante revisión estricta con IA"
+  "由严格 AI 自动审核批准": "Aprobado mediante revisión estricta con IA",
+  "下载成品 ZIP": "Descargar ZIP",
+  "正在生成…": "Preparando…",
+  "从已批准原图生成统一 1080px 宽 JPEG，不保留 GPS；同时附上文案。": "Genera JPEG desde los originales aprobados en un lienzo uniforme de 1080px de ancho, elimina los metadatos GPS e incluye el texto.",
+  "导出失败：请确认批准和原图版本；仅支持 JPEG/PNG，单张最多 25 MB，且清晰度足够。": "No se pudo exportar. Comprueba la aprobación y la versión del original. Solo se admiten JPEG/PNG de hasta 25 MB con resolución suficiente."
 }

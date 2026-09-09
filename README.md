@@ -258,11 +258,35 @@ Save and inspect every frame before approval. Changing the ratio or any photo's
 framing revokes prior approval, just like changing the caption. Framing survives
 reordering, trash, and restore; the OneDrive originals remain untouched.
 
-This version saves **composition parameters and review previews only**. It does not
-export full-resolution images or publish to Instagram. A future export/publishing
-path must fetch the matching originals, apply the saved canvas and crop positions,
-and verify the resulting files against the publishing channel's current requirements.
-Do not use the 768px review previews as full-quality publishing files.
+Approved drafts can be downloaded with **Download ZIP**: one numbered JPEG per
+photo, `caption.txt`, and `alt-text.txt`. Canvas sizes are 1080×1350 (4:5),
+1080×1080 (1:1), or 1080×720 (3:2). Browser canvas rendering applies the saved
+fit/crop and position, removes original EXIF/GPS metadata, and creates the ZIP
+using the MIT-licensed fflate library, loaded only when exporting.
+
+Originals are fetched through the authenticated Worker from OneDrive and handled
+transiently in memory; they are not stored in D1, R2 or the repository. Export
+requires a currently approved, unchanged draft. The original's item identity and
+eTag-derived version must match the reviewed source before and after download.
+Graph bearer tokens and preauthenticated download URLs never reach the browser;
+download hosts are restricted to Microsoft hosts and redirects are rejected.
+The final draft version is checked again before the browser offers the ZIP.
+
+JPEG/PNG originals only, up to 25 MB and 50 megapixels per image. Originals are
+processed sequentially, without upscaling; unsupported, missing, changed or too-small
+files stop the whole export. HEIC needs a supported conversion path before export.
+The 768px review previews are never substituted for unavailable originals.
+
+New imports save a private immutable item/version reference. Old installations can
+backfill from their existing private scanner SQLite records using the machine-only
+`/internal/photo-sources` endpoint: GET lists up to 100 missing IDs; POST accepts at
+most 10 `{id,item,fingerprint,policy}` entries and verifies each legacy fingerprint
+against Graph before insertion. It never replaces an existing reference. Source
+references are collected when their preview is removed by normal retention cleanup.
+An unverified old source requires rescanning and review; do not manually substitute
+its current version. No additional Microsoft permissions or storage service is needed.
+
+Instagram publishing remains a separate integration and is not enabled by export.
 
 ## Review mode: manual or strict AI
 
@@ -287,3 +311,5 @@ client-supplied approval status cannot bypass these checks. Approved posts are
 labelled as AI-reviewed in the private queue. Changing text, photos or framing
 revokes approval and requires manual re-review. There is still **no Instagram
 publishing**. Scores are a selection rule, not a calibrated probability of safety.
+
+Instagram app preparation and credential handling: [setup guide](docs/instagram-setup.md).

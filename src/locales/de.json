@@ -80,7 +80,7 @@
   "裁剪填满": "Zuschneiden und ausfüllen",
   "水平位置": "Horizontale Position",
   "垂直位置": "Vertikale Position",
-  "同一篇使用统一画布。逐张检查裁剪后的主体；留边模式保留完整画面。这里只保存构图参数和预览，正式发布图仍需从 OneDrive 原图生成。": "Für einen Beitrag wird eine einheitliche Fläche verwendet. Prüfe das Motiv nach dem Zuschneiden einzeln; im Randmodus bleibt das vollständige Bild erhalten. Hier werden nur Kompositionsparameter und Vorschauen gespeichert. Das Bild für die Veröffentlichung wird weiterhin aus dem OneDrive-Original erzeugt.",
+  "同一篇使用统一画布。逐张检查裁剪后的主体；留边模式保留完整画面。这里只保存构图参数和预览，正式发布图仍需从 OneDrive 原图生成。": "Erstellt JPEGs aus freigegebenen Originalen auf einer einheitlichen, 1080px breiten Fläche, entfernt GPS-Metadaten und fügt den Beitragstext bei.",
   "前移": "Nach vorn",
   "后移": "Nach hinten",
   "移出这篇": "Aus diesem Beitrag entfernen",
@@ -210,5 +210,9 @@
   "人工批准（默认）": "Manuelle Freigabe (Standard)",
   "严格 AI 自动审核": "Strenge automatische KI-Prüfung",
   "自动模式：每张美感至少 9/10，另一次 AI 复核整篇。任何不确定或错误留待人工；额外复核会消耗更多额度。仅批准新任务草稿，修改后重新审核。尚未启用 Instagram 发布。AI 不能保证零漏判。": "Automatik: Jedes Foto benötigt mindestens 9/10 für Ästhetik und der gesamte Beitrag eine zusätzliche KI-Prüfung. Bei Unsicherheit oder Fehlern bleibt die manuelle Prüfung erforderlich. Die zusätzliche Prüfung verbraucht mehr Kontingent. Gilt nur für neue Aufgaben; Änderungen müssen erneut geprüft werden. Instagram-Veröffentlichung ist nicht aktiviert. Die KI kann Risiken übersehen.",
-  "由严格 AI 自动审核批准": "Durch strenge KI-Prüfung freigegeben"
+  "由严格 AI 自动审核批准": "Durch strenge KI-Prüfung freigegeben",
+  "下载成品 ZIP": "ZIP herunterladen",
+  "正在生成…": "Wird erstellt…",
+  "从已批准原图生成统一 1080px 宽 JPEG，不保留 GPS；同时附上文案。": "Erstellt JPEGs aus freigegebenen Originalen auf einer einheitlichen, 1080px breiten Fläche, entfernt GPS-Metadaten und fügt den Beitragstext bei.",
+  "导出失败：请确认批准和原图版本；仅支持 JPEG/PNG，单张最多 25 MB，且清晰度足够。": "Export fehlgeschlagen. Freigabe und Originalversion prüfen. Unterstützt werden nur JPEG/PNG bis 25 MB mit ausreichender Auflösung."
 }

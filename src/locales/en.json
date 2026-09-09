@@ -80,7 +80,7 @@
   "裁剪填满": "Crop to fill",
   "水平位置": "Horizontal position",
   "垂直位置": "Vertical position",
-  "同一篇使用统一画布。逐张检查裁剪后的主体；留边模式保留完整画面。这里只保存构图参数和预览，正式发布图仍需从 OneDrive 原图生成。": "The same canvas is used throughout a post. Check the subject in each cropped photo; margin mode preserves the full image. Only composition parameters and previews are saved here. Final publishing images must still be generated from the OneDrive originals.",
+  "同一篇使用统一画布。逐张检查裁剪后的主体；留边模式保留完整画面。这里只保存构图参数和预览，正式发布图仍需从 OneDrive 原图生成。": "Creates JPEGs from approved originals on a consistent 1080px-wide canvas, removes GPS metadata, and includes the caption.",
   "前移": "Move earlier",
   "后移": "Move later",
   "移出这篇": "Remove from this post",
@@ -210,5 +210,9 @@
   "人工批准（默认）": "Manual approval (default)",
   "严格 AI 自动审核": "Strict AI auto-review",
   "自动模式：每张美感至少 9/10，另一次 AI 复核整篇。任何不确定或错误留待人工；额外复核会消耗更多额度。仅批准新任务草稿，修改后重新审核。尚未启用 Instagram 发布。AI 不能保证零漏判。": "Automatic mode: every photo needs an aesthetic score of at least 9/10 plus a separate AI review of the complete post. Uncertainty or errors leave it for human review. The extra review uses more quota. Applies to new jobs only; edits require review again. Instagram publishing is not enabled. AI can still miss risks.",
-  "由严格 AI 自动审核批准": "Approved by strict AI review"
+  "由严格 AI 自动审核批准": "Approved by strict AI review",
+  "下载成品 ZIP": "Download ZIP",
+  "正在生成…": "Preparing…",
+  "从已批准原图生成统一 1080px 宽 JPEG，不保留 GPS；同时附上文案。": "Creates JPEGs from approved originals on a consistent 1080px-wide canvas, removes GPS metadata, and includes the caption.",
+  "导出失败：请确认批准和原图版本；仅支持 JPEG/PNG，单张最多 25 MB，且清晰度足够。": "Export failed. Check approval and the original file version. Only JPEG/PNG files up to 25 MB with sufficient resolution are supported."
 }

@@ -302,7 +302,14 @@ function App() {
 function Editor({ draft, demo, busy, update }) {
   const {t,date}=useI18n();
   const [form, setForm] = useState(structuredClone(draft)),
-    [index, setIndex] = useState(0);
+    [index, setIndex] = useState(0),
+    [exporting,setExporting]=useState(false),[exportProgress,setExportProgress]=useState(''),[exportError,setExportError]=useState(false);
+  const download=async()=>{
+    setExporting(true);setExportError(false);setExportProgress('');
+    try{const {exportDraft}=await import('./export.mjs');await exportDraft(draft,(done,total)=>setExportProgress(`${done}/${total}`));}
+    catch{setExportError(true);}
+    finally{setExporting(false);}
+  };
   const dirty = JSON.stringify(form) !== JSON.stringify(draft),
     photo = form.photos[index] || form.photos[0];
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -434,6 +441,9 @@ function Editor({ draft, demo, busy, update }) {
           disabled={busy || !dirty}
           onClick={() => update(form, "save")}
         >{t("保存修改")}</button>
+        <button className="button secondary" disabled={demo||busy||dirty||exporting||draft.status!=='approved'} onClick={download}>{exporting?t('正在生成…')+' '+exportProgress:t('下载成品 ZIP')}</button>
+        <p className="muted">{t('从已批准原图生成统一 1080px 宽 JPEG，不保留 GPS；同时附上文案。')}</p>
+        {exportError&&<p role="alert">{t('导出失败：请确认批准和原图版本；仅支持 JPEG/PNG，单张最多 25 MB，且清晰度足够。')}</p>}
         {draft.status === "approved" && (
           <button
             className="text-button"

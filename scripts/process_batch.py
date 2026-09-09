@@ -91,7 +91,7 @@ def candidate(item, source):
         area=[round(lat,1),round(lon,1)]
     etag=item.get('eTag')
     fingerprint=hashlib.sha256((pid+'\0'+etag).encode()).hexdigest() if isinstance(etag,str) and etag else None
-    return {'id':pid,'item':item['id'],'captured':when.isoformat(),'taken':when.timestamp(),'area':area,'fingerprint':fingerprint}
+    return {'id':pid,'item':item['id'],'captured':when.isoformat(),'taken':when.timestamp(),'area':area,'fingerprint':fingerprint,'source':{'item':item['id'],'version':fingerprint} if fingerprint else None}
 
 
 def valid_thumbnail_url(url):
@@ -348,7 +348,7 @@ def run():
                 drafts = []
             auto_reviews=review_drafts(drafts,allowed,source,cwd,gateway)
             used = {p["id"] for d in drafts for p in d["photos"]}
-            photos = [{"id":pid, "safety":"allow", "flags":[], "jpeg":base64.b64encode(assets[pid]).decode()} for pid in used]
+            photos = [{"id":pid, "safety":"allow", "flags":[], "jpeg":base64.b64encode(assets[pid]).decode(),"source":next(p.get("source") for p in candidates if p["id"]==pid)} for pid in used]
             inventory.save_digests(digests)
             progress=inventory.proposed_progress()
             completion_started = True

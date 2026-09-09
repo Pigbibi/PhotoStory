@@ -80,7 +80,7 @@
   "裁剪填满": "Recadrer pour remplir",
   "水平位置": "Position horizontale",
   "垂直位置": "Position verticale",
-  "同一篇使用统一画布。逐张检查裁剪后的主体；留边模式保留完整画面。这里只保存构图参数和预览，正式发布图仍需从 OneDrive 原图生成。": "Une même publication utilise une toile uniforme. Vérifiez le sujet après recadrage pour chaque photo ; le mode avec marges conserve l’image entière. Seuls les paramètres de composition et les aperçus sont enregistrés ici ; les images finales de publication doivent toujours être générées à partir des originaux OneDrive.",
+  "同一篇使用统一画布。逐张检查裁剪后的主体；留边模式保留完整画面。这里只保存构图参数和预览，正式发布图仍需从 OneDrive 原图生成。": "Crée des JPEG à partir des originaux validés sur un canevas uniforme de 1080px de large, supprime les métadonnées GPS et inclut la légende.",
   "前移": "Avancer",
   "后移": "Reculer",
   "移出这篇": "Retirer de cette publication",
@@ -210,5 +210,9 @@
   "人工批准（默认）": "Validation manuelle (par défaut)",
   "严格 AI 自动审核": "Validation automatique stricte par IA",
   "自动模式：每张美感至少 9/10，另一次 AI 复核整篇。任何不确定或错误留待人工；额外复核会消耗更多额度。仅批准新任务草稿，修改后重新审核。尚未启用 Instagram 发布。AI 不能保证零漏判。": "Mode automatique : chaque photo doit obtenir au moins 9/10 en qualité esthétique, puis la publication entière est vérifiée par un autre appel IA. Tout doute ou erreur nécessite une validation humaine. Cette vérification consomme davantage de quota. Uniquement pour les nouvelles tâches ; toute modification nécessite une nouvelle validation. La publication sur Instagram est désactivée. L’IA peut manquer certains risques.",
-  "由严格 AI 自动审核批准": "Validé par une vérification IA stricte"
+  "由严格 AI 自动审核批准": "Validé par une vérification IA stricte",
+  "下载成品 ZIP": "Télécharger le ZIP",
+  "正在生成…": "Préparation…",
+  "从已批准原图生成统一 1080px 宽 JPEG，不保留 GPS；同时附上文案。": "Crée des JPEG à partir des originaux validés sur un canevas uniforme de 1080px de large, supprime les métadonnées GPS et inclut la légende.",
+  "导出失败：请确认批准和原图版本；仅支持 JPEG/PNG，单张最多 25 MB，且清晰度足够。": "Échec de l’export. Vérifiez la validation et la version du fichier original. Seuls les JPEG/PNG de 25 MB maximum avec une résolution suffisante sont pris en charge."
 }

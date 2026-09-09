@@ -24,7 +24,8 @@ lookup and are not persisted. The implementation requests no repo scope.
 PhotoStory stores selected JPEG review previews and draft text in the configured
 languages. Pending and approved drafts are retained; trash and unreferenced previews
 follow the configurable retention policy described in the README.
-There is no public photo URL or original-image download/publishing route. All
+There is no public photo URL or publishing route. Approved originals can be
+exported through an authenticated, same-origin, version-checked POST route. All
 responses use no-store and private routes do not accept third-party origins.
 Do not enable analytics or request-body logging for private payloads.
 
@@ -99,6 +100,9 @@ See [full retention behavior](lifecycle.zh-CN.md).
 
 Interface language preferences store only a language code in browser localStorage.
 Draft framing stores a canvas ratio and per-photo mode/position in private D1,
-not new public images. It never modifies OneDrive originals. Interface translation
+not new public images. It never modifies OneDrive originals. Original exports
+pass transiently through Worker/browser memory, are capped at 25 MB/50 megapixels,
+and are encoded to new JPEGs without source EXIF/GPS metadata. Downloaded ZIPs are
+local files under the owner’s control and are not covered by website trash cleanup. Interface translation
 catalogs are static public strings; private draft text is not sent for translation
 when the user switches the interface language.

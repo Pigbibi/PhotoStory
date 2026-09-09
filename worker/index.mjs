@@ -1,3 +1,4 @@
+import {original,reviewedDraft,sourceRecord,recoverSource} from './originals.mjs';
 import {strictApproval} from './auto-review.mjs';
 import {jobLanguages} from './languages.mjs';
 import { jobInput, progressInput } from "./jobs.mjs";
@@ -54,7 +55,22 @@ async function machine(r, e) {
 }
 async function internal(r, e, p) {
   if (!(await machine(r, e))) return failure("unauthorized", 401);
-  if(p==='/internal/cleanup-policy' && r.method==='GET')return json({enabled:(await settingsView(e)).settings.cleanupEnabled});
+  if(p==='/internal/photo-sources'){
+    if(r.method==='GET')return json((await e.DB.prepare("SELECT id FROM photos WHERE NOT EXISTS(SELECT 1 FROM state WHERE key='photo-source:'||photos.id) LIMIT 100").all()).results);
+    if(r.method==='POST'){
+      const b=await readJSON(r);
+      if(!Array.isArray(b.sources)||b.sources.length>100)throw new Error('invalid_request');
+      const statements=[];
+      if(b.sources.length>10)throw new Error('invalid_request');
+      for(const p of b.sources){
+        if(!validId(p.id)||!await e.DB.prepare('SELECT id FROM photos WHERE id=?').bind(p.id).first())throw new Error('source_unavailable');
+        const source=await recoverSource(e,p.id,p.item,p.fingerprint,p.policy);
+        statements.push(e.DB.prepare("INSERT OR IGNORE INTO state(key,value,expires) VALUES(?,?,NULL)").bind('photo-source:'+p.id,JSON.stringify(source)));
+      }
+      if(statements.length)await e.DB.batch(statements);return json({ok:true});
+    }
+  }
+  if(p==='/internal/cleanup-policy'  && r.method==='GET')return json({enabled:(await settingsView(e)).settings.cleanupEnabled});
   if(p==='/internal/maintenance' && r.method==='POST'){
     const b=await readJSON(r);
     await maintenance(e,Date.now(),b.temporaryCleanup);
@@ -158,6 +174,7 @@ async function internal(r, e, p) {
           .bind(p.id)
           .first();
         if (used) throw new Error("photo_already_used");
+        if(photo.source)stmts.push(e.DB.prepare("INSERT OR IGNORE INTO state(key,value,expires) VALUES(?,?,NULL)").bind('photo-source:'+p.id,JSON.stringify(sourceRecord(photo.source))));
         stmts.push(
           e.DB.prepare("INSERT INTO photos(id,data,mime) VALUES(?,?,?)").bind(
             p.id,
@@ -267,6 +284,12 @@ async function route(r, e) {
         .run();
       return json({ id, status: "pending" }, 201);
     }
+    if(p.startsWith('/api/export/') && r.method==='POST'){
+      const parts=p.slice(12).split('/'),b=await readJSON(r);
+      if(parts.length>2||!parts.every(validId)||!Number.isSafeInteger(b.version))throw new Error('invalid_request');
+      if(parts.length===1){const d=await reviewedDraft(e,parts[0],b.version);return json(d);}
+      return original(e,parts[0],parts[1],b.version);
+    }
     if (p.startsWith("/api/photos/") && r.method === "GET") {
       const id = p.slice(12);
       if (!validId(id)) return failure("not_found", 404);
@@ -310,6 +333,11 @@ export default {
       return secure(await route(r, e));
     } catch (err) {
       const known = new Set([
+        "source_unavailable",
+        "source_changed",
+        "original_format",
+        "original_too_large",
+        "approval_required",
         "invalid_oauth_state",
         "github_not_allowed",
         "github_exchange_failed",
