@@ -66,9 +66,12 @@ developer sign-in and Instagram account sign-in are separate sessions.
 
 After adding the username, the Meta roles table shows **Pending** until the
 Instagram account accepts. Meta links to [Apps and websites](https://www.instagram.com/accounts/manage_access/)
-for invitation management. Sign in as the intended Instagram account and accept
-its PhotoStory / PhotoStory-IG tester invitation. If the embedded browser cannot
-load Instagram's login page, open that same official link in your normal browser;
+for invitation management. Sign in as the intended Instagram account, select
+**Tester Invites**, and accept the **PhotoStory-IG** invitation. Read the tester
+statement and Meta terms before accepting. If opening this link fails at the
+login redirect, first sign in at [Instagram home](https://www.instagram.com/),
+then reopen Apps and websites. This sequence was verified in the embedded browser.
+If login still cannot load, use your normal browser;
 do not send passwords or verification codes to the deployment operator. Return
 to the Meta roles page afterward and verify that Pending has cleared before
 attempting account authorization. Do not remove and re-invite merely because

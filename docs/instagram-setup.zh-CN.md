@@ -53,8 +53,10 @@ Instagram 应用名称（例如 `PhotoStory-IG`）、Instagram 应用编号和�
 
 添加用户名后，Meta 的身份表格会显示「待添加」。账号接受邀请后这个状态才会解除。
 Meta 提供的邀请管理入口是 [应用和网站](https://www.instagram.com/accounts/manage_access/)。
-使用目标 Instagram 账号登录，找到 PhotoStory／PhotoStory-IG 的测试邀请并接受。
-如果内置浏览器无法加载 Instagram 登录页，在平时使用的浏览器中打开同一个官方链接；
+使用目标 Instagram 账号登录，切换到「测试员邀请」，找到 **PhotoStory-IG**，
+阅读测试者声明及 Meta 条款后点击「接受」。如果这个链接在登录跳转时打不开，
+先从 [Instagram 首页](https://www.instagram.com/) 登录，再重新打开「应用和网站」；
+这一顺序已在内置浏览器实际验证。仍无法登录时，再使用平时的浏览器；
 不要向部署人员发送密码或验证码。完成后回到 Meta 身份页面核对「待添加」已解除，
 再继续账号授权。不要仅因为邀请尚未接受就移除账号并重复邀请。
 
