@@ -32,7 +32,7 @@ async function request(url,options={}){
  // Meta's token exchange requires server-side query parameters. Never log these
  // URLs or return provider errors, redirects, codes or tokens to the browser.
  const r=await fetch(url,{...options,redirect:'error',signal:AbortSignal.timeout(20000)});
- if(!r.ok||!r.body)throw new Error('instagram_connection_failed');
+ if(!r.ok||!r.body)throw Object.assign(new Error('instagram_connection_failed'),{httpStatus:r.status});
  const reader=r.body.getReader(),parts=[];let size=0;
  while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>65536){await reader.cancel();throw new Error('instagram_connection_failed');}parts.push(value);}
  const bytes=new Uint8Array(size);let at=0;for(const part of parts){bytes.set(part,at);at+=part.length;}
@@ -51,21 +51,31 @@ export async function finish(r,e){
  if(!row)throw new Error('invalid_oauth_state');
  const saved=JSON.parse(row.value);
  if(saved.username!==c.username||saved.client!==c.client||saved.redirect!==c.redirect)throw new Error('invalid_oauth_state');
- const clear=[auth.cookie('__Host-ps-ig','',0)];
+ const clear=[auth.cookie('__Host-ps-ig','',0)];let stage='consent',shape;
  try{
   const code=u.searchParams.get('code');if(u.searchParams.has('error')||!code||code.length>8192)throw new Error('instagram_connection_failed');
   const body=new FormData();for(const [key,value] of Object.entries({client_id:c.client,client_secret:e.INSTAGRAM_CLIENT_SECRET,grant_type:'authorization_code',redirect_uri:c.redirect,code}))body.set(key,value);
+  stage='short_token_request';
   const short=single(await request('https://api.instagram.com/oauth/access_token',{method:'POST',body}));
+  stage='short_token_shape';shape={userIdType:typeof short?.user_id,permissionsType:typeof short?.permissions,permissionsArray:Array.isArray(short?.permissions)};
   if(typeof short?.access_token!=='string'||!short.access_token||!identifier(short.user_id)||typeof short.permissions!=='string')throw new Error('instagram_connection_failed');
+  stage='permissions';shape=undefined;
   const permissions=short.permissions.split(',').map(s=>s.trim());if(!SCOPES.every(s=>permissions.includes(s)))throw new Error('instagram_connection_failed');
   const exchange=new URL('https://graph.instagram.com/access_token');exchange.search=new URLSearchParams({grant_type:'ig_exchange_token',client_secret:e.INSTAGRAM_CLIENT_SECRET,access_token:short.access_token});
-  const long=await request(exchange);
+  stage='long_token_request';const long=await request(exchange);stage='long_token_shape';
   if(typeof long?.access_token!=='string'||!long.access_token||!Number.isSafeInteger(long.expires_in)||long.expires_in<300||long.expires_in>7776000)throw new Error('instagram_connection_failed');
   const me=new URL('https://graph.instagram.com/v26.0/me');me.search=new URLSearchParams({fields:'id,user_id,username,account_type',access_token:long.access_token});
-  const profile=single(await request(me));
+  stage='profile_request';const profile=single(await request(me));stage='profile_identity';shape={idType:typeof profile?.id,userIdType:typeof profile?.user_id,scopedIdMatches:profile?.id===short.user_id,usernameMatches:profile?.username?.toLowerCase()===c.username,professional:['BUSINESS','MEDIA_CREATOR'].includes(String(profile?.account_type).toUpperCase())};
   if(!profile||profile.id!==short.user_id||!identifier(profile.user_id)||!USERNAME.test(profile.username)||profile.username.toLowerCase()!==c.username||!['BUSINESS','MEDIA_CREATOR'].includes(String(profile.account_type).toUpperCase()))throw new Error('instagram_connection_failed');
+  stage='session';shape=undefined;
   if(!await auth.session(r,e))throw new Error('instagram_connection_failed');
+  stage='storage';
   await auth.put(e,'instagram',await auth.seal(e,{access:long.access_token,client:c.client,userId:profile.user_id,scopedId:profile.id,username:profile.username,accountType:profile.account_type,permissions:SCOPES,expires:Date.now()+long.expires_in*1000}));
+  await auth.remove(e,'instagram-diagnostic');
   return auth.redirect('/?instagram=connected',clear);
- }catch{return auth.redirect('/?error=instagram_connection_failed',clear);}
+ }catch(err){
+  // Store no provider text, URLs, codes, identities or credentials.
+  try{await auth.put(e,'instagram-diagnostic',{stage,...(shape?{shape}:{}),...(Number.isInteger(err?.httpStatus)?{httpStatus:err.httpStatus}:{})},Date.now()+600000);}catch{}
+  return auth.redirect('/?error=instagram_connection_failed',clear);
+ }
 }

@@ -76,3 +76,11 @@ test('two concurrent Instagram callbacks exchange the one-time code only once',a
  const {env}=await fixture(t);const {state}=await begin(env);const calls=provider(t);
  const responses=await Promise.all([finish(env,state),finish(env,state)]);assert.deepEqual(responses.map(r=>r.status).sort(),[302,400]);assert.equal(calls.length,3);
 });
+test('Instagram failure diagnostics retain only bounded stage metadata and expire',async t=>{
+ const {env,DB}=await fixture(t);const {state}=await begin(env);provider(t,{fail:true});
+ await finish(env,state);
+ const row=await DB.prepare("SELECT value,expires FROM state WHERE key='instagram-diagnostic'").first();
+ assert.ok(row);assert.deepEqual(JSON.parse(row.value),{stage:'short_token_request',httpStatus:400});
+ assert.ok(row.expires>Date.now()&&row.expires<=Date.now()+600000);
+ assert.ok(!row.value.includes('private'));
+});

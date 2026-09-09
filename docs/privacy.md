@@ -118,3 +118,9 @@ responses or sent to AI. Meta's token exchange uses private server requests; do 
 logging for those requests. Tokens are not refreshed automatically in this release.
 Revocation is managed in Instagram's Apps and websites settings. No photos or
 captions are uploaded to Instagram by connecting, and publishing remains disabled.
+
+Failed Instagram connections retain a private diagnostic for at most ten minutes
+of API visibility: a fixed failure stage, HTTP status and expected-field type or
+validation booleans. It contains no provider messages, URLs, codes, tokens or
+account identifiers. Expired records are purged on subsequent expiring auth writes;
+a successful connection clears the diagnostic.
