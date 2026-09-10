@@ -276,6 +276,7 @@ def validated_groups(result, allowed_ids, job_id, dimensions=None):
 
 
 def run():
+    from PIL import Image
     from inventory import Inventory
     from auto_review import review_drafts
     os.umask(0o077)
