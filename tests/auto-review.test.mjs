@@ -36,3 +36,11 @@ test('strict mode records AI approval; disabling it at commit leaves a draft',as
  const changed=reviewDraft(saved,{...saved,action:'save',caption:'New caption'});assert.equal(changed.status,'draft');assert.equal(changed.approvalSource,undefined);
 });
 test('switching back to manual wins over in-flight positive AI review',async t=>assert.equal((await run(t,'strict_auto',true)).status,'draft'));
+test('cropped approval binds the exact ratio and every crop position',()=>{
+ const d={...draft,aspect:'3:2',photos:[{...draft.photos[0],frame:{mode:'crop',x:50,y:20}}]};
+ const e={...evidence(),policy:'strict-v2',reviewedPost:{title:d.title,caption:d.caption,hashtags:d.hashtags,aspect:d.aspect,photos:d.photos}};
+ assert.equal(strictApproval(d,e,'strict_auto'),true);
+ assert.equal(strictApproval({...d,aspect:'4:5'},e,'strict_auto'),false);
+ assert.equal(strictApproval({...d,photos:[{...d.photos[0],frame:{mode:'crop',x:50,y:50}}]},e,'strict_auto'),false);
+ assert.equal(strictApproval(d,{...e,policy:'strict-v1'},'strict_auto'),false);
+});

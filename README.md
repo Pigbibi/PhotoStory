@@ -249,9 +249,18 @@ Model-generated language is best effort; review text before approving it.
 
 ## Consistent carousel framing
 
+New AI batches separate photos by their decoded image orientation before theme
+selection: landscape → **3:2**, portrait → **4:5**, square → **1:1**. Orientations
+cannot mix within a generated post. AI selects crop positions to fill the canvas
+without borders and is instructed to omit images whose important subjects would
+be clipped. Inspect the saved crops: AI composition judgments can be wrong.
+This can make up to three grouping calls per batch, within the existing total
+of three drafts. Update both the Worker and VPS scripts before starting a new job;
+existing drafts and their approvals are not rewritten.
+
 In the review editor, choose one canvas ratio for the whole draft: **4:5 portrait**,
 **1:1 square**, or **3:2 landscape**. Each photo can keep its full image with white
-borders (default) or fill the canvas by cropping. Crop mode provides horizontal and
+borders or fill the canvas by cropping (the default for new AI batches). Crop mode provides horizontal and
 vertical position sliders. The main preview and filmstrip use the same saved frame.
 Position percentages are measured across the available overflow; when an axis has
 no overflow, moving its slider has no visual effect. Images are never stretched.
@@ -301,14 +310,14 @@ write transaction.
 
 Strict mode requires every selected photo to have an initial aesthetic score of
 **9/10 or higher**, be outdoor scenery, and have no privacy flags. It then makes a
-**separate AI call** to inspect the complete post and its actual default 4:5,
-white-bordered previews. Privacy, grounded text and locations, coherent theme,
+**separate AI call** to inspect the complete post and previews rendered with its
+actual saved aspect ratio and crop positions. Privacy, grounded text and locations, coherent theme,
 composition, and absence of repetitive frames must all pass; any uncertainty,
 missing field, malformed response, low score, or extra-review failure leaves the
 post for manual review. This extra call consumes additional Codex quota. It uses
 the same configured service/model, not an independent provider or a safety guarantee.
 
-The server binds the result to the draft text, photo IDs/order and default framing;
+The server binds the result to the draft text, photo IDs/order, aspect ratio and every crop position;
 client-supplied approval status cannot bypass these checks. Approved posts are
 labelled as AI-reviewed in the private queue. Changing text, photos or framing
 revokes approval and requires manual re-review. Publishing still requires an explicit action in the final preview. Scores are a selection rule, not a calibrated probability of safety.

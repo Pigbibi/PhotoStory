@@ -72,3 +72,21 @@ class ThumbnailOriginTests(unittest.TestCase):
             self.assertFalse(b.valid_thumbnail_url(url))
 
 if __name__=='__main__': unittest.main()
+
+class CompositionTests(unittest.TestCase):
+    def draft(self, ids):
+        return {'title':'Coast','caption':'Coast.','hashtags':'#Coast','reason':'Theme',
+                'photos':[{'id':i,'alt':'Coast','frame':{'mode':'crop','x':50,'y':20}} for i in ids]}
+    def test_mixed_orientation_is_rejected(self):
+        with self.assertRaises(b.Stop):
+            b.validated_groups({'drafts':[self.draft(['a','b'])]}, {'a','b'}, 'job', {'a':(800,600),'b':(600,800)})
+    def test_orientation_sets_ratio_and_retains_crop_position(self):
+        for size,aspect in [((800,600),'3:2'),((600,800),'4:5'),((600,600),'1:1')]:
+            d=b.validated_groups({'drafts':[self.draft(['a'])]}, {'a'}, 'job', {'a':size})[0]
+            self.assertEqual(d['aspect'],aspect)
+            self.assertEqual(d['photos'][0]['frame'],{'mode':'crop','x':50,'y':20})
+    def test_missing_or_invalid_crop_is_rejected(self):
+        for frame in [None,{'mode':'fit','x':50,'y':50},{'mode':'crop','x':101,'y':50}]:
+            d=self.draft(['a']);d['photos'][0]['frame']=frame
+            with self.assertRaises(b.Stop):
+                b.validated_groups({'drafts':[d]}, {'a'}, 'job', {'a':(800,600)})
