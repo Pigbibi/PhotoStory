@@ -305,6 +305,26 @@ async function route(r, e) {
       return json(await history.matching(e));
     }
     if(p==='/api/history/matches/confirm' && r.method==='POST')return json(await history.confirmMatches(e,await readJSON(r,128000)));
+    if(p==='/api/history/matches/run' && r.method==='POST'){
+      if(!(await auth.get(e,'microsoft')))return failure('onedrive_not_connected',409);
+      const activeHistory=await e.DB.prepare("SELECT id,body FROM jobs WHERE status IN ('pending','running') AND json_extract(body,'$.mode')='history_match' ORDER BY created LIMIT 1").first();
+      if(activeHistory){
+        const activeBody=JSON.parse(activeHistory.body);
+        if(activeBody.stopRequested===true){
+          await e.DB.prepare("UPDATE jobs SET status='cancelled',lease=NULL WHERE id=? AND status IN ('pending','running')").bind(activeHistory.id).run();
+        }else return failure('job_in_progress',409);
+      }
+      const running=await e.DB.prepare("SELECT id FROM jobs WHERE status IN ('pending','running') LIMIT 1").first();
+      if(running)return failure('job_in_progress',409);
+      const {settings}=await settingsView(e);
+      const previous=await e.DB.prepare("SELECT body FROM jobs WHERE json_extract(body,'$.mode') IS NULL AND status IN ('complete','limited','failed') ORDER BY created DESC LIMIT 1").first();
+      const savedRange=settings.folder?{folder:settings.folder,selection:{range:settings.range,start:settings.start||undefined},start:settings.range==='custom'||settings.range==='since'?settings.start:null,end:settings.range==='custom'?settings.end:null}:previous&&JSON.parse(previous.body);
+      if(!savedRange)return failure('history_match_setup',409);
+      const base=savedRange,id=crypto.randomUUID();
+      const input={pipeline:2,mode:'history_match',folder:base.folder,selection:base.selection,start:base.start||null,end:base.end||null,maxPhotos:100,locationHint:'',progress:{phase:'scanning',total:0,processed:0,batches:0,analyzed:0},...jobLanguages(e)};
+      await e.DB.prepare("INSERT INTO jobs(id,body,status,created) VALUES(?,?,'pending',?)").bind(id,JSON.stringify(input),Date.now()).run();
+      return json({id,status:'pending',mode:'history_match'},201);
+    }
     if(p==='/api/settings' && r.method==='GET')return json(await settingsView(e));
     if(p==='/api/storage/migrate'&&r.method==='POST')return json(await migrateImages(e));
     if(p==='/api/settings' && r.method==='PUT')return json(await saveSettings(e,await readJSON(r)));
@@ -314,13 +334,13 @@ async function route(r, e) {
       ).all();
       return json(rows.results.map(({body,...row})=>{
         const v=JSON.parse(body);
-        return {...row,folder:v.folder,selection:v.selection,maxPhotos:v.maxPhotos,locationHint:v.locationHint||"",progress:v.progress,stopRequested:Boolean(v.stopRequested),scheduled:Boolean(v.scheduled),analysisLimit:v.analysisLimit};
+        return {...row,mode:v.mode||'selection',folder:v.folder,selection:v.selection,maxPhotos:v.maxPhotos,locationHint:v.locationHint||"",progress:v.progress,stopRequested:Boolean(v.stopRequested),scheduled:Boolean(v.scheduled),analysisLimit:v.analysisLimit};
       }));
     }
     if (p.startsWith("/api/jobs/") && p.endsWith("/stop") && r.method==="POST") {
       const id=p.slice(10,-5);
       if(!validId(id)) return failure("not_found",404);
-      const updated=await e.DB.prepare("UPDATE jobs SET body=json_set(body,'$.stopRequested',json('true')),status=CASE WHEN status='pending' THEN 'cancelled' ELSE status END WHERE id=? AND status IN ('pending','running')").bind(id).run();
+      const updated=await e.DB.prepare("UPDATE jobs SET body=json_set(body,'$.stopRequested',json('true')),status=CASE WHEN status='pending' OR json_extract(body,'$.mode')='history_match' THEN 'cancelled' ELSE status END,lease=CASE WHEN json_extract(body,'$.mode')='history_match' THEN NULL ELSE lease END WHERE id=? AND status IN ('pending','running')").bind(id).run();
       return updated.meta.changes===1?json({ok:true}):failure("job_conflict",409);
     }
     if (p === "/api/jobs" && r.method === "POST") {
@@ -425,6 +445,7 @@ export default {
         "reauthorization_required",
         "history_not_complete",
         "history_match_contract",
+        "history_match_setup",
       ]);
       const code = known.has(err.message) ? err.message : "request_failed";
       return secure(failure(code, code === "version_conflict" ? 409 : 400));

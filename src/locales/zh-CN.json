@@ -275,5 +275,6 @@
   "More pages remaining": "还有后续页面",
   "Historical match status": "OneDrive 匹配：已确认 {confirmed} 条 · 待确认 {proposals} 条",
   "Historical matches require confirmation before exclusion.": "历史匹配仅是建议；确认后才会排除对应照片。",
-  "Confirm all visible matches": "确认当前显示的全部匹配"
+  "Confirm all visible matches": "确认当前显示的全部匹配",
+  "Run history-only verification": "运行仅历史匹配验证"
 }

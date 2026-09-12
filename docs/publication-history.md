@@ -51,3 +51,7 @@ only after the owner confirms a stored proposal. The owner-only
 `POST /api/history/matches/confirm` endpoint accepts only proposals created by
 the machine-authenticated processor. The coverage percentage therefore means
 verified source matches, not the number of posts inventoried.
+
+**Run history-only verification** is a read-only follow-up task. It uses the saved periodic-production folder and date range (or the most recent completed task when no periodic range is saved) and revisits every matching OneDrive photo, including photos that were already screened by AI. Each bounded processor step handles at most 100 photos, computes only local visual fingerprints, and never calls AI, creates drafts, or publishes to Instagram. Large libraries therefore finish over several scheduled steps; progress is visible in the task list and failures are not retried automatically. Results remain proposals until the owner confirms them.
+
+For hands-off production, select **Strict AI auto-review** and **Strict AI automatic publishing** in Production and Retention Rules. New drafts that pass the strict review can then publish under the low-frequency guard, subject to a connected Instagram account and the configured limits. This mode does not auto-confirm historical visual matches: keeping that confirmation owner-controlled prevents a similar-looking landscape from permanently excluding the wrong source.

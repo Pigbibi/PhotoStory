@@ -275,5 +275,6 @@
   "More pages remaining": "Quedan más páginas",
   "Historical match status": "Coincidencias de OneDrive: {confirmed} confirmadas · {proposals} propuestas",
   "Historical matches require confirmation before exclusion.": "Las coincidencias históricas son sugerencias; confírmalas antes de excluir una foto.",
-  "Confirm all visible matches": "Confirmar todas las coincidencias visibles"
+  "Confirm all visible matches": "Confirmar todas las coincidencias visibles",
+  "Run history-only verification": "Ejecutar verificación solo del historial"
 }

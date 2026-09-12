@@ -59,3 +59,24 @@ test('manual scans inherit the saved total AI budget and cannot override it',asy
  assert.equal((await DB.prepare('SELECT status FROM jobs WHERE id=?').bind(c.id).first()).status,'limited');
  assert.equal(await(await api('/internal/claim',{},true)).json(),null);
 });
+test('history-only verification clones the last source range without enabling AI drafts',async t=>{
+ const {DB,api}=await setup(t);
+ assert.equal((await api('/api/jobs',{folder:'Photos/Camera Roll',range:'3m',maxPhotos:50})).status,201);
+ await DB.prepare("UPDATE jobs SET status='complete'").bind().run();
+ const result=await api('/api/history/matches/run',{});
+ assert.equal(result.status,201);
+ const body=await result.json(); assert.equal(body.mode,'history_match');
+ const row=await DB.prepare('SELECT body FROM jobs WHERE id=?').bind(body.id).first();
+ const job=JSON.parse(row.body); assert.equal(job.mode,'history_match');assert.equal(job.folder,'Photos/Camera Roll');assert.equal(job.maxPhotos,100);assert.equal(job.progress.phase,'scanning');
+});
+test('history-only verification recovers a stopped stale run before starting again',async t=>{
+ const {DB,api}=await setup(t);
+ await api('/api/jobs',{folder:'Photos/Camera Roll',range:'3m',maxPhotos:50});
+ await DB.prepare("UPDATE jobs SET status='complete'").bind().run();
+ const first=await api('/api/history/matches/run',{}); assert.equal(first.status,201);
+ const firstBody=await first.json();
+ await DB.prepare("UPDATE jobs SET status='running',body=json_set(body,'$.stopRequested',json('true')) WHERE json_extract(body,'$.mode')='history_match'").bind().run();
+ const second=await api('/api/history/matches/run',{}); assert.equal(second.status,201);
+ const secondBody=await second.json(); assert.notEqual(secondBody.id,firstBody.id);
+ assert.equal((await DB.prepare('SELECT status FROM jobs WHERE id=?').bind(firstBody.id).first()).status,'cancelled');
+});

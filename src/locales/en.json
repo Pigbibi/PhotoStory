@@ -275,5 +275,6 @@
   "More pages remaining": "More pages remaining",
   "Historical match status": "OneDrive matches: {confirmed} confirmed · {proposals} proposals",
   "Historical matches require confirmation before exclusion.": "Historical matches are suggestions only; confirm them before they exclude a photo.",
-  "Confirm all visible matches": "Confirm all visible matches"
+  "Confirm all visible matches": "Confirm all visible matches",
+  "Run history-only verification": "Run history-only verification"
 }

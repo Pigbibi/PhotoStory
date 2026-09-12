@@ -87,6 +87,7 @@ class Inventory:
                 self.db.execute('INSERT OR IGNORE INTO folders(id) VALUES(?)',(root['id'],))
                 self.set('initialized',True)
         known=set(self.source.get('knownPhotoIds',[]))
+        history_mode=self.source.get('mode')=='history_match'
         for _ in range(page_budget):
             folder=self.db.execute('SELECT * FROM folders WHERE done=0 ORDER BY rowid DESC LIMIT 1').fetchone()
             if not folder: return True
@@ -107,7 +108,10 @@ class Inventory:
                     fingerprint=photo.get('fingerprint')
                     if fingerprint: fingerprint=hashlib.sha256((self.policy+fingerprint).encode()).hexdigest()
                     photo['fingerprint']=fingerprint
-                    cached=photo['id'] in known or (fingerprint and self.db.execute('SELECT 1 FROM cache.analyzed WHERE fingerprint=?',(fingerprint,)).fetchone())
+                    # Historical matching must revisit photos that were already
+                    # screened by AI: an AI cache hit is not evidence that the
+                    # source image was compared with Instagram history.
+                    cached=(not history_mode) and (photo['id'] in known or (fingerprint and self.db.execute('SELECT 1 FROM cache.analyzed WHERE fingerprint=?',(fingerprint,)).fetchone()))
                     self.db.execute("INSERT OR IGNORE INTO photos(id,body,taken,fingerprint,status) VALUES(?,?,?,?,?)",(photo['id'],json.dumps(photo),photo['taken'],fingerprint,'cached' if cached else 'pending'))
                 self.db.execute('INSERT INTO pages VALUES(?)',(key,))
                 self.db.execute('UPDATE folders SET url=?,done=? WHERE id=?',(following,0 if following else 1,folder['id']))
@@ -198,3 +202,29 @@ class Inventory:
     def history_complete(self):
         row=self.db.execute("SELECT value FROM cache.history_meta WHERE key='complete'").fetchone()
         return bool(row and row[0]=='1')
+
+    def history_batch(self,limit):
+        rows=self.db.execute("SELECT body FROM photos WHERE status!='history_checked' ORDER BY taken,id LIMIT ?",(limit,)).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def save_history_batch(self,hashes):
+        """Stage only local visual hashes; never mark the photo AI-analyzed."""
+        batch=self.get('inflight')
+        batch['historyHashes']=hashes
+        with self.db:self.set('inflight',batch)
+
+    def reconcile_history(self,batch_id):
+        batch=self.get('inflight')
+        if not batch or batch['id']!=batch_id: raise ValueError('batch_outcome_unknown')
+        with self.db:
+            for photo in batch['photos']:
+                self.db.execute("UPDATE photos SET status='history_checked',outcome='history_checked' WHERE id=?",(photo['id'],))
+                value=batch.get('historyHashes',{}).get(photo['id'])
+                if photo.get('fingerprint') and value:
+                    self.db.execute('INSERT OR REPLACE INTO cache.history_meta VALUES(?,?)',('photo:'+photo['fingerprint'],value))
+            self.set('batches',(self.get('batches') or 0)+1)
+            self.set('inflight',None)
+
+    def history_progress(self):
+        row=self.db.execute("SELECT count(*) AS total,coalesce(sum(status='history_checked'),0) AS processed FROM photos").fetchone()
+        return {'phase':'complete' if row['processed']==row['total'] else 'processing','total':row['total'],'processed':row['processed'],'batches':self.get('batches') or 0,'analyzed':0}

@@ -198,6 +198,9 @@ export async function mediaHistoryMediaPage(e,offset=0){
  const records=saved.records.slice(offset,offset+5),items=[];
  for(const record of records){
   if(!identifier(record.id))throw new Error('instagram_connection_failed');
+  // Video-only posts have no visual source photo to compare. They remain in
+  // the inventory but are skipped without an unnecessary provider request.
+  if(record.photos===0)continue;
   const url=new URL('https://graph.instagram.com/v26.0/'+record.id);
   url.searchParams.set('fields','id,media_type,media_url,children.limit(100){id,media_type,media_url}');
   const value=await request(url,{headers:{Authorization:'Bearer '+account.access}});

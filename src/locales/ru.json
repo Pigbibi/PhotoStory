@@ -275,5 +275,6 @@
   "More pages remaining": "Есть другие страницы",
   "Historical match status": "Совпадения OneDrive: подтверждено {confirmed} · предложено {proposals}",
   "Historical matches require confirmation before exclusion.": "Исторические совпадения — только предложения; подтвердите их перед исключением фото.",
-  "Confirm all visible matches": "Подтвердить все видимые совпадения"
+  "Confirm all visible matches": "Подтвердить все видимые совпадения",
+  "Run history-only verification": "Запустить проверку только истории"
 }
