@@ -21,7 +21,7 @@ test('UI defaults to English, Arabic is RTL, and interpolation is literal',()=>{
 });
 test('all current Chinese UI source strings have catalog entries',()=>{
  const base=catalog('zh-CN');
- for(const file of ['main.jsx','LifecycleSettings.jsx']){
+ for(const file of ['main.jsx','LifecycleSettings.jsx','History.jsx']){
   const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8');
   for(const m of source.matchAll(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g)){
    if(/[\u3400-\u9fff]/u.test(m[0]))assert.ok(Object.hasOwn(base,m[0].slice(1,-1)),file+': '+m[0]);
