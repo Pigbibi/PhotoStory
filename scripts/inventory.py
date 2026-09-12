@@ -57,6 +57,12 @@ class Inventory:
           CREATE TABLE IF NOT EXISTS cache.visual(fingerprint TEXT PRIMARY KEY,policy TEXT NOT NULL,taken REAL NOT NULL,body TEXT NOT NULL);
           CREATE INDEX IF NOT EXISTS cache.visual_time ON visual(policy,taken);
         ''')
+        # Keep the processing state compact while retaining an auditable reason
+        # for every terminal decision.  Older private inventories are migrated
+        # in place; the reason is never used to weaken the safety gate.
+        columns={row[1] for row in self.db.execute('PRAGMA table_info(photos)')}
+        if 'outcome' not in columns:
+            self.db.execute("ALTER TABLE photos ADD COLUMN outcome TEXT NOT NULL DEFAULT 'unclassified'")
         self.source=source
         self.policy=policy
         signature=json.dumps({k:source.get(k) for k in ('folder','start','end')},sort_keys=True)+policy
@@ -100,7 +106,7 @@ class Inventory:
                     if fingerprint: fingerprint=hashlib.sha256((self.policy+fingerprint).encode()).hexdigest()
                     photo['fingerprint']=fingerprint
                     cached=photo['id'] in known or (fingerprint and self.db.execute('SELECT 1 FROM cache.analyzed WHERE fingerprint=?',(fingerprint,)).fetchone())
-                    self.db.execute('INSERT OR IGNORE INTO photos VALUES(?,?,?,?,?)',(photo['id'],json.dumps(photo),photo['taken'],fingerprint,'cached' if cached else 'pending'))
+                    self.db.execute("INSERT OR IGNORE INTO photos(id,body,taken,fingerprint,status) VALUES(?,?,?,?,?)",(photo['id'],json.dumps(photo),photo['taken'],fingerprint,'cached' if cached else 'pending'))
                 self.db.execute('INSERT INTO pages VALUES(?)',(key,))
                 self.db.execute('UPDATE folders SET url=?,done=? WHERE id=?',(following,0 if following else 1,folder['id']))
         return not self.db.execute('SELECT 1 FROM folders WHERE done=0 LIMIT 1').fetchone()
@@ -125,11 +131,12 @@ class Inventory:
         batch['digests']=digests
         with self.db: self.set('inflight',batch)
 
-    def save_screening(self,digests,profiles):
+    def save_screening(self,digests,profiles,outcomes=None):
         batch=self.get('inflight')
         batch['digests']=digests
         batch['profiles']=profiles
         batch['analyzed']=len(profiles)
+        batch['outcomes']=outcomes or {}
         with self.db:self.set('inflight',batch)
 
     def nearby_profiles(self,photo):
@@ -155,9 +162,15 @@ class Inventory:
         if batch['id']!=last_batch: raise ValueError('batch_outcome_unknown')
         with self.db:
             for photo in batch['photos']:
-                self.db.execute("UPDATE photos SET status='done' WHERE id=?",(photo['id'],))
+                outcome=batch.get('outcomes',{}).get(photo['id'],'completed')
+                status='deferred' if outcome=='theme_unmatched' else 'done'
+                self.db.execute("UPDATE photos SET status=?,outcome=? WHERE id=?",(status,outcome,photo['id']))
                 if photo.get('fingerprint'):
-                    self.db.execute('INSERT OR IGNORE INTO cache.analyzed VALUES(?,?,?)',(photo['fingerprint'],batch['digests'].get(photo['id']),self.policy))
+                    # A safe photo that merely failed to form a coherent theme
+                    # remains eligible in a later job; safety and duplicate
+                    # decisions remain cached and cannot be retried.
+                    if outcome != 'theme_unmatched':
+                        self.db.execute('INSERT OR IGNORE INTO cache.analyzed VALUES(?,?,?)',(photo['fingerprint'],batch['digests'].get(photo['id']),self.policy))
                     features=batch.get('profiles',{}).get(photo['id'])
                     if features:self.db.execute('INSERT OR IGNORE INTO cache.visual VALUES(?,?,?,?)',(photo['fingerprint'],self.policy,photo['taken'],json.dumps(features)))
             self.set('batches',(self.get('batches') or 0)+1)

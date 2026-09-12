@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {setup} from './helpers/database.mjs';
 import * as history from '../worker/history.mjs';
 import worker from '../worker/index.mjs';
+import {put,seal} from '../worker/auth.mjs';
 test('publication ledger survives removed previews and deduplicates source ids',async t=>{
  const {DB,env}=await setup(t);
  for(const [id,status,photos] of [['a','published',[{id:'p1'},{id:'p2'}]],['b','published',[{id:'p1'}]],['c','uncertain',[{id:'p3'}]],['d','prepared',[{id:'p4'}]]]){
@@ -14,7 +15,21 @@ test('publication ledger survives removed previews and deduplicates source ids',
  assert.equal((await worker.fetch(new Request('https://example.test/api/history'),env)).status,401);
  assert.ok(!JSON.stringify(value).includes('access_token'));
 });
-import {put,seal} from '../worker/auth.mjs';
+test('inventory reports metadata matches without claiming OneDrive source matches',async t=>{
+ const {DB,env}=await setup(t);
+ Object.assign(env,{INSTAGRAM_CLIENT_ID:'1234',INSTAGRAM_CLIENT_SECRET:'fixture',INSTAGRAM_USERNAME:'owner',INSTAGRAM_REDIRECT_URI:'https://example.test/auth/instagram/callback',TOKEN_ENCRYPTION_KEY:btoa(String.fromCharCode(...new Uint8Array(32).fill(1)))});
+ await put(env,'instagram',await seal(env,{access:'private-token',client:'1234',userId:'456',username:'owner',permissions:['instagram_business_basic','instagram_business_content_publish'],expires:Date.now()+3600000}));
+ await DB.prepare('INSERT INTO publications VALUES(?,?,?,?,?,?,?)').bind('local','local',1,'published',JSON.stringify({mediaId:'ig-parent',children:['ig-child'],photos:[{id:'source-1'}]}),1,0).run();
+ await put(env,'instagram-history:456',{records:[
+  {id:'ig-parent',at:1,photos:1,photoIds:['ig-child']},
+  {id:'foreign',at:2,photos:2,photoIds:['foreign-child']}
+ ],after:null,checkedAt:3});
+ const value=await history.summary(env);
+ assert.equal(value.instagram.matchCoverage.matchedPosts,1);
+ assert.equal(value.instagram.matchCoverage.matchedPhotos,1);
+ assert.equal(value.instagram.matchCoverage.sourceMatches,0);
+ assert.equal(value.instagram.matchCoverage.mode,'metadata_only');
+});
 import {mediaHistoryPage} from '../worker/instagram.mjs';
 async function account(t){
  const v=await setup(t);Object.assign(v.env,{INSTAGRAM_CLIENT_ID:'1234',INSTAGRAM_CLIENT_SECRET:'fixture',INSTAGRAM_USERNAME:'landscapes',INSTAGRAM_REDIRECT_URI:'https://example.test/auth/instagram/callback',TOKEN_ENCRYPTION_KEY:btoa(String.fromCharCode(...new Uint8Array(32).fill(1)))});

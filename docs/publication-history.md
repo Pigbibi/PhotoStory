@@ -28,3 +28,11 @@ of compressed/cropped images is not implemented. Keep a known-new date range unt
 that match coverage is available; do not enable whole-library automatic publishing
 on the assumption that these counters guarantee no repeats. Existing conservative
 burst filtering is separate and is not historical Instagram matching.
+
+The inventory response also includes `instagram.matchCoverage`. In the current
+`metadata_only` mode, a record is marked `photostory_post` only when its
+Instagram media ID (or carousel child ID) is present in PhotoStory's own
+publication ledger; other records are `unmatched`. `sourceMatches` remains zero
+until a future cross-platform matcher compares an Instagram image with a
+OneDrive file. The coverage percentage therefore means verified source matches,
+not the number of posts inventoried.

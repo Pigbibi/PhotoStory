@@ -124,6 +124,8 @@ Creator 专业账户。基础资料权限为 `instagram_business_basic`，发布
 
 ### 运行环境排查
 
+通知状态、故障处理和当前不提供离线推送的边界见[通知与故障处理](notifications.zh-CN.md)。
+
 如果同意授权后仍连接失败，可检查 D1 中短期保留的私有
 `instagram-diagnostic` 记录；不要开启令牌交换请求的原始 URL 日志。
 本部署的 Workers 运行环境会在发出请求前拒绝 `redirect: "error"`。

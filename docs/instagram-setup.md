@@ -168,6 +168,9 @@ This deployment's Workers runtime rejects `redirect: "error"` before sending the
 request. PhotoStory uses `redirect: "manual"` and rejects non-success responses,
 including every redirect, so credentials are never forwarded to a redirect target.
 
+For notification states, operator actions and the current lack of offline
+delivery, see [Notifications and operator response](notifications.md).
+
 
 ## Deploy and use manual publishing
 

@@ -61,6 +61,29 @@ class InventoryTests(unittest.TestCase):
         d={**self.record(3),'taken':1002+24*3600}
         self.assertEqual([len(x) for x in event_batches([a,b,c,d])],[2,1,1])
 
+    def test_theme_unmatched_is_deferred_and_not_cached_for_future_jobs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inv=Inventory(tmp,'job',self.source(),'policy')
+            photo=self.record(1)
+            inv.db.execute('INSERT INTO photos(id,body,taken,fingerprint,status) VALUES(?,?,?,?,?)',(photo['id'],__import__('json').dumps(photo),photo['taken'],photo['fingerprint'],'pending'))
+            inv.db.commit(); bid=inv.stage_batch([photo])
+            inv.save_screening({'1':'digest'},{'1':{'taken':1001,'digest':'digest'}},{'1':'theme_unmatched'})
+            inv.reconcile(bid)
+            row=inv.db.execute('SELECT status,outcome FROM photos WHERE id=?',('1',)).fetchone()
+            self.assertEqual(tuple(row),('deferred','theme_unmatched'))
+            self.assertFalse(inv.db.execute('SELECT 1 FROM cache.analyzed').fetchone())
+            inv.close()
+            # A later job has a separate per-job photo table; because the
+            # deferred decision was intentionally omitted from shared cache,
+            # the same source item is discovered as a fresh pending candidate.
+            later=Inventory(tmp,'later',self.source(),'policy')
+            def graph(url):
+                if '/root:/' in url: return {'id':'root','folder':{}}
+                return {'value':[photo]}
+            self.assertTrue(later.scan(graph,lambda x:x))
+            self.assertEqual([p['id'] for p in later.next_batch(10)],['1'])
+            later.close()
+
 if __name__=='__main__': unittest.main()
 
 class ScreeningBudgetTests(unittest.TestCase):
@@ -70,7 +93,7 @@ class ScreeningBudgetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             inv=Inventory(tmp,'budget',self.source(),'policy')
             photos=[self.record(1),self.record(2)]
-            for p in photos:inv.db.execute('INSERT INTO photos VALUES(?,?,?,?,?)',(p['id'],__import__('json').dumps(p),p['taken'],p['fingerprint'],'pending'))
+            for p in photos:inv.db.execute('INSERT INTO photos(id,body,taken,fingerprint,status) VALUES(?,?,?,?,?)',(p['id'],__import__('json').dumps(p),p['taken'],p['fingerprint'],'pending'))
             inv.db.commit();bid=inv.stage_batch(photos)
             features={'taken':1001,'digest':'example'}
             inv.save_screening({'1':'a','2':'b'},{'1':features})

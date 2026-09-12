@@ -366,6 +366,7 @@ def run():
                 if not inventory.known_digest(digest):previews.append((photo,image))
             selected=representatives(previews,inventory.nearby_profiles)
             profiles={p['id']:features for p,image,features in selected}
+            outcomes={p['id']:'duplicate_burst' for p in candidates if p not in [v[0] for v in selected]}
             # Privacy screening still gates every representative; preselection
             # never grants approval and only actual AI inputs count against quota.
             for offset in range(0,len(selected),6):
@@ -381,9 +382,11 @@ def run():
                 safe_ids = {p["id"] for p in safe}
                 for photo in batch:
                     if photo["id"] not in safe_ids:
+                        outcomes[photo['id']]='ai_rejected'
                         (cwd / (photo["id"] + ".jpg")).unlink()
                         assets.pop(photo["id"], None)
                 for p in safe:
+                    outcomes[p['id']]='safe_candidate'
                     allowed.append({**p, **{k:next(x[k] for x in batch if x["id"]==p["id"]) for k in ("captured","area")}})
             # Keep the composition pass small; remaining candidates are intentionally unselected.
             shortlist = sorted(allowed, key=lambda p: (-p["aesthetic"], p["captured"]))[:24]
@@ -406,12 +409,18 @@ def run():
             scores={p['id']:p['aesthetic'] for p in shortlist}
             for draft in drafts:
                 draft['photos']=cover_first(draft['photos'],scores)
+            used_ids={p['id'] for d in drafts for p in d['photos']}
+            for p in allowed:
+                if p['id'] not in used_ids:
+                    outcomes[p['id']]='theme_unmatched'
+                else:
+                    outcomes[p['id']]='grouped'
             from translate_labels import translate_labels
             drafts=translate_labels(drafts,gateway,cwd)
             auto_reviews=review_drafts(drafts,allowed,source,cwd,gateway)
             used = {p["id"] for d in drafts for p in d["photos"]}
             photos = [{"id":pid, "safety":"allow", "flags":[], "jpeg":base64.b64encode(assets[pid]).decode(),"source":next(p.get("source") for p in candidates if p["id"]==pid)} for pid in used]
-            inventory.save_screening(digests,profiles)
+            inventory.save_screening(digests,profiles,outcomes)
             progress=inventory.proposed_progress()
             completion_started = True
             result = call("/internal/complete", {**auth, "batchId":batch_id,"more":progress['processed']<progress['total'],"progress":progress,"drafts":drafts, "photos":photos,"autoReviews":auto_reviews})
