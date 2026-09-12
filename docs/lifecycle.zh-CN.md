@@ -4,7 +4,7 @@
 
 OneDrive 原图始终留在 OneDrive；PhotoStory 不删除原图。VPS 下载最长边
 768 像素的预览，移除 EXIF 后发送给部署者配置的 Codex 服务。运行 Codex
-客户端不等于在 VPS 本地运行识图模型。入选的私有预览和草稿存于 Cloudflare D1，
+客户端不等于在 VPS 本地运行识图模型。草稿存于 Cloudflare D1；入选预览默认在 D1，也可按[存储教程](storage.zh-CN.md)迁至私有 R2，
 需要允许名单内的 GitHub 用户登录才能查看。照片、草稿和凭据不进入开源仓库。
 
 ## 制作规则

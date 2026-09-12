@@ -244,5 +244,17 @@
   "严格 AI 自动发布": "Strict AI automatic publishing",
   "自动发布说明": "Automatic publishing requires a connected Instagram account. Only new AI-approved drafts created after enabling qualify. Final original crops are reviewed again; at most one attempt every 24 hours. Errors stop the attempt. Save to apply. Switching to manual stops future requests, but cannot recall a request already sent.",
   "自动发布已开启": "Automatic publishing is on",
-  "自动发布已关闭": "Automatic publishing is off"
+  "自动发布已关闭": "Automatic publishing is off",
+  "私有图片存储（R2）": "Private image storage (R2)",
+  "已用 {used} GB / 上限 {limit} GB": "Used {used} GB / Limit {limit} GB",
+  "本月读取 {reads} / {readLimit}；写入 {writes} / {writeLimit}": "This month: reads {reads} / {readLimit}; writes {writes} / {writeLimit}",
+  "存储额度说明": "Site-only limits, including reserved uploads. Other buckets and Cloudflare services are excluded; these limits are not an account billing cap. Originals remain in OneDrive.",
+  "存储接近上限，请检查容量；不会删除待审核照片。": "Storage usage is near its limit. Review capacity; pending photos will not be deleted.",
+  "迁移现有预览（剩余 {count} 张）": "Migrate existing previews ({count} remaining)",
+  "图片迁移批次已完成。": "Image migration batch completed.",
+  "图片容量已达到上限，已停止新增；现有照片保留。": "Image capacity reached. New uploads stopped; existing photos are retained.",
+  "本月图片请求额度已用完，请检查存储设置。": "Monthly image request limit reached. Check storage settings.",
+  "图片上传状态待核实，请稍后检查，未覆盖原图。": "Upload outcome needs inspection. Originals have not been overwritten.",
+  "图片内容发生冲突，已停止覆盖。": "Image content conflict. Replacement stopped.",
+  "图片存储暂不可用，请检查 R2 连接。": "Image storage unavailable. Check the R2 connection."
 }

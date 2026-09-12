@@ -128,3 +128,14 @@ of API visibility: a fixed failure stage, HTTP status and expected-field type or
 validation booleans. It contains no provider messages, URLs, codes, tokens or
 account identifiers. Expired records are purged on subsequent expiring auth writes;
 a successful connection clears the diagnostic.
+
+## Optional private R2 storage
+
+With `MEDIA_BUCKET` configured, image bytes are stored in a dedicated private R2
+bucket and D1 retains references, hashes, draft metadata and encrypted credentials.
+Authenticated Worker routes preserve preview privacy; expiring delivery routes
+retain their existing publication-state checks. R2 credentials are not sent to the
+browser or AI process. Migration verifies a read-back hash before removing matching
+D1 bytes. Capacity reservations and conservative monthly request budgets stop new
+work at configured limits; they do not cap account-wide Cloudflare charges.
+See [storage and recovery](storage.md) for retention and interrupted-write handling.

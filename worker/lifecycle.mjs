@@ -4,6 +4,7 @@ import {jobLanguages} from './languages.mjs';
 import {get,put} from './auth.mjs';
 import {jobInput} from './jobs.mjs';
 import {publishingAccount} from './instagram.mjs';
+import {storageView,cleanupImages} from './storage.mjs';
 export const DAY=86400000, RETENTION=30*DAY;
 export const defaults={publishMode:'manual',autoPublishSince:null,reviewMode:"manual",version:0,enabled:false,frequency:'weekly',weekday:1,monthDay:1,hour:9,
   folder:'',range:'1m',maxPhotos:20,analysisLimit:100,pendingLimit:20,cleanupEnabled:true,nextRun:null};
@@ -40,7 +41,7 @@ export async function settingsView(e,now=Date.now()){
   const pending=(await e.DB.prepare("SELECT count(*) AS n FROM drafts WHERE json_extract(body,'$.status')='draft'").first()).n;
   const active=await e.DB.prepare("SELECT id,status FROM jobs WHERE status IN ('pending','running') LIMIT 1").first();
   const cleanup=await get(e,'cleanup')||{lastAt:null,nextAt:null};
-  return {settings,pending,active,backlogPaused:pending>=settings.pendingLimit,cleanup,
+  return {settings,pending,active,backlogPaused:pending>=settings.pendingLimit,cleanup,storage:await storageView(e),
     temporaryCleanup:await get(e,'temporaryCleanup'),retentionDays:30,now};
 }
 export async function saveSettings(e,b,now=Date.now()){
@@ -60,6 +61,7 @@ export async function saveSettings(e,b,now=Date.now()){
 export async function maintenance(e,now=Date.now(),temporaryCleanup=null){
   await refreshInstagram(e,now).catch(()=>{});
   await cleanupPublications(e,now);
+  await cleanupImages(e,now);
   if(temporaryCleanup && ['ok','busy','error','disabled'].includes(temporaryCleanup.status) && Number.isSafeInteger(temporaryCleanup.at) && temporaryCleanup.at<=now+60000 && temporaryCleanup.at>now-7*DAY){
     const safe={at:temporaryCleanup.at,status:temporaryCleanup.status};
     for(const k of ['files','directories'])if(Number.isSafeInteger(temporaryCleanup[k])&&temporaryCleanup[k]>=0)safe[k]=temporaryCleanup[k];
@@ -84,7 +86,7 @@ export async function maintenance(e,now=Date.now(),temporaryCleanup=null){
     ]);
   }
   const s=view.settings;
-  if(!s.enabled||s.nextRun>now||view.active||view.backlogPaused||!await get(e,'microsoft'))return;
+  if(!s.enabled||s.nextRun>now||view.active||view.backlogPaused||view.storage?.full||!await get(e,'microsoft'))return;
   const id=crypto.randomUUID(),body={...jobInput(s,new Date(now)),...jobLanguages(e),reviewMode:s.reviewMode,analysisLimit:s.analysisLimit,scheduled:true};
   // Claim this schedule slot and advance its date in the same transaction. Missed
   // periods collapse to one run; a failed job is never automatically retried.

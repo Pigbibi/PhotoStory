@@ -1,4 +1,5 @@
 import * as publishing from './publishing.mjs';
+import {storeImage,readImage,migrateImages} from './storage.mjs';
 import {automatic} from './automatic-publishing.mjs';
 import * as instagram from './instagram.mjs';
 import {original,reviewedDraft,sourceRecord,recoverSource} from './originals.mjs';
@@ -58,6 +59,7 @@ async function machine(r, e) {
 }
 async function internal(r, e, p) {
   if (!(await machine(r, e))) return failure("unauthorized", 401);
+  if(p==='/internal/storage/migrate'&&r.method==='POST')return json(await migrateImages(e));
   if(p==='/internal/autopublish'&&r.method==='POST'){
     const result=await automatic(e,await readJSON(r,2600000));
     return result instanceof Response?result:json(result);
@@ -84,7 +86,7 @@ async function internal(r, e, p) {
   }
   if (p === "/internal/claim" && r.method === "POST") {
     const view=await settingsView(e);
-    if(view.backlogPaused)return json(null);
+    if(view.backlogPaused||view.storage?.full)return json(null);
     const lease = auth.random();
     const row = await e.DB.prepare(
       "UPDATE jobs SET status='running',lease=? WHERE id=(SELECT id FROM jobs WHERE status='pending' ORDER BY created LIMIT 1) AND status='pending' RETURNING id,body",
@@ -184,7 +186,7 @@ async function internal(r, e, p) {
         stmts.push(
           e.DB.prepare("INSERT INTO photos(id,data,mime) VALUES(?,?,?)").bind(
             p.id,
-            raw.buffer,
+            await storeImage(e,'preview:'+p.id,raw),
             "image/jpeg",
           ),
         );
@@ -288,6 +290,7 @@ async function route(r, e) {
       return json(await Promise.all(rows.results.map(async x=>{const d=JSON.parse(x.body);return {...d,publication:await publishing.view(e,d.id)};})));
     }
     if(p==='/api/settings' && r.method==='GET')return json(await settingsView(e));
+    if(p==='/api/storage/migrate'&&r.method==='POST')return json(await migrateImages(e));
     if(p==='/api/settings' && r.method==='PUT')return json(await saveSettings(e,await readJSON(r)));
     if (p === "/api/jobs" && r.method === "GET") {
       const rows = await e.DB.prepare(
@@ -333,9 +336,7 @@ async function route(r, e) {
         .bind(id)
         .first();
       return row
-        ? new Response(new Uint8Array(row.data), {
-            headers: { "Content-Type": row.mime },
-          })
+        ? readImage(e,'preview:'+id,row.data)
         : failure("not_found", 404);
     }
     if (p.startsWith("/api/drafts/") && r.method === "PATCH") {
@@ -369,6 +370,7 @@ export default {
       return secure(await route(r, e));
     } catch (err) {
       const known = new Set([
+        "storage_limit","storage_request_limit","storage_busy","storage_conflict","storage_unavailable",
         "source_unavailable",
         "source_authentication_failed",
         "source_metadata_unavailable",

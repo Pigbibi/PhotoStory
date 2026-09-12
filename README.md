@@ -190,7 +190,7 @@ See [privacy and limits](docs/privacy.md) before supplying real photos.
 - Previews must reach Codex to be screened. Sensitive source images may therefore
   be processed by your configured Codex path even when later excluded. This is not
   an on-device privacy filter and does not change Codex's service data policies.
-- Only selected safe previews and drafts enter private D1 storage. No private
+- Only selected safe previews and drafts enter private storage (D1 metadata, with optional private R2 images). No private
   data is stored in the repository, public assets, GitHub artifacts or browser
   localStorage (only the interface language preference is stored there). The public generated demo never enters the real draft backend.
 - Batch processor logs only generic status/counts. Rejected previews are removed
@@ -394,3 +394,8 @@ Automatic mode is opt-in authorization to actually publish. Test your account wi
 an explicitly approved manual post first. AI is fallible; strict checks reduce
 risk but do not guarantee safe or attractive photos. No live automatic post is
 part of the repository's automated test suite.
+
+## Private image storage
+
+For larger photo queues, use a private R2 bucket with byte and request limits.
+See [R2 setup and safe migration](docs/storage.md). Originals remain in OneDrive.

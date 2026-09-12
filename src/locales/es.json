@@ -244,5 +244,17 @@
   "严格 AI 自动发布": "Publicación automática con IA estricta",
   "自动发布说明": "Se requiere Instagram conectado. Solo se admiten borradores nuevos aprobados por IA tras la activación. Se revisan de nuevo los recortes finales de originales; máximo un intento cada 24 horas. Los errores detienen el intento. Guarda para aplicar. El modo manual detiene solicitudes futuras, pero no retira las ya enviadas.",
   "自动发布已开启": "Publicación automática activada",
-  "自动发布已关闭": "Publicación automática desactivada"
+  "自动发布已关闭": "Publicación automática desactivada",
+  "私有图片存储（R2）": "Almacenamiento privado de imágenes (R2)",
+  "已用 {used} GB / 上限 {limit} GB": "Usados {used} GB / Límite {limit} GB",
+  "本月读取 {reads} / {readLimit}；写入 {writes} / {writeLimit}": "Este mes: lecturas {reads} / {readLimit}; escrituras {writes} / {writeLimit}",
+  "存储额度说明": "Límites de este sitio, incluidas las cargas reservadas. Excluyen otros buckets y servicios de Cloudflare; no limitan la factura de la cuenta. Los originales siguen en OneDrive.",
+  "存储接近上限，请检查容量；不会删除待审核照片。": "El uso se acerca al límite. Las fotos pendientes no se eliminarán.",
+  "迁移现有预览（剩余 {count} 张）": "Migrar vistas previas existentes ({count} restantes)",
+  "图片迁移批次已完成。": "Lote de migración completado.",
+  "图片容量已达到上限，已停止新增；现有照片保留。": "Límite de capacidad alcanzado. Se detienen nuevas cargas; se conservan las fotos existentes.",
+  "本月图片请求额度已用完，请检查存储设置。": "Límite mensual de solicitudes alcanzado. Revisa la configuración.",
+  "图片上传状态待核实，请稍后检查，未覆盖原图。": "Hay que comprobar el resultado de la carga. No se sobrescribieron originales.",
+  "图片内容发生冲突，已停止覆盖。": "Conflicto de contenido. Sustitución detenida.",
+  "图片存储暂不可用，请检查 R2 连接。": "Almacenamiento no disponible. Revisa la conexión R2."
 }

@@ -2,6 +2,7 @@ import {reviewedDraft} from './originals.mjs';
 import {publishingAccount,publishingRequest} from './instagram.mjs';
 import {ASPECTS,aspectValue} from './framing.mjs';
 import {get} from './auth.mjs';
+import {storeImage,readImage} from './storage.mjs';
 export const MAX_PUBLISH_IMAGE=1800000;
 const HOUR=3600000;
 const fail=code=>{throw new Error(code);};
@@ -61,8 +62,9 @@ export async function upload(e,id,publicationId,photoId,data){
  const dimensions=jpegDimensions(data);
  if(dimensions.width!==1080||dimensions.height!==Math.round(1080/ASPECTS[aspectValue(draft.aspect)]))fail('invalid_publish_image');
  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),x=>x.toString(16).padStart(2,'0')).join('');
+ const stored=await storeImage(e,'publication:'+publicationId+':'+photoId,data);
  await e.DB.prepare("INSERT OR IGNORE INTO publication_images SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM publications WHERE id=? AND status='prepared' AND expires>?)")
-  .bind(publicationId,photoId,data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength),digest,publicationId,Date.now()).run();
+  .bind(publicationId,photoId,stored,digest,publicationId,Date.now()).run();
  const saved=await e.DB.prepare('SELECT digest FROM publication_images WHERE publication_id=? AND photo_id=?').bind(publicationId,photoId).first();
  if(saved?.digest!==digest)fail('publication_conflict');
  return {ok:true};
@@ -81,12 +83,12 @@ export async function begin(e,id,publicationId,version,username){
 }
 export async function media(e,publicationId,photoId){
  const r=await e.DB.prepare("SELECT i.data FROM publication_images i JOIN publications p ON p.id=i.publication_id WHERE p.id=? AND i.photo_id=? AND p.status IN ('publishing','working','published') AND p.expires>?").bind(publicationId,photoId,Date.now()).first();
- return r?new Response(new Uint8Array(r.data),{headers:{'Content-Type':'image/jpeg','Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'}}):new Response('Not found',{status:404});
+ return r?readImage(e,'publication:'+publicationId+':'+photoId,r.data):new Response('Not found',{status:404});
 }
 export async function privateImage(e,id,publicationId,photoId){
  const p=await row(e,id);if(!p||p.id!==publicationId||p.expires<=Date.now())return new Response('Not found',{status:404});
  const r=await e.DB.prepare('SELECT data FROM publication_images WHERE publication_id=? AND photo_id=?').bind(publicationId,photoId).first();
- return r?new Response(new Uint8Array(r.data),{headers:{'Content-Type':'image/jpeg'}}):new Response('Not found',{status:404});
+ return r?readImage(e,'publication:'+publicationId+':'+photoId,r.data):new Response('Not found',{status:404});
 }
 export async function advance(e,id,publicationId){
  const p=await row(e,id);if(!p||p.id!==publicationId)fail('publication_conflict');

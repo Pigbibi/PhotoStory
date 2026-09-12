@@ -18,8 +18,21 @@ export default function LifecycleSettings({api,notify,folder,onStatus}){
     catch(e){notify(e.message);}
     finally{setBusy(false);}
   };
+  const migrate=async()=>{
+    setBusy(true);
+    try{await api('/api/storage/migrate','POST',{});await refresh(false);notify('图片迁移批次已完成。');}
+    catch(e){notify(e.message);}finally{setBusy(false);}
+  };
   return <section className="lifecycle">
     <h2>{t("定期制作与保留规则")}</h2>
+    {state.storage?.backend==='r2'&&<div className="approval-note">
+      <strong>{t('私有图片存储（R2）')}</strong>
+      <p>{t('已用 {used} GB / 上限 {limit} GB',{used:(state.storage.usedBytes/1e9).toFixed(3),limit:(state.storage.limitBytes/1e9).toFixed(1)})}</p>
+      <p>{t('本月读取 {reads} / {readLimit}；写入 {writes} / {writeLimit}',state.storage)}</p>
+      <p className="muted">{t('存储额度说明')}</p>
+      {state.storage.warning&&<p role="alert">{t('存储接近上限，请检查容量；不会删除待审核照片。')}</p>}
+      {state.storage.legacyPreviews>0&&<button className="button secondary" disabled={busy} onClick={migrate}>{t('迁移现有预览（剩余 {count} 张）',{count:state.storage.legacyPreviews})}</button>}
+    </div>}
     <label>{t("审核模式")}<select value={form.reviewMode||'manual'} onChange={e=>set('reviewMode',e.target.value)}><option value="manual">{t("人工批准（默认）")}</option><option value="strict_auto">{t("严格 AI 自动审核")}</option></select></label>
     <p className="muted">{t("严格审核说明")}</p>
     <label>{t("发布模式")}<select value={form.publishMode||'manual'} onChange={e=>set('publishMode',e.target.value)}><option value="manual">{t("人工发布（默认）")}</option><option value="automatic">{t("严格 AI 自动发布")}</option></select></label>

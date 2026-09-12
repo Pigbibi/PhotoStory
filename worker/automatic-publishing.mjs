@@ -2,6 +2,7 @@ import {get} from './auth.mjs';
 import {original,reviewedDraft} from './originals.mjs';
 import {publishingAccount} from './instagram.mjs';
 import * as publishing from './publishing.mjs';
+import {storageView} from './storage.mjs';
 
 const DAY=86400000;
 const fail=()=>{throw new Error('publication_conflict');};
@@ -21,6 +22,7 @@ export async function automatic(e,b){
  const account=await publishingAccount(e);
  if(account.userId!==s.autoPublishUserId)fail();
  if(b.action==='candidate'){
+  if((await storageView(e)).full)return null;
   // Ambiguous requests need owner investigation; never start another post.
   if(await e.DB.prepare("SELECT id FROM publications WHERE status IN ('working','uncertain') LIMIT 1").first())return null;
   const active=await e.DB.prepare("SELECT draft_id FROM publications WHERE status='publishing' AND json_extract(body,'$.automatic')=1 LIMIT 1").first();

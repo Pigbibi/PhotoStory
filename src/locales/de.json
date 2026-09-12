@@ -244,5 +244,17 @@
   "严格 AI 自动发布": "Automatisch mit strenger KI-Prüfung",
   "自动发布说明": "Ein verbundenes Instagram-Konto ist erforderlich. Nur neue, nach Aktivierung KI-genehmigte Entwürfe sind zulässig. Die finalen Originalzuschnitte werden erneut geprüft; höchstens ein Versuch pro 24 Stunden. Bei Fehlern wird gestoppt. Zum Anwenden speichern. Manuell stoppt weitere Anfragen, kann gesendete aber nicht zurückrufen.",
   "自动发布已开启": "Automatische Veröffentlichung an",
-  "自动发布已关闭": "Automatische Veröffentlichung aus"
+  "自动发布已关闭": "Automatische Veröffentlichung aus",
+  "私有图片存储（R2）": "Privater Bildspeicher (R2)",
+  "已用 {used} GB / 上限 {limit} GB": "Belegt {used} GB / Limit {limit} GB",
+  "本月读取 {reads} / {readLimit}；写入 {writes} / {writeLimit}": "Diesen Monat: Lesen {reads} / {readLimit}; Schreiben {writes} / {writeLimit}",
+  "存储额度说明": "Limits nur für diese Website, inklusive reservierter Uploads. Andere Buckets und Cloudflare-Dienste sind ausgeschlossen; dies ist keine Kostenobergrenze des Kontos. Originale bleiben in OneDrive.",
+  "存储接近上限，请检查容量；不会删除待审核照片。": "Die Nutzung nähert sich dem Limit. Ausstehende Fotos werden nicht gelöscht.",
+  "迁移现有预览（剩余 {count} 张）": "Bestehende Vorschaubilder migrieren ({count} verbleibend)",
+  "图片迁移批次已完成。": "Migrationsdurchlauf abgeschlossen.",
+  "图片容量已达到上限，已停止新增；现有照片保留。": "Bildkapazität erreicht. Neue Uploads gestoppt; vorhandene Fotos bleiben erhalten.",
+  "本月图片请求额度已用完，请检查存储设置。": "Monatliches Anfragelimit erreicht. Speichereinstellungen prüfen.",
+  "图片上传状态待核实，请稍后检查，未覆盖原图。": "Upload-Ergebnis muss geprüft werden. Originale wurden nicht überschrieben.",
+  "图片内容发生冲突，已停止覆盖。": "Bildinhaltskonflikt. Ersetzen gestoppt.",
+  "图片存储暂不可用，请检查 R2 连接。": "Bildspeicher nicht verfügbar. R2-Verbindung prüfen."
 }
