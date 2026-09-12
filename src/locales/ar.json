@@ -272,5 +272,8 @@
   "Read Instagram history page": "قراءة الصفحة التالية من سجل Instagram",
   "Instagram history totals": "Instagram inventory: {posts} posts · {photos} photos",
   "Inventory complete": "اكتمل الجرد",
-  "More pages remaining": "توجد صفحات أخرى"
+  "More pages remaining": "توجد صفحات أخرى",
+  "Historical match status": "مطابقات OneDrive: {confirmed} مؤكدة · {proposals} مقترحات",
+  "Historical matches require confirmation before exclusion.": "المطابقات التاريخية اقتراحات فقط؛ أكدها قبل استبعاد الصورة.",
+  "Confirm all visible matches": "تأكيد كل المطابقات الظاهرة"
 }

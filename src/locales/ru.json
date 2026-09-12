@@ -272,5 +272,8 @@
   "Read Instagram history page": "Загрузить следующую страницу Instagram",
   "Instagram history totals": "Instagram inventory: {posts} posts · {photos} photos",
   "Inventory complete": "Список загружен",
-  "More pages remaining": "Есть другие страницы"
+  "More pages remaining": "Есть другие страницы",
+  "Historical match status": "Совпадения OneDrive: подтверждено {confirmed} · предложено {proposals}",
+  "Historical matches require confirmation before exclusion.": "Исторические совпадения — только предложения; подтвердите их перед исключением фото.",
+  "Confirm all visible matches": "Подтвердить все видимые совпадения"
 }

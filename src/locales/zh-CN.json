@@ -272,5 +272,8 @@
   "Read Instagram history page": "读取下一页 Instagram 历史",
   "Instagram history totals": "Instagram 清单：{posts} 篇帖子 · {photos} 张照片",
   "Inventory complete": "清单已读完",
-  "More pages remaining": "还有后续页面"
+  "More pages remaining": "还有后续页面",
+  "Historical match status": "OneDrive 匹配：已确认 {confirmed} 条 · 待确认 {proposals} 条",
+  "Historical matches require confirmation before exclusion.": "历史匹配仅是建议；确认后才会排除对应照片。",
+  "Confirm all visible matches": "确认当前显示的全部匹配"
 }

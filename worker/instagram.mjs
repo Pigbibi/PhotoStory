@@ -183,3 +183,29 @@ export async function mediaHistoryPage(e,after=null){
  if(next!==null&&(typeof next!=='string'||!next||next.length>2048||next===after))throw new Error('instagram_connection_failed');
  return {userId:account.userId,username:account.username,records,after:next};
 }
+
+function mediaURL(value){
+ try{const u=new URL(value);if(u.protocol!=='https:'||u.port||u.username||u.password)return false;
+  return u.hostname.endsWith('.cdninstagram.com')||u.hostname.endsWith('.fbcdn.net');
+ }catch{return false;}
+}
+
+// Return short-lived provider media URLs only to the machine-authenticated
+// processor. They are never persisted in D1 or returned to browser sessions.
+export async function mediaHistoryMediaPage(e,offset=0){
+ const account=await publishingAccount(e),saved=await auth.get(e,'instagram-history:'+account.userId);
+ if(!saved||saved.after!==null||!Number.isSafeInteger(offset)||offset<0||offset>saved.records.length)throw new Error('history_not_complete');
+ const records=saved.records.slice(offset,offset+5),items=[];
+ for(const record of records){
+  if(!identifier(record.id))throw new Error('instagram_connection_failed');
+  const url=new URL('https://graph.instagram.com/v26.0/'+record.id);
+  url.searchParams.set('fields','id,media_type,media_url,children.limit(100){id,media_type,media_url}');
+  const value=await request(url,{headers:{Authorization:'Bearer '+account.access}});
+  if(value.id!==record.id||!['IMAGE','CAROUSEL_ALBUM'].includes(value.media_type))throw new Error('instagram_connection_failed');
+  const children=value.media_type==='CAROUSEL_ALBUM'?value.children?.data:[value];
+  if(!Array.isArray(children)||children.length>100||value.children?.paging?.next)throw new Error('instagram_connection_failed');
+  for(const child of children){if(child.media_type!=='IMAGE')continue;if(!identifier(child.id)||!mediaURL(child.media_url))throw new Error('instagram_connection_failed');items.push({instagramId:child.id,mediaUrl:child.media_url});}
+ }
+ const next=offset+records.length<saved.records.length?offset+records.length:null;
+ return {algorithm:'dhash-v1',items,offset,after:next};
+}

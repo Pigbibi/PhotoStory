@@ -272,5 +272,8 @@
   "Read Instagram history page": "Instagram 履歴の次のページを取得",
   "Instagram history totals": "Instagram inventory: {posts} posts · {photos} photos",
   "Inventory complete": "一覧の取得完了",
-  "More pages remaining": "続きのページがあります"
+  "More pages remaining": "続きのページがあります",
+  "Historical match status": "OneDrive の一致: {confirmed} 件確認済み · {proposals} 件の候補",
+  "Historical matches require confirmation before exclusion.": "過去の一致は候補です。写真を除外する前に確認してください。",
+  "Confirm all visible matches": "表示中の一致をすべて確認"
 }

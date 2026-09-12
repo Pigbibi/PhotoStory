@@ -109,6 +109,64 @@ def valid_thumbnail_url(url):
         return False
 
 
+def valid_instagram_media_url(url):
+    try:
+        parsed=urllib.parse.urlsplit(url)
+        host=parsed.hostname or ''
+        return parsed.scheme=='https' and parsed.port in (None,443) and not parsed.username and not parsed.password and (
+            host.endswith('.cdninstagram.com') or host.endswith('.fbcdn.net'))
+    except (ValueError,TypeError):
+        return False
+
+
+def dhash(raw):
+    from PIL import Image, ImageOps
+    with Image.open(io.BytesIO(raw)) as image:
+        image=ImageOps.exif_transpose(image).convert('L').resize((9,8))
+        pixels=list(image.get_flattened_data() if hasattr(image,'get_flattened_data') else image.getdata())
+    value=0
+    for y in range(8):
+        for x in range(8):
+            value=(value<<1) | int(pixels[y*9+x]>pixels[y*9+x+1])
+    return f'{value:016x}'
+
+
+def hamming(left,right):
+    if not isinstance(left,str) or not isinstance(right,str) or len(left)!=16 or len(right)!=16:
+        return 65
+    try:return (int(left,16)^int(right,16)).bit_count()
+    except ValueError:return 65
+
+
+def history_match_page(call, inventory):
+    """Fetch one bounded history page, retaining only local perceptual hashes."""
+    if inventory.history_complete(): return True
+    page=call('/internal/history-media',{'offset':inventory.history_offset()})
+    if page.get('algorithm')!='dhash-v1' or not isinstance(page.get('items'),list) or len(page['items'])>100:
+        raise Stop('history_match_contract')
+    hashes=[]
+    for item in page['items']:
+        if not isinstance(item,dict) or not re.fullmatch(r'\d{1,32}',str(item.get('instagramId',''))) or not valid_instagram_media_url(item.get('mediaUrl')):
+            raise Stop('history_match_contract')
+        raw=request(item['mediaUrl'],max_bytes=8_000_000)
+        hashes.append({'instagramId':item['instagramId'],'hash':dhash(raw)})
+    inventory.save_history_hashes(hashes,page.get('after'))
+    return inventory.history_complete()
+
+
+def history_proposals(call,inventory,visual_hashes):
+    proposals=[]
+    for photo_id,photo_hash in visual_hashes.items():
+        best={}
+        for row in inventory.history_hashes():
+            distance=hamming(photo_hash,row['hash'])
+            if distance<=8 and (row['id'] not in best or distance<best[row['id']]):best[row['id']]=distance
+        for instagram_id,distance in best.items():proposals.append({'instagramId':instagram_id,'photoId':photo_id,'distance':distance})
+    if proposals or inventory.history_complete():
+        call('/internal/history-match',{'algorithm':'dhash-v1','proposals':proposals,'complete':inventory.history_complete()})
+    return len(proposals)
+
+
 def thumbnail(photo, token):
     from PIL import Image, ImageOps
     result = graph(f"{GRAPH}/me/drive/items/{urllib.parse.quote(photo['item'], safe='')}/thumbnails", token)
@@ -358,12 +416,17 @@ def run():
             cwd = Path(tmp)
             from preselect import representatives,cover_first
             allowed, assets, digests = [], {}, {}
-            previews=[]
+            previews=[];visual_hashes={}
+            try: history_match_page(call,inventory)
+            except Exception: pass
             for photo in candidates:
                 image=thumbnail(photo,source['accessToken'])
                 digest=hashlib.sha256(image).hexdigest()
                 digests[photo['id']]=digest
+                visual_hashes[photo['id']]=dhash(image)
                 if not inventory.known_digest(digest):previews.append((photo,image))
+            try: history_proposals(call,inventory,visual_hashes)
+            except Exception: pass
             selected=representatives(previews,inventory.nearby_profiles)
             profiles={p['id']:features for p,image,features in selected}
             outcomes={p['id']:'duplicate_burst' for p in candidates if p not in [v[0] for v in selected]}

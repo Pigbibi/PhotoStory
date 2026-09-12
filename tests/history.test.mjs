@@ -30,7 +30,20 @@ test('inventory reports metadata matches without claiming OneDrive source matche
  assert.equal(value.instagram.matchCoverage.sourceMatches,0);
  assert.equal(value.instagram.matchCoverage.mode,'metadata_only');
 });
-import {mediaHistoryPage} from '../worker/instagram.mjs';
+test('visual history proposals stay pending until owner confirmation',async t=>{
+ const {DB,env}=await setup(t);
+ Object.assign(env,{INSTAGRAM_CLIENT_ID:'1234',INSTAGRAM_CLIENT_SECRET:'fixture',INSTAGRAM_USERNAME:'owner',INSTAGRAM_REDIRECT_URI:'https://example.test/auth/instagram/callback',TOKEN_ENCRYPTION_KEY:btoa(String.fromCharCode(...new Uint8Array(32).fill(1)))});
+ await put(env,'instagram',await seal(env,{access:'private-token',client:'1234',userId:'456',username:'owner',permissions:['instagram_business_basic','instagram_business_content_publish'],expires:Date.now()+3600000}));
+ let value=await history.ingestMatches(env,{algorithm:'dhash-v1',complete:true,proposals:[{instagramId:'100',photoId:'source-1',distance:4}]});
+ assert.equal(value.proposalCount,1);assert.equal(value.confirmedCount,0);assert.deepEqual(await history.excluded(env),[]);
+ value=await history.confirmMatches(env,{matches:[{instagramId:'100',photoId:'source-1'}]});
+ assert.equal(value.confirmedCount,1);assert.deepEqual(await history.excluded(env),['source-1']);
+ await put(env,'instagram-history:456',{records:[{id:'100',at:1,photos:1,photoIds:['101']}],after:null,checkedAt:3});
+ assert.equal((await history.summary(env)).instagram.matchCoverage.sourceMatches,1);
+ const response=await worker.fetch(new Request('https://example.test/api/history/matches',{headers:{Cookie:'__Host-photostory=session',Origin:'https://example.test'}}),env);
+ assert.equal(response.status,200);assert.equal((await response.json()).confirmedCount,1);
+});
+import {mediaHistoryPage,mediaHistoryMediaPage} from '../worker/instagram.mjs';
 async function account(t){
  const v=await setup(t);Object.assign(v.env,{INSTAGRAM_CLIENT_ID:'1234',INSTAGRAM_CLIENT_SECRET:'fixture',INSTAGRAM_USERNAME:'landscapes',INSTAGRAM_REDIRECT_URI:'https://example.test/auth/instagram/callback',TOKEN_ENCRYPTION_KEY:btoa(String.fromCharCode(...new Uint8Array(32).fill(1)))});
  await put(v.env,'instagram',await seal(v.env,{access:'private-token',client:'1234',userId:'456',username:'landscapes',permissions:['instagram_business_basic','instagram_business_content_publish'],expires:Date.now()+3600000}));return v;
@@ -49,4 +62,11 @@ test('Instagram inventory follows cursors on its fixed host and counts every car
 test('a partial carousel cannot be recorded as complete',async t=>{
  const {env}=await account(t);t.mock.method(globalThis,'fetch',async()=>Response.json({data:[{id:'100',timestamp:'2025-05-01T00:00:00Z',media_type:'CAROUSEL_ALBUM',children:{data:[{id:'101',media_type:'IMAGE'}],paging:{next:'more'}}}]}));
  await assert.rejects(mediaHistoryPage(env),/instagram_connection_failed/);
+});
+test('history media URLs are bounded, fixed-host and never persisted',async t=>{
+ const {env}=await account(t);
+ await put(env,'instagram-history:456',{records:[{id:'100',at:1,photos:2,photoIds:['101','102']}],after:null,checkedAt:3});
+ t.mock.method(globalThis,'fetch',async(url,o)=>{assert.equal(new URL(url).hostname,'graph.instagram.com');assert.equal(o.headers.Authorization,'Bearer private-token');return Response.json({id:'100',media_type:'CAROUSEL_ALBUM',children:{data:[{id:'101',media_type:'IMAGE',media_url:'https://scontent.cdninstagram.com/a.jpg'},{id:'102',media_type:'IMAGE',media_url:'https://scontent.cdninstagram.com/b.jpg'}]}});});
+ const value=await mediaHistoryMediaPage(env);assert.equal(value.items.length,2);assert.equal(value.after,null);
+ const state=await (await import('../worker/auth.mjs')).get(env,'instagram-history:456');assert.equal(JSON.stringify(state).includes('cdninstagram'),false);
 });

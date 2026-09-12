@@ -56,6 +56,8 @@ class Inventory:
           CREATE INDEX IF NOT EXISTS cache.digest_index ON analyzed(policy,digest);
           CREATE TABLE IF NOT EXISTS cache.visual(fingerprint TEXT PRIMARY KEY,policy TEXT NOT NULL,taken REAL NOT NULL,body TEXT NOT NULL);
           CREATE INDEX IF NOT EXISTS cache.visual_time ON visual(policy,taken);
+          CREATE TABLE IF NOT EXISTS cache.instagram_visual(id TEXT PRIMARY KEY,hash TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS cache.history_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         ''')
         # Keep the processing state compact while retaining an auditable reason
         # for every terminal decision.  Older private inventories are migrated
@@ -178,3 +180,21 @@ class Inventory:
             self.set('inflight',None)
 
     def close(self): self.db.close()
+
+    def history_offset(self):
+        row=self.db.execute("SELECT value FROM cache.history_meta WHERE key='offset'").fetchone()
+        return int(row[0]) if row and row[0].isdigit() else 0
+
+    def save_history_hashes(self,items,after):
+        with self.db:
+            for item in items:
+                self.db.execute('INSERT OR REPLACE INTO cache.instagram_visual VALUES(?,?)',(item['instagramId'],item['hash']))
+            self.db.execute("INSERT INTO cache.history_meta VALUES('offset',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(str(after if after is not None else 0),))
+            self.db.execute("INSERT INTO cache.history_meta VALUES('complete',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",('1' if after is None else '0',))
+
+    def history_hashes(self):
+        return self.db.execute('SELECT id,hash FROM cache.instagram_visual').fetchall()
+
+    def history_complete(self):
+        row=self.db.execute("SELECT value FROM cache.history_meta WHERE key='complete'").fetchone()
+        return bool(row and row[0]=='1')

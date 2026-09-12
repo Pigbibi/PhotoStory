@@ -272,5 +272,8 @@
   "Read Instagram history page": "Nächste Instagram-Seite laden",
   "Instagram history totals": "Instagram inventory: {posts} posts · {photos} photos",
   "Inventory complete": "Inventar vollständig",
-  "More pages remaining": "Weitere Seiten vorhanden"
+  "More pages remaining": "Weitere Seiten vorhanden",
+  "Historical match status": "OneDrive-Abgleiche: {confirmed} bestätigt · {proposals} Vorschläge",
+  "Historical matches require confirmation before exclusion.": "Historische Abgleiche sind nur Vorschläge; bestätige sie vor dem Ausschluss.",
+  "Confirm all visible matches": "Alle sichtbaren Abgleiche bestätigen"
 }

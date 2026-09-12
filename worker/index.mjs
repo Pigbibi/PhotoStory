@@ -62,6 +62,10 @@ async function machine(r, e) {
 async function internal(r, e, p) {
   if (!(await machine(r, e))) return failure("unauthorized", 401);
   if(p==='/internal/health'&&r.method==='GET')return json(await health.view(e));
+  if(p==='/internal/history-match'&&r.method==='POST')return json(await history.ingestMatches(e,await readJSON(r,128000)));
+  if(p==='/internal/history-media'&&r.method==='POST'){
+    const b=await readJSON(r,4096);return json(await instagram.mediaHistoryMediaPage(e,b?.offset??0));
+  }
   if(p==='/internal/instagram-check'&&r.method==='GET')return json(await instagram.publishingHealth(e));
   if(p==='/internal/storage/migrate'&&r.method==='POST')return json(await migrateImages(e));
   if(p==='/internal/autopublish'&&r.method==='POST'){
@@ -297,6 +301,10 @@ async function route(r, e) {
     }
     if(p==='/api/history/sync' && r.method==='POST')return json(await history.sync(e));
     if(p==='/api/history' && r.method==='GET')return json(await history.summary(e));
+    if(p==='/api/history/matches' && r.method==='GET'){
+      return json(await history.matching(e));
+    }
+    if(p==='/api/history/matches/confirm' && r.method==='POST')return json(await history.confirmMatches(e,await readJSON(r,128000)));
     if(p==='/api/settings' && r.method==='GET')return json(await settingsView(e));
     if(p==='/api/storage/migrate'&&r.method==='POST')return json(await migrateImages(e));
     if(p==='/api/settings' && r.method==='PUT')return json(await saveSettings(e,await readJSON(r)));
@@ -415,6 +423,8 @@ export default {
         "invalid_image",
         "onedrive_not_connected",
         "reauthorization_required",
+        "history_not_complete",
+        "history_match_contract",
       ]);
       const code = known.has(err.message) ? err.message : "request_failed";
       return secure(failure(code, code === "version_conflict" ? 409 : 400));

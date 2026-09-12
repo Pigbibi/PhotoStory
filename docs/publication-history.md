@@ -23,16 +23,31 @@ used in another such record, even if the preview was cleaned up. This protects t
 same OneDrive item; making a new file copy creates a different source ID.
 
 **An Instagram media ID is not a OneDrive source ID.** Imported historical posts
-are counted but are not yet matched to originals. Cross-platform visual matching
-of compressed/cropped images is not implemented. Keep a known-new date range until
-that match coverage is available; do not enable whole-library automatic publishing
-on the assumption that these counters guarantee no repeats. Existing conservative
-burst filtering is separate and is not historical Instagram matching.
+are counted and can now enter a bounded visual-match proposal pass. During a
+normal processor scan, one small page of old Instagram image media is held in
+VPS memory, reduced to a local `dhash-v1` fingerprint, and discarded. Current
+OneDrive previews are fingerprinted the same way. Only proposals are stored;
+provider URLs and image bytes are not stored in D1. A proposal never excludes a
+source by itself: review and confirm it in Publication history first. A failed
+or incomplete pass leaves the source eligible. Keep a known-new date range until
+the historical inventory and matching pass are complete; do not enable
+whole-library automatic publishing on the assumption that unconfirmed proposals
+guarantee no repeats. Existing conservative burst filtering is separate and is
+not historical Instagram matching.
 
-The inventory response also includes `instagram.matchCoverage`. In the current
+Matching proposals are created only after the private Instagram inventory is
+complete. Read the next Instagram history page until **Inventory complete**;
+the processor then advances the old-media hash page by a bounded amount per
+normal job. A large account may therefore take several scans. The media URL is
+available only to the machine-authenticated processor and is never shown in the
+browser.
+
+The inventory response also includes `instagram.matchCoverage` and a separate
+`matching` object. In the current
 `metadata_only` mode, a record is marked `photostory_post` only when its
 Instagram media ID (or carousel child ID) is present in PhotoStory's own
-publication ledger; other records are `unmatched`. `sourceMatches` remains zero
-until a future cross-platform matcher compares an Instagram image with a
-OneDrive file. The coverage percentage therefore means verified source matches,
-not the number of posts inventoried.
+publication ledger; other records are `unmatched`. `sourceMatches` increases
+only after the owner confirms a stored proposal. The owner-only
+`POST /api/history/matches/confirm` endpoint accepts only proposals created by
+the machine-authenticated processor. The coverage percentage therefore means
+verified source matches, not the number of posts inventoried.
