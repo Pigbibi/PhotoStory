@@ -26,3 +26,11 @@ test('health reports automatic publishing authorization attention without probin
  assert.equal(response.status,200);assert.ok(value.warnings.includes('instagram_authorization'));
  assert.equal(value.instagram.connected,false);assert.equal(value.publication,null);
 });
+
+test('health marks an overdue schedule for an external monitor',async t=>{
+ const {env}=await setup(t),now=Date.now();
+ await put(env,'automation',{enabled:true,publishMode:'manual',reviewMode:'manual',frequency:'weekly',nextRun:now-3*3600000,version:1,pendingLimit:20});
+ const response=await worker.fetch(new Request('https://example.test/internal/health',{headers:{Authorization:'Bearer machine'}}),env);
+ const value=await response.json();
+ assert.equal(response.status,200);assert.ok(value.warnings.includes('schedule_overdue'));
+});

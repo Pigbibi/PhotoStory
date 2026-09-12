@@ -26,6 +26,8 @@ export async function view(e,now=Date.now()){
  if(s.backlogPaused)warnings.push('review_backlog_paused');
  if(s.active)warnings.push('job_active');
  if(s.settings.enabled&&!s.settings.nextRun)warnings.push('schedule_missing');
+ if(s.settings.enabled&&!s.backlogPaused&&Number.isSafeInteger(s.settings.nextRun)&&s.settings.nextRun<now-2*3600000)warnings.push('schedule_overdue');
+ if(s.settings.cleanupEnabled&&Number.isSafeInteger(s.cleanup?.nextAt)&&s.cleanup.nextAt<now-2*3600000)warnings.push('cleanup_overdue');
  if(s.settings.enabled&&s.settings.publishMode==='automatic'&&(!ig.connected||ig.refreshState==='expired'))warnings.push('instagram_authorization');
  if(ig.refreshState==='failed')warnings.push('instagram_refresh_failed');
  if(issue)warnings.push(issue.status==='uncertain'?'publication_uncertain':'publication_attention');
