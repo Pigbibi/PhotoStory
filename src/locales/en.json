@@ -260,5 +260,7 @@
   "Instagram authorization needs attention": "Instagram authorization needs attention. Complete any Meta account verification and check permissions. Automatic retries are blocked.",
   "Instagram publication needs attention": "Instagram publication needs attention. Check the account before continuing; automatic retries are blocked.",
   "Publication failure details": "Recorded {time} · Error {code}",
-  "Resume after account verification": "Resume after account verification"
+  "Resume after account verification": "Resume after account verification",
+  "From a start date": "From a start date",
+  "Photo preselection explanation": "Near-identical bursts are screened locally before AI. Only AI-reviewed representatives count toward the limit; different angles are retained conservatively. The best-rated image leads each post."
 }

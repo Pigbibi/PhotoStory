@@ -260,5 +260,7 @@
   "Instagram authorization needs attention": "L’autorizzazione Instagram richiede attenzione. Completa la verifica Meta e controlla i permessi. I tentativi automatici sono bloccati.",
   "Instagram publication needs attention": "La pubblicazione Instagram richiede attenzione. Controlla l’account prima di continuare; i tentativi automatici sono bloccati.",
   "Publication failure details": "Registrato {time} · Errore {code}",
-  "Resume after account verification": "Riprendi dopo la verifica dell’account"
+  "Resume after account verification": "Riprendi dopo la verifica dell’account",
+  "From a start date": "Da una data",
+  "Photo preselection explanation": "Le raffiche simili vengono filtrate localmente. Solo le foto inviate all’IA contano nel limite; si conservano altri angoli. La foto meglio valutata apre il post."
 }

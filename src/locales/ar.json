@@ -260,5 +260,7 @@
   "Instagram authorization needs attention": "يتطلب تفويض Instagram انتباهك. أكمل التحقق من حساب Meta وافحص الأذونات. تم حظر إعادة المحاولة التلقائية.",
   "Instagram publication needs attention": "يتطلب النشر على Instagram انتباهك. تحقق من الحساب قبل المتابعة؛ تم حظر إعادة المحاولة التلقائية.",
   "Publication failure details": "سُجّل في {time} · الخطأ {code}",
-  "Resume after account verification": "المتابعة بعد التحقق من الحساب"
+  "Resume after account verification": "المتابعة بعد التحقق من الحساب",
+  "From a start date": "من تاريخ محدد",
+  "Photo preselection explanation": "تُفرز اللقطات المتشابهة محلياً. تُحتسب الصور المرسلة للذكاء الاصطناعي فقط، مع الاحتفاظ الحذر بالزوايا المختلفة. تتصدر الصورة الأعلى تقييماً المنشور."
 }

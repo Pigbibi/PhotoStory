@@ -9,7 +9,7 @@ import process_batch as b
 class ProcessorRunTests(unittest.TestCase):
  def test_screened_pixels_reach_grouping_and_saved_crop(self):
   data=io.BytesIO();Image.new('RGB',(800,600),'blue').save(data,'JPEG')
-  photo={'id':'p','captured':'2026-08-18','area':None}
+  photo={'id':'p','captured':'2026-08-18','taken':1000,'area':None}
   safe={'id':'p','decision':'allow','flags':[],'landscape':True,'aesthetic':8,'description':'Coast','peopleRole':'none','compositionClear':True}
   inv=MagicMock();inv.scan.return_value=True;inv.next_batch.return_value=[photo]
   inv.stage_batch.return_value='batch';inv.known_digest.return_value=False

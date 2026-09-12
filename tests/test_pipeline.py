@@ -4,6 +4,12 @@ from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).parents[1]/'scripts'))
 import process_batch as b
 
+def preview(photo,token):
+    from PIL import Image
+    import hashlib
+    color=tuple(hashlib.sha256(photo['id'].encode()).digest()[:3])
+    out=io.BytesIO();Image.new('RGB',(240,160),color).save(out,'JPEG');return out.getvalue()
+
 class PipelineTests(unittest.TestCase):
     def test_scheduled_run_stops_at_remaining_analysis_budget(self):
         remote={'status':'pending','progress':{'phase':'scanning','total':0,'processed':0,'batches':0}}
@@ -24,7 +30,7 @@ class PipelineTests(unittest.TestCase):
             return {'value':[{'id':str(i),'parentReference':{'driveId':'drive'},'image':{},'photo':{'takenDateTime':'2026-08-20T00:00:00Z'},'eTag':'v1'} for i in range(30)]}
         def gateway(prompt,records,*args):
             seen.extend(records);return {'photos':[{'id':p['id'],'decision':'exclude'} for p in records]}
-        with tempfile.TemporaryDirectory() as tmp,patch.dict(b.os.environ,{'PHOTOSTORY_URL':'https://example.test','PHOTOSTORY_BATCH_TOKEN':'dummy','CODEX_GATEWAY_COMMAND':'/unused','PHOTOSTORY_STATE_DIR':tmp},clear=True),patch.object(b,'request',side_effect=request),patch.object(b,'graph',side_effect=graph),patch.object(b,'gateway',side_effect=gateway),patch.object(b,'thumbnail',side_effect=lambda p,t:p['id'].encode()),contextlib.redirect_stdout(io.StringIO()):
+        with tempfile.TemporaryDirectory() as tmp,patch.dict(b.os.environ,{'PHOTOSTORY_URL':'https://example.test','PHOTOSTORY_BATCH_TOKEN':'dummy','CODEX_GATEWAY_COMMAND':'/unused','PHOTOSTORY_STATE_DIR':tmp},clear=True),patch.object(b,'request',side_effect=request),patch.object(b,'graph',side_effect=graph),patch.object(b,'gateway',side_effect=gateway),patch.object(b,'thumbnail',side_effect=preview),contextlib.redirect_stdout(io.StringIO()):
             while remote['status']=='pending':b.run()
         self.assertEqual(len(seen),7);self.assertEqual(remote['progress']['analyzed'],7)
         self.assertEqual(remote['status'],'limited')
@@ -58,7 +64,7 @@ class PipelineTests(unittest.TestCase):
         def gateway(prompt,records,*args):
             seen.extend(p['id'] for p in records)
             return {'photos':[{'id':p['id'],'decision':'exclude','flags':['uncertain'],'landscape':False,'aesthetic':0,'description':''} for p in records]}
-        with tempfile.TemporaryDirectory() as tmp, patch.dict(b.os.environ,{'PHOTOSTORY_URL':'https://example.test','PHOTOSTORY_BATCH_TOKEN':'dummy','CODEX_GATEWAY_COMMAND':'/unused','PHOTOSTORY_STATE_DIR':tmp},clear=True),patch.object(b,'request',side_effect=request),patch.object(b,'graph',side_effect=graph),patch.object(b,'gateway',side_effect=gateway),patch.object(b,'thumbnail',side_effect=lambda p,t:b'\xff\xd8\xff'+p['id'].encode()),contextlib.redirect_stdout(io.StringIO()):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(b.os.environ,{'PHOTOSTORY_URL':'https://example.test','PHOTOSTORY_BATCH_TOKEN':'dummy','CODEX_GATEWAY_COMMAND':'/unused','PHOTOSTORY_STATE_DIR':tmp},clear=True),patch.object(b,'request',side_effect=request),patch.object(b,'graph',side_effect=graph),patch.object(b,'gateway',side_effect=gateway),patch.object(b,'thumbnail',side_effect=preview),contextlib.redirect_stdout(io.StringIO()):
             b.run() # Entire metadata range discovered before AI.
             self.assertEqual(seen,[])
             with self.assertRaises(b.Stop): b.run() # Server commits, client loses acknowledgement.

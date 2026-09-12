@@ -54,6 +54,8 @@ class Inventory:
           CREATE INDEX IF NOT EXISTS pending_photos ON photos(status,taken,id);
           CREATE TABLE IF NOT EXISTS cache.analyzed(fingerprint TEXT PRIMARY KEY,digest TEXT,policy TEXT NOT NULL);
           CREATE INDEX IF NOT EXISTS cache.digest_index ON analyzed(policy,digest);
+          CREATE TABLE IF NOT EXISTS cache.visual(fingerprint TEXT PRIMARY KEY,policy TEXT NOT NULL,taken REAL NOT NULL,body TEXT NOT NULL);
+          CREATE INDEX IF NOT EXISTS cache.visual_time ON visual(policy,taken);
         ''')
         self.source=source
         self.policy=policy
@@ -123,6 +125,18 @@ class Inventory:
         batch['digests']=digests
         with self.db: self.set('inflight',batch)
 
+    def save_screening(self,digests,profiles):
+        batch=self.get('inflight')
+        batch['digests']=digests
+        batch['profiles']=profiles
+        batch['analyzed']=len(profiles)
+        with self.db:self.set('inflight',batch)
+
+    def nearby_profiles(self,photo):
+        rows=self.db.execute('SELECT body FROM cache.visual WHERE policy=? AND taken BETWEEN ? AND ? ORDER BY taken LIMIT 200',
+                             (self.policy,photo['taken']-120,photo['taken']+120)).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
     def known_digest(self,digest):
         return bool(self.db.execute('SELECT 1 FROM cache.analyzed WHERE digest=? AND policy=? LIMIT 1',(digest,self.policy)).fetchone())
 
@@ -130,7 +144,8 @@ class Inventory:
         progress=self.progress()
         progress['processed']+=len(self.get('inflight')['photos'])
         progress['batches']+=1
-        progress['analyzed']+=len(self.get('inflight')['photos'])
+        batch=self.get('inflight')
+        progress['analyzed']+=batch.get('analyzed',len(batch['photos']))
         progress['phase']='complete' if progress['processed']==progress['total'] else 'processing'
         return progress
 
@@ -143,8 +158,10 @@ class Inventory:
                 self.db.execute("UPDATE photos SET status='done' WHERE id=?",(photo['id'],))
                 if photo.get('fingerprint'):
                     self.db.execute('INSERT OR IGNORE INTO cache.analyzed VALUES(?,?,?)',(photo['fingerprint'],batch['digests'].get(photo['id']),self.policy))
+                    features=batch.get('profiles',{}).get(photo['id'])
+                    if features:self.db.execute('INSERT OR IGNORE INTO cache.visual VALUES(?,?,?,?)',(photo['fingerprint'],self.policy,photo['taken'],json.dumps(features)))
             self.set('batches',(self.get('batches') or 0)+1)
-            self.set('analyzed',(self.get('analyzed') or 0)+len(batch['photos']))
+            self.set('analyzed',(self.get('analyzed') or 0)+batch.get('analyzed',len(batch['photos'])))
             self.set('inflight',None)
 
     def close(self): self.db.close()

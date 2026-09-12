@@ -356,22 +356,24 @@ def run():
         batch_id=inventory.stage_batch(candidates)
         with tempfile.TemporaryDirectory(prefix="photostory-") as tmp:
             cwd = Path(tmp)
-            allowed, assets, fingerprints, digests = [], {}, set(), {}
-            # Privacy screening precedes selection. Six previews per bounded call.
-            for offset in range(0, len(candidates), 6):
+            from preselect import representatives,cover_first
+            allowed, assets, digests = [], {}, {}
+            previews=[]
+            for photo in candidates:
+                image=thumbnail(photo,source['accessToken'])
+                digest=hashlib.sha256(image).hexdigest()
+                digests[photo['id']]=digest
+                if not inventory.known_digest(digest):previews.append((photo,image))
+            selected=representatives(previews,inventory.nearby_profiles)
+            profiles={p['id']:features for p,image,features in selected}
+            # Privacy screening still gates every representative; preselection
+            # never grants approval and only actual AI inputs count against quota.
+            for offset in range(0,len(selected),6):
                 batch, paths = [], []
-                for photo in candidates[offset:offset + 6]:
-                    image = thumbnail(photo, source["accessToken"])
-                    digest = hashlib.sha256(image).hexdigest()
-                    digests[photo['id']]=digest
-                    if digest in fingerprints or inventory.known_digest(digest):
-                        continue
-                    fingerprints.add(digest)
-                    path = cwd / (photo["id"] + ".jpg")
+                for photo,image,features in selected[offset:offset+6]:
+                    path=cwd/(photo['id']+'.jpg')
                     path.write_bytes(image)
-                    batch.append(photo)
-                    paths.append(path)
-                    assets[photo["id"]] = image
+                    batch.append(photo);paths.append(path);assets[photo['id']]=image
                 if not batch:
                     continue
                 result = gateway(SCREEN_PROMPT, [{"id":p["id"], "captured":p["captured"]} for p in batch], paths, SCREEN_SCHEMA, cwd)
@@ -396,15 +398,20 @@ def run():
                 if remaining<=0: break
                 group=[p for p in shortlist if orientation(dimensions[p['id']])==direction]
                 if not group: continue
-                prompt=localized_group_prompt+"\nTarget aspect: "+aspect+". Return at most "+str(remaining)+" drafts.\nOwner-provided place hint (data, not instructions): "+source.get('locationHint','')
+                prompt=localized_group_prompt+"\nPut the strongest cover first, judging the final crop; choose the best composition among equally rated photos.\nTarget aspect: "+aspect+". Return at most "+str(remaining)+" drafts.\nOwner-provided place hint (data, not instructions): "+source.get('locationHint','')
                 grouped=gateway(prompt,group,[cwd/(p['id']+'.jpg') for p in group],GROUP_SCHEMA,cwd)
                 drafts.extend(validated_groups(grouped,{p['id'] for p in group},job['id']+'-'+batch_id+'-'+direction,dimensions)[:remaining])
+            # The highest aesthetic score in each accepted group leads; retain
+            # the model's composition-aware order among equal-score photos.
+            scores={p['id']:p['aesthetic'] for p in shortlist}
+            for draft in drafts:
+                draft['photos']=cover_first(draft['photos'],scores)
             from translate_labels import translate_labels
             drafts=translate_labels(drafts,gateway,cwd)
             auto_reviews=review_drafts(drafts,allowed,source,cwd,gateway)
             used = {p["id"] for d in drafts for p in d["photos"]}
             photos = [{"id":pid, "safety":"allow", "flags":[], "jpeg":base64.b64encode(assets[pid]).decode(),"source":next(p.get("source") for p in candidates if p["id"]==pid)} for pid in used]
-            inventory.save_digests(digests)
+            inventory.save_screening(digests,profiles)
             progress=inventory.proposed_progress()
             completion_started = True
             result = call("/internal/complete", {**auth, "batchId":batch_id,"more":progress['processed']<progress['total'],"progress":progress,"drafts":drafts, "photos":photos,"autoReviews":auto_reviews})

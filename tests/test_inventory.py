@@ -62,3 +62,22 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual([len(x) for x in event_batches([a,b,c,d])],[2,1,1])
 
 if __name__=='__main__': unittest.main()
+
+class ScreeningBudgetTests(unittest.TestCase):
+    source=InventoryTests.source
+    record=InventoryTests.record
+    def test_duplicates_do_not_spend_budget_and_profiles_survive_acknowledgement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inv=Inventory(tmp,'budget',self.source(),'policy')
+            photos=[self.record(1),self.record(2)]
+            for p in photos:inv.db.execute('INSERT INTO photos VALUES(?,?,?,?,?)',(p['id'],__import__('json').dumps(p),p['taken'],p['fingerprint'],'pending'))
+            inv.db.commit();bid=inv.stage_batch(photos)
+            features={'taken':1001,'digest':'example'}
+            inv.save_screening({'1':'a','2':'b'},{'1':features})
+            self.assertEqual(inv.proposed_progress()['analyzed'],1)
+            self.assertEqual(inv.proposed_progress()['processed'],2)
+            self.assertEqual(inv.nearby_profiles(photos[0]),[])
+            inv.reconcile(bid);inv.reconcile(bid)
+            self.assertEqual(inv.progress()['analyzed'],1)
+            self.assertEqual(inv.nearby_profiles(photos[0]),[features])
+            inv.close()

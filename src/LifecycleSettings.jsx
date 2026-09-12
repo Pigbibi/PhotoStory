@@ -47,7 +47,10 @@ export default function LifecycleSettings({api,notify,folder,onStatus}){
       <label>{t("开始时间")}<select value={form.hour} onChange={e=>set('hour',Number(e.target.value))}>{Array.from({length:24},(_,i)=><option key={i} value={i}>{String(i).padStart(2,'0')}:00</option>)}</select></label>
     </div>
     <p className="muted">{t("时间均为 Asia/Shanghai。短月份会使用当月最后一天；错过多个周期只补一次，不堆积旧任务。")}</p>
-    <label>{t("检查照片范围")}<select value={form.range} onChange={e=>set('range',e.target.value)}>{[['1m',t('最近一个月')],['3m',t('最近三个月')],['6m',t('最近六个月')],['12m',t('最近一年')],['all',t('全部照片')]].map(([v,label])=><option key={v} value={v}>{label}</option>)}</select></label>
+    <label>{t("检查照片范围")}<select value={form.range} onChange={e=>set('range',e.target.value)}>{[['1m',t('最近一个月')],['3m',t('最近三个月')],['6m',t('最近六个月')],['12m',t('最近一年')],['all',t('全部照片')],['since',t('From a start date')],['custom',t('自定义日期')]].map(([v,label])=><option key={v} value={v}>{label}</option>)}</select></label>
+    {['since','custom'].includes(form.range)&&<label>{t('开始日期')}<input type="date" value={form.start||''} onChange={e=>set('start',e.target.value)}/></label>}
+    {form.range==='custom'&&<label>{t('结束日期（包含当天）')}<input type="date" value={form.end||''} onChange={e=>set('end',e.target.value)}/></label>}
+    <p className="muted">{t('Photo preselection explanation')}</p>
     <div className="date-fields">
       <label>{t("每次最多分析新照片")}<input type="number" min={1} max={1000} value={form.analysisLimit} onChange={e=>set('analysisLimit',Number(e.target.value))}/></label>
       <label>{t("每批照片")}<select value={form.maxPhotos} onChange={e=>set('maxPhotos',Number(e.target.value))}>{[20,50,100].map(n=><option key={n} value={n}>{t("{count} 张",{count:n})}</option>)}</select></label>

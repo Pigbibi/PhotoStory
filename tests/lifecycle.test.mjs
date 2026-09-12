@@ -29,7 +29,7 @@ test('maintenance queues a due job only once with a per-run limit',async t=>{
  await DB.prepare('INSERT INTO state VALUES(?,?,NULL)').bind('automation',JSON.stringify(config())).run();
  await maintenance(env,now);await maintenance(env,now);
  const rows=(await DB.prepare('SELECT body FROM jobs').all()).results;
- assert.equal(rows.length,1);assert.equal(JSON.parse(rows[0].body).analysisLimit,100);
+ assert.equal(rows.length,1);assert.equal(JSON.parse(rows[0].body).analysisLimit,300);
  assert.ok((await settingsView(env,now)).settings.nextRun>now);
 });
 test('backlog blocks scheduled creation and resumes once reviewed',async t=>{
@@ -112,4 +112,28 @@ test('a failed scheduled job disables further scheduled scans until owner re-ena
  assert.equal((await settingsView(env,now)).settings.enabled,false);
  await maintenance(env,now+40*86400000);
  assert.equal((await DB.prepare('SELECT count(*) AS n FROM jobs').all()).results[0].n,1);
+});
+
+test('fixed start date is saved while the schedule end moves with today',async t=>{
+ const {jobInput}=await import('../worker/jobs.mjs');
+ const s=settingsInput({...config(),range:'since',start:'2025-05-01'},now);
+ assert.equal(s.start,'2025-05-01');assert.equal(defaults.analysisLimit,300);
+ assert.equal(jobInput(s,new Date(now)).end,'2026-09-11');
+ assert.equal(jobInput(s,new Date(now+86400000)).end,'2026-09-12');
+ for(const start of ['',null,'2025-02-30','2027-01-01'])assert.throws(()=>settingsInput({...config(),range:'since',start},now),/invalid_dates/);
+});
+test('prefiltered photos advance progress without consuming the AI budget',async t=>{
+ const {DB,api}=await setup(t);await api('/api/jobs',{folder:'Photos',range:'all',maxPhotos:20});
+ await DB.prepare("UPDATE jobs SET body=json_set(body,'$.analysisLimit',300)").bind().run();
+ const c=await(await api('/internal/claim',{},true)).json();
+ const send=analyzed=>api('/internal/complete',{jobId:c.id,lease:c.lease,batchId:'filtered',more:true,progress:{phase:'processing',total:100,processed:20,analyzed,batches:1},drafts:[],photos:[]},true);
+ assert.equal((await send(21)).status,400);assert.equal((await send(0)).status,200);
+ assert.equal((await DB.prepare('SELECT status FROM jobs').first()).status,'pending');
+});
+
+test('custom fixed dates round-trip without widening the end date',()=>{
+ const s=settingsInput({...config(),range:'custom',start:'2025-06-01',end:'2025-08-31'},now);
+ assert.equal(s.start,'2025-06-01');assert.equal(s.end,'2025-08-31');
+ assert.deepEqual(settingsInput(s,now),s);
+ assert.throws(()=>settingsInput({...config(),range:'custom',start:'2025-06-01',end:'2025-05-01'},now),/invalid_dates/);
 });

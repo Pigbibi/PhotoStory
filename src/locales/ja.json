@@ -260,5 +260,7 @@
   "Instagram authorization needs attention": "Instagram の認証に問題があります。Meta のアカウント確認と権限を確認してください。自動再試行は停止しています。",
   "Instagram publication needs attention": "Instagram の投稿を確認してください。再開前にアカウントを確認してください。自動再試行は停止しています。",
   "Publication failure details": "記録日時 {time} · エラー {code}",
-  "Resume after account verification": "アカウント確認後に再開"
+  "Resume after account verification": "アカウント確認後に再開",
+  "From a start date": "開始日を指定",
+  "Photo preselection explanation": "似た連写をローカルで選別し、AI に送る代表画像だけを上限に数えます。異なる角度は慎重に残し、最高評価の写真を表紙にします。"
 }

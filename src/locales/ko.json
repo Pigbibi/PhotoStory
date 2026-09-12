@@ -260,5 +260,7 @@
   "Instagram authorization needs attention": "Instagram 인증 확인이 필요합니다. Meta 계정 인증과 권한을 확인하세요. 자동 재시도는 차단되었습니다.",
   "Instagram publication needs attention": "Instagram 게시 확인이 필요합니다. 계속하기 전에 계정을 확인하세요. 자동 재시도는 차단되었습니다.",
   "Publication failure details": "기록 시간 {time} · 오류 {code}",
-  "Resume after account verification": "계정 인증 후 재개"
+  "Resume after account verification": "계정 인증 후 재개",
+  "From a start date": "시작 날짜 지정",
+  "Photo preselection explanation": "비슷한 연속 사진을 로컬에서 먼저 선별하며 AI에 보내는 대표 사진만 한도에 포함합니다. 다른 각도는 보수적으로 유지하고 최고 평가 사진을 표지로 사용합니다."
 }

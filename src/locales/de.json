@@ -260,5 +260,7 @@
   "Instagram authorization needs attention": "Die Instagram-Autorisierung muss geprüft werden. Bestätige dein Meta-Konto und prüfe die Berechtigungen. Automatische Wiederholungen sind gesperrt.",
   "Instagram publication needs attention": "Die Instagram-Veröffentlichung muss geprüft werden. Prüfe das Konto vor dem Fortfahren. Automatische Wiederholungen sind gesperrt.",
   "Publication failure details": "Erfasst {time} · Fehler {code}",
-  "Resume after account verification": "Nach Kontobestätigung fortsetzen"
+  "Resume after account verification": "Nach Kontobestätigung fortsetzen",
+  "From a start date": "Ab einem Startdatum",
+  "Photo preselection explanation": "Ähnliche Serien werden lokal vorgefiltert. Nur an die KI gesendete Bilder zählen zum Limit; andere Blickwinkel bleiben möglichst erhalten. Das bestbewertete Bild steht zuerst."
 }

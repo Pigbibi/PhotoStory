@@ -260,5 +260,7 @@
   "Instagram authorization needs attention": "Instagram 授权异常：请完成 Meta 账户验证并检查权限。系统已阻止自动重试。",
   "Instagram publication needs attention": "Instagram 发布需要处理：请先核对账户，系统已阻止自动重试。",
   "Publication failure details": "记录时间 {time} · 错误码 {code}",
-  "Resume after account verification": "账户验证后恢复这次发布"
+  "Resume after account verification": "账户验证后恢复这次发布",
+  "From a start date": "从指定日期起",
+  "Photo preselection explanation": "先在本地预筛近似连拍，只有交给 AI 的代表照片计入额度；保守保留不同角度。每篇优先以评分最好的照片作为封面。"
 }

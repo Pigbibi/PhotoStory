@@ -149,7 +149,7 @@ async function internal(r, e, p) {
     const progress=progressInput(b.progress,previous.progress);
     if(progress.batches!==(previous.progress?.batches||0)+1 || progress.processed-(previous.progress?.processed||0)>previous.maxPhotos || b.more!==(progress.processed<progress.total)) throw new Error("invalid_progress");
     if(progress.phase!==(b.more?"processing":"complete")) throw new Error("invalid_progress");
-    if(previous.analysisLimit && (!Number.isInteger(b.progress.analyzed)||progress.analyzed>previous.analysisLimit||progress.analyzed-(previous.progress?.analyzed||0)!==progress.processed-(previous.progress?.processed||0)))throw new Error('invalid_progress');
+    if(previous.analysisLimit && (!Number.isInteger(b.progress.analyzed)||progress.analyzed>previous.analysisLimit||progress.analyzed-(previous.progress?.analyzed||0)>progress.processed-(previous.progress?.processed||0)))throw new Error('invalid_progress');
     const drafts = b.drafts.map(validateDraft),
       seen = new Set();
     if (new Set(drafts.map((d) => d.id)).size !== drafts.length)

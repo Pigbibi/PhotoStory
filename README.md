@@ -399,3 +399,26 @@ part of the repository's automated test suite.
 
 For larger photo queues, use a private R2 bucket with byte and request limits.
 See [R2 setup and safe migration](docs/storage.md). Originals remain in OneDrive.
+
+### Burst preselection and historical catch-up
+
+Upgrade `scripts/preselect.py`, `process_batch.py` and `inventory.py` together.
+Using the existing Pillow dependency, the processor filters exact copies and
+conservative near-matches within two-minute bursts before AI. It compares two
+perceptual hashes, aspect, color and contrast; low-detail images are not merged
+by hash alone. The clearest representative in each batch wins, while a much
+clearer later image is retained. Different or uncertain views remain for AI.
+This heuristic does not guarantee perfect deduplication or aesthetic quality.
+
+Only images actually sent for AI screening consume the analysis limit (300 for
+new settings). Acknowledged versions and representative features persist in the
+private VPS cache across batches/cycles; the cache contains no image pixels or
+tokens. Existing cache records remain valid. Privacy checks, composition review,
+original-output review and the seven-day publishing limit remain unchanged.
+The best aesthetic score leads each post; ties preserve the editor's cover choice.
+
+Periodic production settings support rolling one/three/six/twelve-month ranges,
+all photos, a fixed custom date range, or a start date through the current day.
+Save to apply; configuration persists across deployments. A custom start date
+supports gradual historical catch-up on the next scheduled run, without sending
+the entire archive to AI at once. Existing saved limits are not silently increased.

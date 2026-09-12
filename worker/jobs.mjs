@@ -19,6 +19,10 @@ export function jobInput(b, now = new Date()) {
     if(z<a) throw new Error('invalid_dates');
     start=day(a); end=day(new Date(z.getTime()+86400000));
     selection.start=b.start; selection.end=b.end;
+  } else if(range==='since'){
+    const a=dateValue(b.start),today=day(new Date(now.getTime()+8*3600000));
+    if(a>dateValue(today))throw new Error('invalid_dates');
+    start=day(a);end=day(new Date(dateValue(today).getTime()+86400000));selection.start=start;
   } else if (['1m','3m','6m','12m'].includes(range)) {
     const today=dateValue(day(new Date(now.getTime()+8*3600000)));
     const months=Number(range.slice(0,-1));

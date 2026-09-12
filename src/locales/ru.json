@@ -260,5 +260,7 @@
   "Instagram authorization needs attention": "Требуется проверка авторизации Instagram. Пройдите проверку аккаунта Meta и разрешений. Автоматические повторы заблокированы.",
   "Instagram publication needs attention": "Требуется проверка публикации Instagram. Проверьте аккаунт перед продолжением; автоматические повторы заблокированы.",
   "Publication failure details": "Записано {time} · Ошибка {code}",
-  "Resume after account verification": "Продолжить после проверки аккаунта"
+  "Resume after account verification": "Продолжить после проверки аккаунта",
+  "From a start date": "Начиная с даты",
+  "Photo preselection explanation": "Похожие серии фильтруются локально. В лимит входят только фото, отправленные ИИ; другие ракурсы сохраняются. Лучшее по оценке фото становится обложкой."
 }
