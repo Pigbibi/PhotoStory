@@ -136,6 +136,7 @@ STRING = {"type": "string"}
 SCREEN_SCHEMA = obj({"photos": {"type": "array", "items": obj({
     "id": STRING, "decision": {"type": "string", "enum": ["allow", "exclude", "uncertain"]},
     "flags": {"type": "array", "items": STRING}, "landscape": {"type": "boolean"},
+    "peopleRole": {"type": "string", "enum": ["none", "incidental", "subject", "uncertain"]}, "compositionClear": {"type": "boolean"},
     "aesthetic": {"type": "integer", "minimum": 0, "maximum": 10}, "description": STRING,
 })}})
 GROUP_SCHEMA = obj({"drafts": {"type": "array", "items": obj({
@@ -149,9 +150,24 @@ Return exactly one result per supplied image, matching the supplied ID order.
 Default to uncertain. Allow ONLY clearly public outdoor scenery/travel landscapes.
 Exclude: screenshots, documents, IDs, tickets, receipts, financial/medical/work
 records, readable personal details, license plates, QR codes, private homes/hotel
-rooms, nudity/sexual content, children, identifiable people, portraits, disturbing
+rooms, nudity/sexual content, children, selfies, posed groups, people as the main subject, portraits, disturbing
 content, or any ambiguity about suitability for public sharing. If the preview is
 too small to rule out privacy issues, mark uncertain. All concerns must be flags.
+Inspect the WHOLE frame, including dark boats, windows, reflections and edges.
+Classify peopleRole: none (no real people), incidental (passersby/passengers are
+secondary to scenery), subject (selfie, posed group, portrait, or a specific
+person clearly being photographed), uncertain (cannot determine their role).
+Incidental public passersby or passengers are allowed, even if visible; people
+presence alone is not a privacy flag. Subject or uncertain must be excluded.
+Clearly inanimate sculptures/statues in public architecture are not real people.
+Do not infer identities, relationships or consent. Other privacy exclusions above
+still apply regardless of whether people are incidental.
+compositionClear=true ONLY when the scenery is the clear subject, with no heavy
+window frames, railings or foreground obstructions crossing important subjects,
+and no accidentally cut-off main subject. A travel snapshot is not automatically
+a good scenery photo. Obstructed views and weak record shots should be excluded.
+A subject/uncertain peopleRole or false compositionClear requires
+exclude/uncertain and a matching concern flag.
 A photo can be aesthetically good and still excluded. Rate aesthetics 0-10 for
 focus, exposure, composition, light and visual interest; 7+ means worth reviewing.
 Never invent exact locations or describe excluded sensitive details. Use a short
@@ -237,7 +253,7 @@ def accepted_screening(result, expected):
         raise Stop("screen_contract")
     accepted = []
     for p in values:
-        if p.get("decision") == "allow" and p.get("flags") == [] and p.get("landscape") is True and type(p.get("aesthetic")) is int and 7 <= p["aesthetic"] <= 10 and isinstance(p.get("description"), str):
+        if p.get("decision") == "allow" and p.get("flags") == [] and p.get("landscape") is True and p.get("peopleRole") in ("none","incidental") and p.get("compositionClear") is True and type(p.get("aesthetic")) is int and 7 <= p["aesthetic"] <= 10 and isinstance(p.get("description"), str):
             accepted.append(p)
     return accepted
 

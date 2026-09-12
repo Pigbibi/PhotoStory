@@ -30,8 +30,12 @@ responses use no-store and private routes do not accept third-party origins.
 Do not enable analytics or request-body logging for private payloads.
 
 AI safety classification is fallible. The prompt conservatively excludes private
-interiors, documents, identifiable people/children, sexual imagery, personal details
-and uncertain images. It cannot guarantee every sensitive detail will be detected.
+interiors, documents, selfies, posed groups, portraits, children, sexual imagery,
+personal details and uncertain images. Incidental public passersby/passengers are
+allowed when secondary to scenery. The screener must explicitly classify the
+people role as none/incidental and confirm clear composition; subject/uncertain
+roles, missing assessments and heavy obstructions are excluded. Public statues
+are not treated as real people. No identities or relationships are inferred. It cannot guarantee every sensitive detail will be detected.
 Only 768px-or-smaller previews are screened, which can hide small details; uncertainty
 must be rejected. Manual review is the default. Strict AI auto-review can be enabled explicitly for
 new jobs; its additional pass is fallible and does not guarantee privacy. It never

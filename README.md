@@ -27,7 +27,10 @@ or live model results are included in this repository.
    installation. It claims one job, obtains a short-lived Graph access token from
    the private backend, reads previews, and asks Codex to screen them.
 5. Only explicitly allowed landscape photos with no privacy flags and aesthetic
-   score >= 7 enter the composition pass. Codex proposes up to three drafts, each
+   score >= 7 enter the composition pass. A separate people-role field must classify
+   them as having no people or only incidental passersby/passengers; selfies, posed
+   groups, portraits and uncertain roles are excluded. A clear-composition check
+   must also pass: heavy foreground/window obstructions are excluded. Codex proposes up to three drafts, each
    with 1–8 photos, an English caption and 3–5 suggested English hashtags.
 6. Review, edit, reorder, remove, save, approve, or return a draft. Editing approved
    content revokes that approval. Approval conflicts across tabs are rejected.

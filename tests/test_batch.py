@@ -7,10 +7,23 @@ spec.loader.exec_module(b)
 
 class ScreeningTests(unittest.TestCase):
     def safe(self, **kw):
-        return dict(id='a', decision='allow', flags=[], landscape=True, aesthetic=8, description='Coast', **kw)
+        return dict(id='a', decision='allow', flags=[], landscape=True, aesthetic=8, description='Coast', peopleRole="none", compositionClear=True, **kw)
     def test_uncertainty_never_enters_drafts(self):
         for change in ({'decision':'uncertain'}, {'flags':['person']}, {'landscape':False}, {'aesthetic':6}, {'aesthetic':True}, {'flags':None}):
             self.assertEqual(b.accepted_screening({'photos':[{**self.safe(), **change}]}, ['a']), [])
+    def test_explicit_people_and_composition_checks_are_required(self):
+        for key in ('compositionClear',):
+            for value in (False,None,'true',1):
+                self.assertEqual(b.accepted_screening({'photos':[{**self.safe(),key:value}]},['a']),[])
+            photo=self.safe();photo.pop(key)
+            self.assertEqual(b.accepted_screening({'photos':[photo]},['a']),[])
+    def test_incidental_people_allowed_but_portraits_and_unknown_roles_rejected(self):
+        for role in ('none','incidental'):
+            self.assertEqual(len(b.accepted_screening({'photos':[{**self.safe(),'peopleRole':role}]},['a'])),1)
+        for role in ('subject','uncertain',None,True,'',[]):
+            self.assertEqual(b.accepted_screening({'photos':[{**self.safe(),'peopleRole':role}]},['a']),[])
+        photo=self.safe();photo.pop('peopleRole')
+        self.assertEqual(b.accepted_screening({'photos':[photo]},['a']),[])
     def test_missing_or_unknown_ids_fail(self):
         for photos in ([], [self.safe(),self.safe()], [{**self.safe(),'id':'b'}]):
             with self.assertRaises(b.Stop): b.accepted_screening({'photos':photos},['a'])
