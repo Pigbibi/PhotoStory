@@ -275,5 +275,6 @@
   "More pages remaining": "還有後續頁面",
   "Historical match status": "OneDrive 配對：已確認 {confirmed} 筆 · 待確認 {proposals} 筆",
   "Historical matches require confirmation before exclusion.": "歷史配對只是建議；確認後才會排除相片。",
-  "Confirm all visible matches": "確認目前顯示的全部配對"
+  "Confirm all visible matches": "確認目前顯示的全部配對",
+  "Run history-only verification": "執行僅歷史配對驗證"
 }

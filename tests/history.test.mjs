@@ -70,3 +70,10 @@ test('history media URLs are bounded, fixed-host and never persisted',async t=>{
  const value=await mediaHistoryMediaPage(env);assert.equal(value.items.length,2);assert.equal(value.after,null);
  const state=await (await import('../worker/auth.mjs')).get(env,'instagram-history:456');assert.equal(JSON.stringify(state).includes('cdninstagram'),false);
 });
+test('history media matching skips video-only posts while advancing the bounded page',async t=>{
+ const {env}=await account(t);
+ await put(env,'instagram-history:456',{records:[{id:'300',at:1,photos:0,photoIds:[]},{id:'100',at:2,photos:1,photoIds:['101']}],after:null,checkedAt:3});
+ let calls=0;
+ t.mock.method(globalThis,'fetch',async(url,o)=>{calls++;assert.equal(new URL(url).hostname,'graph.instagram.com');return Response.json({id:'100',media_type:'IMAGE',media_url:'https://scontent.cdninstagram.com/a.jpg'});});
+ const value=await mediaHistoryMediaPage(env,0);assert.equal(calls,1);assert.equal(value.items.length,1);assert.equal(value.after,null);
+});

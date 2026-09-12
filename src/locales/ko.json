@@ -275,5 +275,6 @@
   "More pages remaining": "다음 페이지 있음",
   "Historical match status": "OneDrive 일치: {confirmed}개 확인 · {proposals}개 제안",
   "Historical matches require confirmation before exclusion.": "과거 일치는 제안일 뿐입니다. 사진을 제외하기 전에 확인하세요.",
-  "Confirm all visible matches": "표시된 모든 일치 확인"
+  "Confirm all visible matches": "표시된 모든 일치 확인",
+  "Run history-only verification": "기록만 대조 실행"
 }

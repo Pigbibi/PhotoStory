@@ -30,7 +30,8 @@ def failure_reason(error):
     allowed = {'folder_limit', 'folder_not_found', 'gateway_failed', 'gateway_not_configured',
                'group_contract', 'https_required', 'image_too_large', 'invalid_graph_origin',
                'page_limit', 'photo_limit', 'redirect_blocked', 'response_too_large',
-               'screen_contract', 'translation_contract', 'setup_required', 'thumbnail_missing', 'thumbnail_origin'}
+               'screen_contract', 'translation_contract', 'setup_required', 'thumbnail_missing', 'thumbnail_origin',
+               'history_not_complete', 'history_match_contract'}
     return str(error) if isinstance(error, Stop) and str(error) in allowed else 'unknown'
 
 
@@ -400,6 +401,39 @@ def run():
             if complete: progress['phase']='processing'
             call('/internal/checkpoint',{**auth,'progress':progress})
             print('Scan checkpoint; discovered:',progress['total'])
+            return
+        if source.get('mode')=='history_match':
+            limit=min(100,source.get('maxPhotos',100))
+            candidates=inventory.history_batch(limit)
+            if not candidates:
+                batch_id=inventory.stage_batch([])
+                progress=inventory.history_progress()
+                progress['batches']+=1
+                progress['phase']='complete'
+                completion_started=True
+                call('/internal/complete',{**auth,'batchId':batch_id,'more':False,'progress':progress,'drafts':[],'photos':[]})
+                inventory.reconcile_history(batch_id)
+                print('History matching complete; no pending photos.')
+                return
+            batch_id=inventory.stage_batch(candidates)
+            try:
+                history_match_page(call,inventory)
+                visual_hashes={}
+                for photo in candidates:
+                    visual_hashes[photo['id']]=dhash(thumbnail(photo,source['accessToken']))
+                history_proposals(call,inventory,visual_hashes)
+                inventory.save_history_batch(visual_hashes)
+                progress=inventory.history_progress()
+                progress['processed']+=len(candidates)
+                progress['batches']+=1
+                more=progress['processed']<progress['total']
+                progress['phase']='processing' if more else 'complete'
+                completion_started=True
+                result=call('/internal/complete',{**auth,'batchId':batch_id,'more':more,'progress':progress,'drafts':[],'photos':[]})
+                inventory.reconcile_history(batch_id)
+                print('History matching batch complete; processed:',progress['processed'])
+            except Exception:
+                raise
             return
         limit=source['maxPhotos']
         if source.get('analysisLimit'):

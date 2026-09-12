@@ -275,5 +275,6 @@
   "More pages remaining": "और पृष्ठ बाकी हैं",
   "Historical match status": "OneDrive मिलान: {confirmed} पुष्ट · {proposals} सुझाव",
   "Historical matches require confirmation before exclusion.": "ऐतिहासिक मिलान केवल सुझाव हैं; फोटो हटाने से पहले पुष्टि करें।",
-  "Confirm all visible matches": "सभी दिखाई दे रहे मिलानों की पुष्टि करें"
+  "Confirm all visible matches": "सभी दिखाई दे रहे मिलानों की पुष्टि करें",
+  "Run history-only verification": "केवल इतिहास सत्यापन चलाएँ"
 }

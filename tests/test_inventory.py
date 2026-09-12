@@ -84,6 +84,34 @@ class InventoryTests(unittest.TestCase):
             self.assertEqual([p['id'] for p in later.next_batch(10)],['1'])
             later.close()
 
+    def test_history_batches_never_enter_shared_ai_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inv=Inventory(tmp,'history',self.source(),'policy')
+            photo=self.record(1)
+            inv.db.execute('INSERT INTO photos(id,body,taken,fingerprint,status) VALUES(?,?,?,?,?)',(photo['id'],__import__('json').dumps(photo),photo['taken'],photo['fingerprint'],'pending'))
+            inv.db.commit()
+            batch=inv.history_batch(10); self.assertEqual([p['id'] for p in batch],['1'])
+            bid=inv.stage_batch(batch); inv.save_history_batch({'1':'abcd'})
+            inv.reconcile_history(bid)
+            self.assertEqual(inv.history_progress()['processed'],1)
+            self.assertEqual(inv.next_batch(10),[])
+            self.assertIsNone(inv.db.execute('SELECT 1 FROM cache.analyzed').fetchone())
+            self.assertEqual(inv.db.execute("SELECT value FROM cache.history_meta WHERE key='photo:version-1'").fetchone()[0],'abcd')
+            inv.close()
+
+    def test_history_scan_revisits_photos_already_known_to_ai(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source={**self.source(),'mode':'history_match','knownPhotoIds':['1']}
+            photo=self.record(1)
+            inv=Inventory(tmp,'history-all',source,'policy')
+            def graph(url):
+                if '/root:/' in url: return {'id':'root','folder':{}}
+                return {'value':[photo]}
+            self.assertTrue(inv.scan(graph,lambda x:x))
+            self.assertEqual([p['id'] for p in inv.history_batch(10)],['1'])
+            self.assertEqual(inv.history_progress()['processed'],0)
+            inv.close()
+
 if __name__=='__main__': unittest.main()
 
 class ScreeningBudgetTests(unittest.TestCase):

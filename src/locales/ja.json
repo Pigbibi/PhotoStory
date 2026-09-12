@@ -275,5 +275,6 @@
   "More pages remaining": "続きのページがあります",
   "Historical match status": "OneDrive の一致: {confirmed} 件確認済み · {proposals} 件の候補",
   "Historical matches require confirmation before exclusion.": "過去の一致は候補です。写真を除外する前に確認してください。",
-  "Confirm all visible matches": "表示中の一致をすべて確認"
+  "Confirm all visible matches": "表示中の一致をすべて確認",
+  "Run history-only verification": "履歴のみの照合を実行"
 }
