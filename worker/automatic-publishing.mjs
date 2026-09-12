@@ -4,7 +4,6 @@ import {publishingAccount} from './instagram.mjs';
 import * as publishing from './publishing.mjs';
 import {storageView} from './storage.mjs';
 
-const DAY=86400000;
 const fail=()=>{throw new Error('publication_conflict');};
 const fields=['privacySafe','captionGrounded','locationGrounded','coherent','compositionGood','noDuplicateFrames'];
 export function eligible(d,s){
@@ -33,8 +32,8 @@ export async function automatic(e,b){
    return {draft:d,publication:await publishing.view(e,d.id)};
   }
   // Prepared work is never automatically reclaimed after a crash. It remains
-  // private for manual inspection. This also bounds failed reviews to one/day.
-  if(await e.DB.prepare("SELECT id FROM publications WHERE created>? OR status IN ('publishing','working','uncertain') LIMIT 1").bind(Date.now()-DAY).first())return null;
+  // private for manual inspection. This also bounds failed reviews to one/seven days.
+  if(await e.DB.prepare("SELECT id FROM publications WHERE created>? OR status IN ('publishing','working','uncertain') LIMIT 1").bind(Date.now()-publishing.AUTO_PUBLISH_INTERVAL).first())return null;
   const rows=await e.DB.prepare("SELECT body FROM drafts WHERE json_extract(body,'$.status')='approved' AND json_extract(body,'$.approvalSource')='strict_ai_v1' AND json_extract(body,'$.autoApprovedAt')>? AND NOT EXISTS(SELECT 1 FROM publications WHERE publications.draft_id=drafts.id) ORDER BY json_extract(body,'$.autoApprovedAt') LIMIT 100").bind(s.autoPublishSince).all();
   const d=rows.results.map(r=>JSON.parse(r.body)).find(d=>eligible(d,s));
   if(!d)return null;

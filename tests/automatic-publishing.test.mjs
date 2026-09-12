@@ -83,7 +83,7 @@ test('rejected original review returns the draft to human review and is not recl
  assert.equal(d.status,'draft');assert.equal(d.version,2);assert.equal(d.approvalSource,undefined);
  assert.equal(await automatic(env,{action:'candidate'}),null);
 });
-test('two processors can reserve only one daily attempt',async t=>{
+test('two processors can reserve only one weekly attempt',async t=>{
  const {env,DB,s}=await fixture(t);
  const results=await Promise.allSettled([pub.prepare(env,'d',1,{since:s.autoPublishSince,userId:s.autoPublishUserId}),pub.prepare(env,'d',1,{since:s.autoPublishSince,userId:s.autoPublishUserId})]);
  assert.equal(results.filter(x=>x.status==='fulfilled').length,1);
@@ -92,5 +92,14 @@ test('two processors can reserve only one daily attempt',async t=>{
 test('a large legacy approved backlog cannot hide new eligible drafts',async t=>{
  const {env,DB,d}=await fixture(t);
  await DB.batch(Array.from({length:100},(_,i)=>DB.prepare('INSERT INTO drafts VALUES(?,?,1)').bind('legacy'+i,JSON.stringify({...d,id:'legacy'+i,autoApprovedAt:undefined}))));
+ assert.equal((await automatic(env,{action:'candidate'})).draft.id,'d');
+});
+
+test('weekly automatic cadence blocks candidate and atomic preparation after a recent manual post',async t=>{
+ const {env,DB,s}=await fixture(t);
+ await DB.prepare("INSERT INTO publications VALUES('recent','recent',1,'published','{}',?,0)").bind(Date.now()-2*86400000).run();
+ assert.equal(await automatic(env,{action:'candidate'}),null);
+ await assert.rejects(pub.prepare(env,'d',1,{since:s.autoPublishSince,userId:s.autoPublishUserId}),/publication_conflict/);
+ await DB.prepare("UPDATE publications SET created=? WHERE id='recent'").bind(Date.now()-8*86400000).run();
  assert.equal((await automatic(env,{action:'candidate'})).draft.id,'d');
 });

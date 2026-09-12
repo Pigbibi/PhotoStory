@@ -242,7 +242,7 @@
   "发布模式": "Modo de publicação",
   "人工发布（默认）": "Publicação manual (padrão)",
   "严格 AI 自动发布": "Publicação automática com IA rigorosa",
-  "自动发布说明": "É necessário ligar o Instagram. Só são elegíveis novos rascunhos aprovados por IA após a ativação. Os recortes finais dos originais são revistos; no máximo uma tentativa a cada 24 horas. Erros interrompem a tentativa. Guarde para aplicar. O modo manual para pedidos futuros, mas não retira os já enviados.",
+  "自动发布说明": "É necessário ligar o Instagram. Só são elegíveis novos rascunhos aprovados por IA após a ativação. Os recortes finais dos originais são revistos; no máximo uma tentativa a cada 7 dias. Erros interrompem a tentativa. Guarde para aplicar. O modo manual para pedidos futuros, mas não retira os já enviados.",
   "自动发布已开启": "Publicação automática ativada",
   "自动发布已关闭": "Publicação automática desativada",
   "私有图片存储（R2）": "Armazenamento privado de imagens (R2)",

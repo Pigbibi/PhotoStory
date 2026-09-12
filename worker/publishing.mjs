@@ -5,6 +5,7 @@ import {get} from './auth.mjs';
 import {storeImage,readImage} from './storage.mjs';
 export const MAX_PUBLISH_IMAGE=1800000;
 const HOUR=3600000;
+export const AUTO_PUBLISH_INTERVAL=7*24*HOUR;
 const fail=code=>{throw new Error(code);};
 export function jpegDimensions(data){
  if(data.length<20||data.length>MAX_PUBLISH_IMAGE||data[0]!==255||data[1]!==216||data.at(-2)!==255||data.at(-1)!==217)fail('invalid_publish_image');
@@ -43,7 +44,7 @@ export async function prepare(e,id,version,automatic=null){
  if(automatic){
   body.automatic=true;body.autoPublishSince=automatic.since;
   result=await e.DB.prepare("INSERT INTO publications SELECT ?,?,?,'prepared',?,?,? WHERE EXISTS(SELECT 1 FROM state WHERE key='automation' AND json_extract(value,'$.publishMode')='automatic' AND json_extract(value,'$.reviewMode')='strict_auto' AND json_extract(value,'$.autoPublishSince')=? AND json_extract(value,'$.autoPublishUserId')=?) AND NOT EXISTS(SELECT 1 FROM publications WHERE created>? OR status IN ('publishing','working','uncertain')) AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved' AND json_extract(body,'$.approvalSource')='strict_ai_v1' AND json_extract(body,'$.autoApprovedAt')>?) ON CONFLICT DO NOTHING")
-   .bind(id,publicationId,version,JSON.stringify(body),now,now+HOUR,automatic.since,account.userId,now-24*HOUR,id,version,automatic.since).run();
+   .bind(id,publicationId,version,JSON.stringify(body),now,now+HOUR,automatic.since,account.userId,now-AUTO_PUBLISH_INTERVAL,id,version,automatic.since).run();
  }else{
   result=await e.DB.prepare("INSERT INTO publications VALUES(?,?,?,'prepared',?,?,?) ON CONFLICT(draft_id) DO UPDATE SET id=excluded.id,version=excluded.version,status=excluded.status,body=excluded.body,created=excluded.created,expires=excluded.expires WHERE publications.status='prepared'")
    .bind(id,publicationId,version,JSON.stringify(body),now,now+HOUR).run();

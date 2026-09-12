@@ -236,7 +236,7 @@ processor advances one recorded Meta operation per tick before scanning more
 photos. Keep the timer online; this is best-effort processing, not an exact-time
 posting scheduler. Scheduled photo discovery is a separate setting.
 
-The limit is **one new automatic attempt per rolling 24 hours**, counting manual
+The limit is **one new automatic attempt per rolling seven days**, counting manual
 publications and failed preparation attempts too. An ambiguous or interrupted
 external request stops the queue for owner inspection; it is never blindly retried.
 Switching to manual blocks subsequent automatic requests, but cannot recall a
@@ -249,3 +249,5 @@ Automatic mode is opt-in authorization to actually publish. Test your account wi
 an explicitly approved manual post first. AI is fallible; strict checks reduce
 risk but do not guarantee safe or attractive photos. No live automatic post is
 part of the repository's automated test suite.
+
+For a low-frequency deployment, scan the last three months weekly with a 100-photo analysis budget. No new photos or no eligible draft means no post; unused opportunities do not accumulate.

@@ -242,7 +242,7 @@
   "发布模式": "Veröffentlichungsmodus",
   "人工发布（默认）": "Manuell veröffentlichen (Standard)",
   "严格 AI 自动发布": "Automatisch mit strenger KI-Prüfung",
-  "自动发布说明": "Ein verbundenes Instagram-Konto ist erforderlich. Nur neue, nach Aktivierung KI-genehmigte Entwürfe sind zulässig. Die finalen Originalzuschnitte werden erneut geprüft; höchstens ein Versuch pro 24 Stunden. Bei Fehlern wird gestoppt. Zum Anwenden speichern. Manuell stoppt weitere Anfragen, kann gesendete aber nicht zurückrufen.",
+  "自动发布说明": "Ein verbundenes Instagram-Konto ist erforderlich. Nur neue, nach Aktivierung KI-genehmigte Entwürfe sind zulässig. Die finalen Originalzuschnitte werden erneut geprüft; höchstens ein Versuch pro 7 Tage. Bei Fehlern wird gestoppt. Zum Anwenden speichern. Manuell stoppt weitere Anfragen, kann gesendete aber nicht zurückrufen.",
   "自动发布已开启": "Automatische Veröffentlichung an",
   "自动发布已关闭": "Automatische Veröffentlichung aus",
   "私有图片存储（R2）": "Privater Bildspeicher (R2)",

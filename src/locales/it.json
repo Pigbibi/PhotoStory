@@ -242,7 +242,7 @@
   "发布模式": "Modalità di pubblicazione",
   "人工发布（默认）": "Pubblicazione manuale (predefinita)",
   "严格 AI 自动发布": "Pubblicazione automatica con IA rigorosa",
-  "自动发布说明": "Instagram deve essere collegato. Sono idonee solo le nuove bozze approvate dopo l’attivazione. I ritagli finali degli originali vengono ricontrollati; massimo un tentativo ogni 24 ore. Gli errori fermano il tentativo. Salva per applicare. La modalità manuale ferma le richieste future, ma non ritira quelle già inviate.",
+  "自动发布说明": "Instagram deve essere collegato. Sono idonee solo le nuove bozze approvate dopo l’attivazione. I ritagli finali degli originali vengono ricontrollati; massimo un tentativo ogni 7 giorni. Gli errori fermano il tentativo. Salva per applicare. La modalità manuale ferma le richieste future, ma non ritira quelle già inviate.",
   "自动发布已开启": "Pubblicazione automatica attiva",
   "自动发布已关闭": "Pubblicazione automatica disattivata",
   "私有图片存储（R2）": "Archiviazione privata immagini (R2)",
