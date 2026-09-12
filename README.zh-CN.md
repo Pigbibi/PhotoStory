@@ -11,6 +11,10 @@ Instagram 授权仅核对预设的专业账号并在服务端加密保存令牌�
 
 [English](README.md)
 
+
+Instagram 授权由现有 VPS 维护 timer 在剩余不足 30 天时自动续期。即使关闭定期生成，也请保持 timer 在线。失败会保留旧连接；过期或被撤销后需要重新授权。详见 [Instagram 配置](docs/instagram-setup.zh-CN.md)。
+
+
 ## 日常使用
 
 1. 使用允许名单中的 GitHub 账号登录。

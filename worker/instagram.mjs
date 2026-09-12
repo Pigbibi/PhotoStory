@@ -1,4 +1,5 @@
 import * as auth from './auth.mjs';
+const DAY=86400000;
 const SCOPES=['instagram_business_basic','instagram_business_content_publish'];
 const USERNAME=/^[A-Za-z0-9._]{1,30}$/;
 function config(e){
@@ -15,7 +16,11 @@ export async function status(e){
   const encrypted=await auth.get(e,'instagram');if(!encrypted)return base;
   const saved=await auth.unseal(e,encrypted);
   if(saved.username?.toLowerCase()!==c.username||saved.client!==c.client||!Number.isSafeInteger(saved.expires))return base;
-  return {...base,connected:saved.expires>Date.now(),username:saved.username,expires:saved.expires};
+  const renewal=await auth.get(e,'instagram-refresh');
+  const current=renewal?.tokenHash===await auth.hash(JSON.stringify(encrypted));
+  return {...base,connected:saved.expires>Date.now(),username:saved.username,expires:saved.expires,
+   autoRefresh:true,refreshState:saved.expires<=Date.now()?'expired':current&&renewal.state==='failed'?'failed':'automatic',
+   ...(Number.isSafeInteger(saved.refreshedAt)?{lastRenewedAt:saved.refreshedAt}:{})};
  }catch{return base;}
 }
 export async function start(r,e){
@@ -74,7 +79,7 @@ export async function finish(r,e){
   stage='session';shape=undefined;
   if(!await auth.session(r,e))throw new Error('instagram_connection_failed');
   stage='storage';
-  await auth.put(e,'instagram',await auth.seal(e,{access:long.access_token,client:c.client,userId:normalizeId(profile.user_id),scopedId,username:profile.username,accountType:profile.account_type,permissions:SCOPES,expires:Date.now()+long.expires_in*1000}));
+  await auth.put(e,'instagram',await auth.seal(e,{access:long.access_token,client:c.client,userId:normalizeId(profile.user_id),scopedId,username:profile.username,accountType:profile.account_type,permissions:SCOPES,issuedAt:Date.now(),expires:Date.now()+long.expires_in*1000}));
   await auth.remove(e,'instagram-diagnostic');
   return auth.redirect('/?instagram=connected',clear);
  }catch(err){
@@ -97,4 +102,40 @@ export async function publishingRequest(account,path,body){
  if(!body)url.searchParams.set('fields','status_code');
  try{return await request(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+account.access},...(body?{body:new URLSearchParams(body)}:{})});}
  catch{throw new Error('publication_failed');}
+}
+
+// Maintenance only: never publishes, changes scopes or replaces a newer login.
+export async function refresh(e,now=Date.now()){
+ const c=config(e);if(!c)return;
+ const row=await e.DB.prepare("SELECT value FROM state WHERE key='instagram'").first();
+ if(!row)return;
+ let saved;try{saved=await auth.unseal(e,JSON.parse(row.value));}catch{return;}
+ if(saved.client!==c.client||saved.username?.toLowerCase()!==c.username||!identifier(saved.userId)||
+    typeof saved.access!=='string'||!saved.access||!SCOPES.every(s=>saved.permissions?.includes(s))||
+    !Number.isSafeInteger(saved.expires)||saved.expires<=now||saved.expires>=now+30*DAY)return;
+ // Legacy connections had a 60-day token but no issuance timestamp.
+ const issued=saved.refreshedAt??saved.issuedAt??saved.expires-60*DAY;
+ if(!Number.isSafeInteger(issued)||now-issued<DAY)return;
+ const claim={tokenHash:await auth.hash(row.value),state:'refreshing',checkedAt:now,nextAttemptAt:now+DAY};
+ const claimValue=JSON.stringify(claim);
+ const lock=await e.DB.prepare("INSERT INTO state(key,value,expires) SELECT 'instagram-refresh',?,NULL WHERE EXISTS(SELECT 1 FROM state WHERE key='instagram' AND value=?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,expires=NULL WHERE json_extract(state.value,'$.tokenHash')<>? OR json_extract(state.value,'$.nextAttemptAt')<=?")
+  .bind(claimValue,row.value,claim.tokenHash,now).run();
+ if(lock.meta.changes!==1)return;
+ try{
+  const url=new URL('https://graph.instagram.com/refresh_access_token');
+  url.search=new URLSearchParams({grant_type:'ig_refresh_token',access_token:saved.access});
+  const result=await request(url);
+  if(typeof result?.access_token!=='string'||!result.access_token||result.token_type?.toLowerCase()!=='bearer'||
+     !Number.isSafeInteger(result.expires_in)||result.expires_in<86400||result.expires_in>5184000||
+     now+result.expires_in*1000<=saved.expires)throw new Error('instagram_refresh_failed');
+  const next=JSON.stringify(await auth.seal(e,{...saved,access:result.access_token,expires:now+result.expires_in*1000,refreshedAt:now}));
+  const changed=await e.DB.prepare("UPDATE state SET value=? WHERE key='instagram' AND value=?").bind(next,row.value).run();
+  if(changed.meta.changes!==1)return;
+  await e.DB.prepare("UPDATE state SET value=? WHERE key='instagram-refresh' AND value=?")
+   .bind(JSON.stringify({...claim,tokenHash:await auth.hash(next),state:'ok'}),claimValue).run();
+ }catch{
+  // Retain the still-valid connection, expose no provider text or credential URLs.
+  await e.DB.prepare("UPDATE state SET value=? WHERE key='instagram-refresh' AND value=?")
+   .bind(JSON.stringify({...claim,state:'failed'}),claimValue).run();
+ }
 }

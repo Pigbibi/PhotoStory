@@ -137,8 +137,16 @@ sanitized errors.
    identity, cancelled consent or invalid state prevents connection. OAuth state
    is one-use, expires after ten minutes and is bound to the owner's exact login
    session. Do not sign out of PhotoStory midway through the flow.
-6. This release obtains a long-lived token but does not refresh it automatically.
-   Use **Reconnect Instagram** before it expires. To revoke access, use Instagram's
+6. Long-lived tokens renew automatically when fewer than 30 days remain, provided
+   they are at least 24 hours old and still valid. The existing VPS maintenance
+   timer must remain online; renewal works even when scheduled draft generation
+   is disabled. No new secret, permission or database migration is required.
+   Each connection can attempt renewal at most once per day. Failures retain the
+   old token and show a warning; expired/revoked grants need **Reconnect Instagram**.
+   The page shows the updated expiry and last successful renewal time. Concurrent
+   renewal is guarded and cannot overwrite a newer owner reconnection.
+   Tokens remain encrypted in D1; provider errors and credential URLs are not logged.
+   Renewal follows Meta's [refresh endpoint](https://developers.facebook.com/documentation/instagram-platform/reference/refresh_access_token). To revoke access, use Instagram's
    **Apps and websites** settings. The displayed expiry is the stored grant's
    expiry, not a continuous check for revocation. Publishing checks the saved account and token expiry again.
 
@@ -191,7 +199,7 @@ Temporary image URLs expire after one hour. Maintenance removes expired JPEG blo
 independently of review-trash retention; the publication record remains for duplicate
 prevention and history. Unfinished preparations stay private and expire too.
 
-This release has no scheduled posting, automatic token refresh, or unattended
+This release has no scheduled posting or unattended
 strict-AI publishing. The existing scheduled job feature only creates/reviews drafts.
 Meta app roles/access review still govern who can use the integration.
 

@@ -234,5 +234,8 @@
   "Publishing outcome uncertain. Check Instagram; automatic retries are blocked.": "投稿結果が不明です。Instagramを確認してください。自動再試行は停止されています。",
   "Could not finish. Check Instagram connection, approval, and image size.": "完了できませんでした。Instagram接続、承認状態、画像サイズを確認してください。",
   "已批准，保留在发布队列中。": "承認済み。投稿キューに保存しました。",
-  "已批准草稿 · 预览后发布到 Instagram": "承認済み下書き · 確認してInstagramに投稿"
+  "已批准草稿 · 预览后发布到 Instagram": "承認済み下書き · 確認してInstagramに投稿",
+  "自动续期已启用：有效期不足 30 天时更新。": "自動更新は有効です。有効期限の残りが30日未満になると更新します。",
+  "自动续期暂未成功，将于一天后重试；若授权已过期，请重新连接。": "自動更新に失敗しました。1日後に再試行します。認証期限が切れた場合は再接続してください。",
+  "上次自动续期：{date}。": "前回の自動更新：{date}。"
 }

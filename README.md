@@ -16,6 +16,10 @@ or live model results are included in this repository.
 
 ![Interface design concept](docs/design-concept.png)
 
+
+Instagram authorization is renewed automatically by the existing VPS maintenance timer when fewer than 30 days remain. Keep that timer online even when scheduled photo generation is disabled. Failures preserve the old connection; expired or revoked authorization requires reconnection. See [Instagram setup](docs/instagram-setup.md).
+
+
 ## How it works
 
 1. Sign in with an explicitly allowed GitHub account.

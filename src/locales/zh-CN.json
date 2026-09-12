@@ -234,5 +234,8 @@
   "Publishing outcome uncertain. Check Instagram; automatic retries are blocked.": "发布结果不确定。请检查 Instagram；已阻止自动重试。",
   "Could not finish. Check Instagram connection, approval, and image size.": "未能完成。请检查 Instagram 连接、批准状态和图片大小。",
   "已批准，保留在发布队列中。": "已批准，保留在发布队列中。",
-  "已批准草稿 · 预览后发布到 Instagram": "已批准草稿 · 预览后发布到 Instagram"
+  "已批准草稿 · 预览后发布到 Instagram": "已批准草稿 · 预览后发布到 Instagram",
+  "自动续期已启用：有效期不足 30 天时更新。": "自动续期已启用：有效期不足 30 天时更新。",
+  "自动续期暂未成功，将于一天后重试；若授权已过期，请重新连接。": "自动续期暂未成功，将于一天后重试；若授权已过期，请重新连接。",
+  "上次自动续期：{date}。": "上次自动续期：{date}。"
 }

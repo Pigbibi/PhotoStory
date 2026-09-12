@@ -1,3 +1,4 @@
+import {refresh as refreshInstagram} from './instagram.mjs';
 import {cleanup as cleanupPublications} from './publishing.mjs';
 import {jobLanguages} from './languages.mjs';
 import {get,put} from './auth.mjs';
@@ -50,6 +51,7 @@ export async function saveSettings(e,b,now=Date.now()){
   return settingsView(e,now);
 }
 export async function maintenance(e,now=Date.now(),temporaryCleanup=null){
+  await refreshInstagram(e,now).catch(()=>{});
   await cleanupPublications(e,now);
   if(temporaryCleanup && ['ok','busy','error','disabled'].includes(temporaryCleanup.status) && Number.isSafeInteger(temporaryCleanup.at) && temporaryCleanup.at<=now+60000 && temporaryCleanup.at>now-7*DAY){
     const safe={at:temporaryCleanup.at,status:temporaryCleanup.status};

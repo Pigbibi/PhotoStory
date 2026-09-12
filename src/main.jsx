@@ -673,6 +673,8 @@ function Settings({ session, notify }) {
         {session?.user && <>
           {session.instagram?.connected && <p>{t("已连接：@{username}",{username:session.instagram.username})}</p>}
           {session.instagram?.expires && <p>{t("授权有效期至 {date}。",{date:date(session.instagram.expires)})}</p>}
+          {session.instagram?.autoRefresh && session.instagram.connected && <p>{t(session.instagram.refreshState==='failed'?"自动续期暂未成功，将于一天后重试；若授权已过期，请重新连接。":"自动续期已启用：有效期不足 30 天时更新。")}</p>}
+          {session.instagram?.lastRenewedAt && <p>{t("上次自动续期：{date}。",{date:date(session.instagram.lastRenewedAt)})}</p>}
           {session.instagram?.configured
             ? <a className="button secondary" href="/auth/instagram/start">{t(session.instagram.username ? "重新连接 Instagram" : "连接 Instagram")}</a>
             : <p>{t("请先配置 Instagram 应用及回调地址。")}</p>}

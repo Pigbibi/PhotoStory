@@ -234,5 +234,8 @@
   "Publishing outcome uncertain. Check Instagram; automatic retries are blocked.": "게시 결과가 불확실합니다. Instagram을 확인하세요. 자동 재시도는 차단되었습니다.",
   "Could not finish. Check Instagram connection, approval, and image size.": "완료하지 못했습니다. Instagram 연결, 승인 상태, 이미지 크기를 확인하세요.",
   "已批准，保留在发布队列中。": "승인되어 게시 대기열에 보관되었습니다.",
-  "已批准草稿 · 预览后发布到 Instagram": "승인된 초안 · 미리 보고 Instagram에 게시"
+  "已批准草稿 · 预览后发布到 Instagram": "승인된 초안 · 미리 보고 Instagram에 게시",
+  "自动续期已启用：有效期不足 30 天时更新。": "자동 갱신이 활성화되어 있습니다. 만료까지 30일 미만이면 갱신합니다.",
+  "自动续期暂未成功，将于一天后重试；若授权已过期，请重新连接。": "자동 갱신에 실패했습니다. 하루 후 다시 시도합니다. 인증이 만료되었다면 다시 연결하세요.",
+  "上次自动续期：{date}。": "마지막 자동 갱신: {date}."
 }

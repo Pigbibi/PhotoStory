@@ -234,5 +234,8 @@
   "Publishing outcome uncertain. Check Instagram; automatic retries are blocked.": "Résultat incertain. Vérifiez Instagram ; les nouvelles tentatives automatiques sont bloquées.",
   "Could not finish. Check Instagram connection, approval, and image size.": "Impossible de terminer. Vérifiez la connexion Instagram, la validation et la taille des images.",
   "已批准，保留在发布队列中。": "Validé et conservé dans la file de publication.",
-  "已批准草稿 · 预览后发布到 Instagram": "Brouillons validés · Vérifier et publier sur Instagram"
+  "已批准草稿 · 预览后发布到 Instagram": "Brouillons validés · Vérifier et publier sur Instagram",
+  "自动续期已启用：有效期不足 30 天时更新。": "Le renouvellement automatique est activé : il intervient à moins de 30 jours de l’expiration.",
+  "自动续期暂未成功，将于一天后重试；若授权已过期，请重新连接。": "Le renouvellement automatique a échoué. Une nouvelle tentative aura lieu dans un jour ; reconnectez-vous si l’autorisation a expiré.",
+  "上次自动续期：{date}。": "Dernier renouvellement automatique : {date}."
 }
