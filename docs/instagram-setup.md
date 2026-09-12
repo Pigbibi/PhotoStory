@@ -199,8 +199,7 @@ Temporary image URLs expire after one hour. Maintenance removes expired JPEG blo
 independently of review-trash retention; the publication record remains for duplicate
 prevention and history. Unfinished preparations stay private and expire too.
 
-This release has no scheduled posting or unattended
-strict-AI publishing. The existing scheduled job feature only creates/reviews drafts.
+Scheduled draft creation is independent of publishing mode. Manual publishing remains the default; see the automatic publishing requirements below.
 Meta app roles/access review still govern who can use the integration.
 
 API sequence follows Meta's [content publishing guide](https://developers.facebook.com/documentation/instagram-platform/content-publishing):
@@ -208,3 +207,45 @@ create image containers, wait for `FINISHED`, create the carousel if needed, the
 call `media_publish` once. Pending containers are polled at one-minute intervals,
 with at most five unfinished checks; approved image alt text is included. Tokens are server-only bearer headers; provider error
 messages and credential-bearing URLs are never returned to the website.
+
+## Optional automatic publishing
+
+Connection Settings → Publishing mode offers **Manual publishing (default)** and
+**Strict AI automatic publishing**. Select a mode and save; the owner-only,
+same-origin, version-checked settings API persists it in private D1 state across
+redeployments. No source edit, secret in GitHub, or database migration is needed.
+Existing installations remain manual even if strict AI *review* was already on.
+Selecting automatic publishing also selects strict AI review and requires a
+connected Instagram account. Switching review to manual disables automatic publishing.
+
+Only newly AI-approved drafts generated after activation qualify. Existing drafts,
+human-approved drafts, edited drafts, and fitted/white-border layouts are excluded.
+Each source must score at least 9/10 and pass the complete-post AI gate. The VPS
+then downloads version-checked originals, confirms matching orientation, renders
+the saved crop at 1080 pixels wide without upscaling, and strips metadata. A separate
+AI call reviews these exact final JPEGs. Their SHA-256 digests are checked against
+the staged files before starting the existing durable Instagram publisher.
+Rejected preparations return to the human-review queue. Failed/crashed preparations
+are never automatically reclaimed. A browser is not required.
+
+Deploy the Worker and all four processor files together: `process_batch.py`,
+`auto_publish.py`, `systemd_gateway.py`, and `run_isolated_ai.py`. Use the existing
+Pillow environment and a one-minute processor timer. The gateway's bounded JPEG
+input limit is 1.8 MB per image, matching the publisher. During publication the
+processor advances one recorded Meta operation per tick before scanning more
+photos. Keep the timer online; this is best-effort processing, not an exact-time
+posting scheduler. Scheduled photo discovery is a separate setting.
+
+The limit is **one new automatic attempt per rolling 24 hours**, counting manual
+publications and failed preparation attempts too. An ambiguous or interrupted
+external request stops the queue for owner inspection; it is never blindly retried.
+Switching to manual blocks subsequent automatic requests, but cannot recall a
+request already sent to Meta. Re-enabling does not resume old automatic attempts.
+An in-progress/uncertain publication needs inspection before starting another.
+To take over a private prepared draft, select manual mode and regenerate its
+publishing preview. Existing expiring delivery links and cleanup remain unchanged.
+
+Automatic mode is opt-in authorization to actually publish. Test your account with
+an explicitly approved manual post first. AI is fallible; strict checks reduce
+risk but do not guarantee safe or attractive photos. No live automatic post is
+part of the repository's automated test suite.

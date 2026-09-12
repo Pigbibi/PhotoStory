@@ -298,6 +298,8 @@ export async function microsoftToken(e) {
     refresh: fresh.refresh_token || t.refresh,
     expires: Date.now() + Number(fresh.expires_in) * 1000,
   };
-  await put(e, "microsoft", await seal(e, t));
+  const updated=await e.DB.prepare("UPDATE state SET value=? WHERE key='microsoft' AND value=?")
+    .bind(JSON.stringify(await seal(e,t)),JSON.stringify(saved)).run();
+  if(updated.meta.changes!==1)throw new Error('reauthorization_required');
   return t.access;
 }

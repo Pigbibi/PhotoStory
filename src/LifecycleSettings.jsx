@@ -11,7 +11,7 @@ export default function LifecycleSettings({api,notify,folder,onStatus}){
   useEffect(()=>{refresh(true);const timer=setInterval(()=>refresh(false),15000);return()=>clearInterval(timer);},[]);
   useEffect(()=>{if(folder)setForm(f=>f&&!f.folder?{...f,folder}:f);},[folder,form!==null]);
   if(!form)return <p>{t("正在读取制作与保留规则…")}</p>;
-  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const set=(k,v)=>setForm(f=>({...f,[k]:v,...(k==='publishMode'&&v==='automatic'?{reviewMode:'strict_auto'}:{}),...(k==='reviewMode'&&v==='manual'?{publishMode:'manual'}:{})}));
   const save=async()=>{
     setBusy(true);
     try{const v=await api('/api/settings','PUT',form);setState(v);onStatus(v.backlogPaused);setForm(v.settings);notify('制作与保留规则已保存。正在进行的批次会先完成。');}
@@ -21,7 +21,10 @@ export default function LifecycleSettings({api,notify,folder,onStatus}){
   return <section className="lifecycle">
     <h2>{t("定期制作与保留规则")}</h2>
     <label>{t("审核模式")}<select value={form.reviewMode||'manual'} onChange={e=>set('reviewMode',e.target.value)}><option value="manual">{t("人工批准（默认）")}</option><option value="strict_auto">{t("严格 AI 自动审核")}</option></select></label>
-    <p className="muted">{t("自动模式：每张美感至少 9/10，另一次 AI 复核整篇。任何不确定或错误留待人工；额外复核会消耗更多额度。仅批准新任务草稿，修改后重新审核。尚未启用 Instagram 发布。AI 不能保证零漏判。")}</p>
+    <p className="muted">{t("严格审核说明")}</p>
+    <label>{t("发布模式")}<select value={form.publishMode||'manual'} onChange={e=>set('publishMode',e.target.value)}><option value="manual">{t("人工发布（默认）")}</option><option value="automatic">{t("严格 AI 自动发布")}</option></select></label>
+    <p className="muted">{t("自动发布说明")}</p>
+    <p className="approval-note">{state.settings.publishMode==='automatic'?t('自动发布已开启'):t('自动发布已关闭')}</p>
     <label className="check"><input type="checkbox" checked={form.enabled} onChange={e=>set('enabled',e.target.checked)}/>{t("定期生成待审核草稿")}</label>
     {form.reviewMode!=="strict_auto" && <p className="muted">{t("只整理照片和文案，不会自动批准或发布。以下是独立的定期制作配置，不会改变上方的手动任务。")}</p>}
     <label>{t("定期制作的照片文件夹")}<input dir="ltr" value={form.folder} maxLength={300} onChange={e=>set('folder',e.target.value)}/></label>

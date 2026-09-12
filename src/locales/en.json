@@ -237,5 +237,12 @@
   "已批准草稿 · 预览后发布到 Instagram": "Approved drafts · Preview and publish to Instagram",
   "自动续期已启用：有效期不足 30 天时更新。": "Automatic renewal is enabled: tokens are refreshed with fewer than 30 days remaining.",
   "自动续期暂未成功，将于一天后重试；若授权已过期，请重新连接。": "Automatic renewal has not succeeded. It will retry after one day; reconnect if authorization has expired.",
-  "上次自动续期：{date}。": "Last automatic renewal: {date}."
+  "上次自动续期：{date}。": "Last automatic renewal: {date}.",
+  "严格审核说明": "Strict review requires every photo to score at least 9/10 and a separate AI review of the complete post. Uncertain results stay for human review. Extra reviews use AI quota; AI can miss problems.",
+  "发布模式": "Publishing mode",
+  "人工发布（默认）": "Manual publishing (default)",
+  "严格 AI 自动发布": "Strict AI automatic publishing",
+  "自动发布说明": "Automatic publishing requires a connected Instagram account. Only new AI-approved drafts created after enabling qualify. Final original crops are reviewed again; at most one attempt every 24 hours. Errors stop the attempt. Save to apply. Switching to manual stops future requests, but cannot recall a request already sent.",
+  "自动发布已开启": "Automatic publishing is on",
+  "自动发布已关闭": "Automatic publishing is off"
 }

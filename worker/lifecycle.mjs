@@ -3,8 +3,9 @@ import {cleanup as cleanupPublications} from './publishing.mjs';
 import {jobLanguages} from './languages.mjs';
 import {get,put} from './auth.mjs';
 import {jobInput} from './jobs.mjs';
+import {publishingAccount} from './instagram.mjs';
 export const DAY=86400000, RETENTION=30*DAY;
-export const defaults={reviewMode:"manual",version:0,enabled:false,frequency:'weekly',weekday:1,monthDay:1,hour:9,
+export const defaults={publishMode:'manual',autoPublishSince:null,reviewMode:"manual",version:0,enabled:false,frequency:'weekly',weekday:1,monthDay:1,hour:9,
   folder:'',range:'1m',maxPhotos:20,analysisLimit:100,pendingLimit:20,cleanupEnabled:true,nextRun:null};
 export function nextRun(s,now){
   const local=new Date(now+8*3600000);
@@ -21,7 +22,8 @@ export function nextRun(s,now){
   }
 }
 export function settingsInput(b,now=Date.now()){
-  const s={reviewMode:b.reviewMode??"manual"};
+  const s={reviewMode:b.reviewMode??"manual",publishMode:b.publishMode??'manual'};
+  if(!['manual','automatic'].includes(s.publishMode)||(s.publishMode==='automatic'&&s.reviewMode!=='strict_auto'))throw new Error('invalid_settings');
   if(!["manual","strict_auto"].includes(s.reviewMode))throw new Error("invalid_settings");
   for(const k of ['enabled','cleanupEnabled']){
     if(typeof b[k]!=='boolean')throw new Error('invalid_settings');s[k]=b[k];
@@ -45,6 +47,11 @@ export async function saveSettings(e,b,now=Date.now()){
   const previous={...defaults,...await get(e,'automation')};
   if(b.version!==previous.version)throw new Error('version_conflict');
   const next={...previous,...settingsInput(b,now),pausedReason:null,version:previous.version+1};
+  if(next.publishMode==='automatic'){
+    const account=await publishingAccount(e);
+    next.autoPublishSince=previous.publishMode==='automatic'?previous.autoPublishSince:now;
+    next.autoPublishUserId=account.userId;
+  }else{next.autoPublishSince=null;next.autoPublishUserId=null;}
   const row=await e.DB.prepare("INSERT INTO state(key,value,expires) VALUES('automation',?,NULL) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(state.value,'$.version')=?")
     .bind(JSON.stringify(next),previous.version).run();
   if(row.meta.changes!==1)throw new Error('version_conflict');

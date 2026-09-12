@@ -48,7 +48,7 @@ def main():
         files = {'prompt.txt': read_regular(args.prompt_file, 128_000),
                  'schema.json': read_regular(args.output_schema, 64_000)}
         for i, path in enumerate(args.image):
-            data = read_regular(path, 512_000)
+            data = read_regular(path, 1_800_000)
             if not data.startswith(b'\xff\xd8\xff'):
                 raise ValueError('invalid_jpeg')
             files[f'image-{i}.jpg'] = data

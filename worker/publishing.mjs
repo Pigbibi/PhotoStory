@@ -1,6 +1,7 @@
 import {reviewedDraft} from './originals.mjs';
 import {publishingAccount,publishingRequest} from './instagram.mjs';
 import {ASPECTS,aspectValue} from './framing.mjs';
+import {get} from './auth.mjs';
 export const MAX_PUBLISH_IMAGE=1800000;
 const HOUR=3600000;
 const fail=code=>{throw new Error(code);};
@@ -30,17 +31,29 @@ function publicState(p){
  return {id:p.id,version:p.version,status:p.status==='working'&&Date.now()-b.touched>120000?'uncertain':p.status,username:b.username,expires:p.expires,completed:b.children.length,total:b.photos.length,mediaId:b.mediaId||null,retryAfterMs:Math.max(0,(b.nextCheck||0)-Date.now())};
 }
 export async function view(e,id){return publicState(await row(e,id));}
-export async function prepare(e,id,version){
+export async function prepare(e,id,version,automatic=null){
  const draft=await reviewedDraft(e,id,version),account=await publishingAccount(e),existing=await row(e,id),now=Date.now();
  if(existing){
   if(existing.status!=='prepared')fail('publication_conflict');
-  if(existing.version===version&&existing.expires>now+600000)return publicState(existing);
+  if(!automatic&&!JSON.parse(existing.body).automatic&&existing.version===version&&existing.expires>now+600000)return publicState(existing);
  }
  const publicationId=crypto.randomUUID(),body={username:account.username,userId:account.userId,origin:account.origin,photos:draft.photos.map(p=>({id:p.id,alt:p.alt})),caption:draft.caption+'\n\n'+draft.hashtags,children:[],waiting:null,parent:null,ready:false,touched:now};
- const result=await e.DB.prepare("INSERT INTO publications VALUES(?,?,?,'prepared',?,?,?) ON CONFLICT(draft_id) DO UPDATE SET id=excluded.id,version=excluded.version,status=excluded.status,body=excluded.body,created=excluded.created,expires=excluded.expires WHERE publications.status='prepared'")
-  .bind(id,publicationId,version,JSON.stringify(body),now,now+HOUR).run();
+ let result;
+ if(automatic){
+  body.automatic=true;body.autoPublishSince=automatic.since;
+  result=await e.DB.prepare("INSERT INTO publications SELECT ?,?,?,'prepared',?,?,? WHERE EXISTS(SELECT 1 FROM state WHERE key='automation' AND json_extract(value,'$.publishMode')='automatic' AND json_extract(value,'$.reviewMode')='strict_auto' AND json_extract(value,'$.autoPublishSince')=? AND json_extract(value,'$.autoPublishUserId')=?) AND NOT EXISTS(SELECT 1 FROM publications WHERE created>? OR status IN ('publishing','working','uncertain')) AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved' AND json_extract(body,'$.approvalSource')='strict_ai_v1' AND json_extract(body,'$.autoApprovedAt')>?) ON CONFLICT DO NOTHING")
+   .bind(id,publicationId,version,JSON.stringify(body),now,now+HOUR,automatic.since,account.userId,now-24*HOUR,id,version,automatic.since).run();
+ }else{
+  result=await e.DB.prepare("INSERT INTO publications VALUES(?,?,?,'prepared',?,?,?) ON CONFLICT(draft_id) DO UPDATE SET id=excluded.id,version=excluded.version,status=excluded.status,body=excluded.body,created=excluded.created,expires=excluded.expires WHERE publications.status='prepared'")
+   .bind(id,publicationId,version,JSON.stringify(body),now,now+HOUR).run();
+ }
  if(result.meta.changes!==1)fail('publication_conflict');
  await cleanup(e);return view(e,id);
+}
+async function automaticGuard(e,b){
+ if(!b.automatic)return;
+ const s=await get(e,'automation');
+ if(s?.publishMode!=='automatic'||s.reviewMode!=='strict_auto'||s.autoPublishSince!==b.autoPublishSince||s.autoPublishUserId!==b.userId||!b.originalReview||b.autoBlocked)fail('publication_conflict');
 }
 export async function upload(e,id,publicationId,photoId,data){
  const p=await row(e,id);if(!p||p.id!==publicationId||p.status!=='prepared'||p.expires<=Date.now())fail('publication_conflict');
@@ -58,11 +71,12 @@ export async function begin(e,id,publicationId,version,username){
  const draft=await reviewedDraft(e,id,version),account=await publishingAccount(e),p=await row(e,id);
  if(!p||p.id!==publicationId||p.version!==version||p.status!=='prepared'||p.expires<=Date.now())fail('publication_conflict');
  const b=JSON.parse(p.body);
+ await automaticGuard(e,b);
  if(username!==account.username||b.username!==account.username||b.userId!==account.userId||b.origin!==account.origin)fail('instagram_not_connected');
  const images=(await e.DB.prepare('SELECT photo_id FROM publication_images WHERE publication_id=?').bind(p.id).all()).results;
  if(images.length!==draft.photos.length||draft.photos.some(x=>!images.some(i=>i.photo_id===x.id)))fail('publication_incomplete');
- const result=await e.DB.prepare("UPDATE publications SET status='publishing',expires=? WHERE id=? AND status='prepared' AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved')")
-  .bind(Date.now()+HOUR,p.id,id,version).run();
+ const result=await e.DB.prepare("UPDATE publications SET status='publishing',expires=? WHERE id=? AND status='prepared' AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved') AND (?=0 OR EXISTS(SELECT 1 FROM state WHERE key='automation' AND json_extract(value,'$.publishMode')='automatic' AND json_extract(value,'$.reviewMode')='strict_auto' AND json_extract(value,'$.autoPublishSince')=? AND json_extract(value,'$.autoPublishUserId')=?))")
+  .bind(Date.now()+HOUR,p.id,id,version,b.automatic?1:0,b.autoPublishSince??null,b.userId).run();
  if(result.meta.changes!==1)fail('publication_conflict');return view(e,id);
 }
 export async function media(e,publicationId,photoId){
@@ -78,6 +92,7 @@ export async function advance(e,id,publicationId){
  const p=await row(e,id);if(!p||p.id!==publicationId)fail('publication_conflict');
  if(p.status!=='publishing')return publicState(p);
  const b=JSON.parse(p.body);if((b.nextCheck||0)>Date.now())return publicState(p);b.touched=Date.now();
+ await automaticGuard(e,b);
  const claimed=await e.DB.prepare("UPDATE publications SET status='working',body=? WHERE id=? AND status='publishing' AND body=?").bind(JSON.stringify(b),p.id,p.body).run();
  if(claimed.meta.changes!==1)return view(e,id);
  let status='publishing';
@@ -87,6 +102,7 @@ export async function advance(e,id,publicationId){
   const account=await publishingAccount(e);
   if(account.username!==b.username||account.userId!==b.userId||account.origin!==b.origin)fail('instagram_not_connected');
   const call=(path,body)=>publishingRequest(account,path,body);
+  await automaticGuard(e,b);
   const validId=result=>{if(typeof result?.id!=='string'||!/^\d{1,32}$/.test(result.id))fail('publication_failed');return result.id;};
   if(b.waiting){
    const result=await call(b.waiting);

@@ -237,5 +237,12 @@
   "已批准草稿 · 预览后发布到 Instagram": "Brouillons validés · Vérifier et publier sur Instagram",
   "自动续期已启用：有效期不足 30 天时更新。": "Le renouvellement automatique est activé : il intervient à moins de 30 jours de l’expiration.",
   "自动续期暂未成功，将于一天后重试；若授权已过期，请重新连接。": "Le renouvellement automatique a échoué. Une nouvelle tentative aura lieu dans un jour ; reconnectez-vous si l’autorisation a expiré.",
-  "上次自动续期：{date}。": "Dernier renouvellement automatique : {date}."
+  "上次自动续期：{date}。": "Dernier renouvellement automatique : {date}.",
+  "严格审核说明": "La validation stricte exige au moins 9/10 par photo et une seconde analyse IA du post entier. Les résultats incertains restent à vérifier. Ces analyses consomment du quota et peuvent manquer des problèmes.",
+  "发布模式": "Mode de publication",
+  "人工发布（默认）": "Publication manuelle (par défaut)",
+  "严格 AI 自动发布": "Publication automatique avec IA stricte",
+  "自动发布说明": "Instagram doit être connecté. Seuls les nouveaux brouillons validés après activation sont admissibles. Les recadrages originaux finaux sont revérifiés ; une tentative maximum par 24 heures. Arrêt en cas d’erreur. Enregistrez pour appliquer. Le mode manuel bloque les prochaines requêtes, sans annuler celles déjà envoyées.",
+  "自动发布已开启": "Publication automatique activée",
+  "自动发布已关闭": "Publication automatique désactivée"
 }

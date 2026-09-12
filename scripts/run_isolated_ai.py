@@ -64,7 +64,7 @@ def main():
     # Copy bounded regular inputs into AI-owned storage before the model sees them.
     with tempfile.TemporaryDirectory(prefix='call-', dir='/var/lib/photostory-ai') as tmp:
         work = Path(tmp)
-        for name, limit in [('prompt.txt', 128_000), ('schema.json', 64_000)] + [(f'image-{i}.jpg', 512_000) for i in range(count)]:
+        for name, limit in [('prompt.txt', 128_000), ('schema.json', 64_000)] + [(f'image-{i}.jpg', 1_800_000) for i in range(count)]:
             (work / name).write_bytes(read_regular(inbox / name, limit))
         STAGE = 'authentication'
         codex_home = '/var/lib/photostory-ai/codex'

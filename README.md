@@ -10,7 +10,7 @@ and hashtags (English by default), then review each post in a Cloudflare-hosted 
 original-based JPEGs, review the exact output, then explicitly publish to the
 connected professional account. Both single images and carousels (up to eight
 photos) are supported. Manual approval remains the default; strict AI auto-review
-is optional and does not automatically publish posts.
+is optional. Automatic publishing is a separate, off-by-default setting.
 The public demo uses one clearly labelled AI-generated image; no personal photos
 or live model results are included in this repository.
 
@@ -215,7 +215,7 @@ gates, allowed photo references, timestamp handling and token origin boundaries.
 Real GitHub OAuth, Microsoft consent/refresh, your actual folder format, Codex
 visual results and VPS operation require your deployment configuration and an
 explicit live run. Unit tests and the demo do not verify those integrations.
-Scheduled Instagram posting is not enabled. Validate your first manual post with your own account.
+Manual publishing is the default. Validate your first manual post with your own account before opting into automatic publishing.
 
 ## License
 
@@ -327,7 +327,7 @@ the same configured service/model, not an independent provider or a safety guara
 The server binds the result to the draft text, photo IDs/order, aspect ratio and every crop position;
 client-supplied approval status cannot bypass these checks. Approved posts are
 labelled as AI-reviewed in the private queue. Changing text, photos or framing
-revokes approval and requires manual re-review. Publishing still requires an explicit action in the final preview. Scores are a selection rule, not a calibrated probability of safety.
+revokes approval and requires manual re-review. In manual publishing mode, publishing requires an explicit action in the final preview. Scores are a selection rule, not a calibrated probability of safety.
 
 Instagram app preparation and credential handling: [setup guide](docs/instagram-setup.md).
 
@@ -352,3 +352,45 @@ conditionally on the unchanged source title, reason and version. Never replace
 an entire approved draft. Keep both JSON files private and remove temporary
 copies after verification. Upgrade both isolated gateway scripts before using
 text-only translation. No new AI credentials or provider are required.
+
+## Optional automatic publishing
+
+Connection Settings → Publishing mode offers **Manual publishing (default)** and
+**Strict AI automatic publishing**. Select a mode and save; the owner-only,
+same-origin, version-checked settings API persists it in private D1 state across
+redeployments. No source edit, secret in GitHub, or database migration is needed.
+Existing installations remain manual even if strict AI *review* was already on.
+Selecting automatic publishing also selects strict AI review and requires a
+connected Instagram account. Switching review to manual disables automatic publishing.
+
+Only newly AI-approved drafts generated after activation qualify. Existing drafts,
+human-approved drafts, edited drafts, and fitted/white-border layouts are excluded.
+Each source must score at least 9/10 and pass the complete-post AI gate. The VPS
+then downloads version-checked originals, confirms matching orientation, renders
+the saved crop at 1080 pixels wide without upscaling, and strips metadata. A separate
+AI call reviews these exact final JPEGs. Their SHA-256 digests are checked against
+the staged files before starting the existing durable Instagram publisher.
+Rejected preparations return to the human-review queue. Failed/crashed preparations
+are never automatically reclaimed. A browser is not required.
+
+Deploy the Worker and all four processor files together: `process_batch.py`,
+`auto_publish.py`, `systemd_gateway.py`, and `run_isolated_ai.py`. Use the existing
+Pillow environment and a one-minute processor timer. The gateway's bounded JPEG
+input limit is 1.8 MB per image, matching the publisher. During publication the
+processor advances one recorded Meta operation per tick before scanning more
+photos. Keep the timer online; this is best-effort processing, not an exact-time
+posting scheduler. Scheduled photo discovery is a separate setting.
+
+The limit is **one new automatic attempt per rolling 24 hours**, counting manual
+publications and failed preparation attempts too. An ambiguous or interrupted
+external request stops the queue for owner inspection; it is never blindly retried.
+Switching to manual blocks subsequent automatic requests, but cannot recall a
+request already sent to Meta. Re-enabling does not resume old automatic attempts.
+An in-progress/uncertain publication needs inspection before starting another.
+To take over a private prepared draft, select manual mode and regenerate its
+publishing preview. Existing expiring delivery links and cleanup remain unchanged.
+
+Automatic mode is opt-in authorization to actually publish. Test your account with
+an explicitly approved manual post first. AI is fallible; strict checks reduce
+risk but do not guarantee safe or attractive photos. No live automatic post is
+part of the repository's automated test suite.

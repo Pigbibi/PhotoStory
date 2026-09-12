@@ -237,5 +237,12 @@
   "已批准草稿 · 预览后发布到 Instagram": "Borradores aprobados · Revisar y publicar en Instagram",
   "自动续期已启用：有效期不足 30 天时更新。": "La renovación automática está activada: se renueva cuando quedan menos de 30 días.",
   "自动续期暂未成功，将于一天后重试；若授权已过期，请重新连接。": "La renovación automática no se ha completado. Se reintentará en un día; vuelve a conectar si la autorización ha caducado.",
-  "上次自动续期：{date}。": "Última renovación automática: {date}."
+  "上次自动续期：{date}。": "Última renovación automática: {date}.",
+  "严格审核说明": "La revisión estricta exige al menos 9/10 por foto y otra revisión IA de toda la publicación. Los resultados inciertos quedan para revisión humana. Las revisiones adicionales consumen cuota y pueden pasar problemas por alto.",
+  "发布模式": "Modo de publicación",
+  "人工发布（默认）": "Publicación manual (predeterminado)",
+  "严格 AI 自动发布": "Publicación automática con IA estricta",
+  "自动发布说明": "Se requiere Instagram conectado. Solo se admiten borradores nuevos aprobados por IA tras la activación. Se revisan de nuevo los recortes finales de originales; máximo un intento cada 24 horas. Los errores detienen el intento. Guarda para aplicar. El modo manual detiene solicitudes futuras, pero no retira las ya enviadas.",
+  "自动发布已开启": "Publicación automática activada",
+  "自动发布已关闭": "Publicación automática desactivada"
 }

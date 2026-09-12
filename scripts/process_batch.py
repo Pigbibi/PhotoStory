@@ -1,7 +1,8 @@
 """Run one queued PhotoStory job through an existing AIGateway installation.
 
 Secrets enter through environment only. No photos or model output are logged.
-This command never publishes, installs Codex, or retries ambiguous writes.
+Publishing only runs when the owner explicitly enabled automatic mode on the
+server. This command never installs Codex or retries ambiguous writes.
 """
 import base64
 import hashlib
@@ -308,6 +309,12 @@ def run():
         try: report=json.loads((Path(directory)/'cleanup-status.json').read_text())
         except (OSError,ValueError): pass
     call('/internal/maintenance',{'temporaryCleanup':report})
+    from auto_publish import tick
+    try:
+        if tick(call, lambda path, body: request(base+path, token=token, body=body, max_bytes=25*1024*1024), gateway):
+            return  # Continue publishing on the next tick before slow scanning.
+    except Exception:
+        print('Automatic publishing unavailable; no retry in this run.')
     job = call("/internal/claim", {})
     if not job:
         print("No pending job.")

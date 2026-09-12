@@ -1,4 +1,5 @@
 import * as publishing from './publishing.mjs';
+import {automatic} from './automatic-publishing.mjs';
 import * as instagram from './instagram.mjs';
 import {original,reviewedDraft,sourceRecord,recoverSource} from './originals.mjs';
 import {strictApproval} from './auto-review.mjs';
@@ -57,6 +58,10 @@ async function machine(r, e) {
 }
 async function internal(r, e, p) {
   if (!(await machine(r, e))) return failure("unauthorized", 401);
+  if(p==='/internal/autopublish'&&r.method==='POST'){
+    const result=await automatic(e,await readJSON(r,2600000));
+    return result instanceof Response?result:json(result);
+  }
   if(p==='/internal/photo-sources'){
     if(r.method==='GET')return json((await e.DB.prepare("SELECT id FROM photos WHERE NOT EXISTS(SELECT 1 FROM state WHERE key='photo-source:'||photos.id) LIMIT 100").all()).results);
     if(r.method==='POST'){
@@ -186,7 +191,7 @@ async function internal(r, e, p) {
       }
       const evidence=Array.isArray(b.autoReviews)?b.autoReviews.filter(x=>x?.draftId===d.id):[];
       const eligible=evidence.length===1&&strictApproval(d,evidence[0],previous.reviewMode);
-      const approved={...d,status:"approved",approvalSource:"strict_ai_v1"};
+      const approved={...d,status:"approved",approvalSource:"strict_ai_v1",autoApprovedAt:Date.now()};
       // Re-read the owner's mode inside the write transaction: switching to
       // manual during inference must prevent automatic approval at commit.
       stmts.push(e.DB.prepare("INSERT INTO drafts(id,body,version) SELECT ?,CASE WHEN ?=1 AND json_extract((SELECT value FROM state WHERE key='automation'),'$.reviewMode')='strict_auto' THEN ? ELSE ? END,1")

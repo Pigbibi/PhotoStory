@@ -237,5 +237,12 @@
   "已批准草稿 · 预览后发布到 Instagram": "Freigegebene Entwürfe · Prüfen und auf Instagram veröffentlichen",
   "自动续期已启用：有效期不足 30 天时更新。": "Automatische Verlängerung ist aktiv: bei weniger als 30 Tagen Restlaufzeit.",
   "自动续期暂未成功，将于一天后重试；若授权已过期，请重新连接。": "Die automatische Verlängerung ist fehlgeschlagen. Neuer Versuch nach einem Tag; bei abgelaufener Autorisierung erneut verbinden.",
-  "上次自动续期：{date}。": "Letzte automatische Verlängerung: {date}."
+  "上次自动续期：{date}。": "Letzte automatische Verlängerung: {date}.",
+  "严格审核说明": "Die strenge Prüfung verlangt mindestens 9/10 je Foto und eine zusätzliche KI-Prüfung des gesamten Beitrags. Unsichere Ergebnisse bleiben zur manuellen Prüfung. Zusätzliche Prüfungen verbrauchen KI-Kontingent und können Fehler übersehen.",
+  "发布模式": "Veröffentlichungsmodus",
+  "人工发布（默认）": "Manuell veröffentlichen (Standard)",
+  "严格 AI 自动发布": "Automatisch mit strenger KI-Prüfung",
+  "自动发布说明": "Ein verbundenes Instagram-Konto ist erforderlich. Nur neue, nach Aktivierung KI-genehmigte Entwürfe sind zulässig. Die finalen Originalzuschnitte werden erneut geprüft; höchstens ein Versuch pro 24 Stunden. Bei Fehlern wird gestoppt. Zum Anwenden speichern. Manuell stoppt weitere Anfragen, kann gesendete aber nicht zurückrufen.",
+  "自动发布已开启": "Automatische Veröffentlichung an",
+  "自动发布已关闭": "Automatische Veröffentlichung aus"
 }

@@ -237,5 +237,12 @@
   "已批准草稿 · 预览后发布到 Instagram": "Bozze approvate · Controlla e pubblica su Instagram",
   "自动续期已启用：有效期不足 30 天时更新。": "Il rinnovo automatico è attivo: avviene quando restano meno di 30 giorni.",
   "自动续期暂未成功，将于一天后重试；若授权已过期，请重新连接。": "Il rinnovo automatico non è riuscito. Nuovo tentativo tra un giorno; riconnettiti se l’autorizzazione è scaduta.",
-  "上次自动续期：{date}。": "Ultimo rinnovo automatico: {date}."
+  "上次自动续期：{date}。": "Ultimo rinnovo automatico: {date}.",
+  "严格审核说明": "La revisione rigorosa richiede almeno 9/10 per foto e un secondo controllo IA del post intero. I risultati incerti restano da controllare. Le verifiche aggiuntive consumano quota e possono non rilevare problemi.",
+  "发布模式": "Modalità di pubblicazione",
+  "人工发布（默认）": "Pubblicazione manuale (predefinita)",
+  "严格 AI 自动发布": "Pubblicazione automatica con IA rigorosa",
+  "自动发布说明": "Instagram deve essere collegato. Sono idonee solo le nuove bozze approvate dopo l’attivazione. I ritagli finali degli originali vengono ricontrollati; massimo un tentativo ogni 24 ore. Gli errori fermano il tentativo. Salva per applicare. La modalità manuale ferma le richieste future, ma non ritira quelle già inviate.",
+  "自动发布已开启": "Pubblicazione automatica attiva",
+  "自动发布已关闭": "Pubblicazione automatica disattivata"
 }
