@@ -62,8 +62,10 @@ Cloudflare usage and Codex limits still depend on your own account plans.
 
 ```sh
 npm ci
+python3 -m venv .venv
+.venv/bin/pip install -r scripts/requirements.txt
 npm test
-python3 -m unittest discover -s tests -p 'test_*.py'
+.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 npm run build
 cp wrangler.jsonc wrangler.local.jsonc
 npx wrangler d1 create photostory
@@ -75,8 +77,13 @@ local configuration is ignored by Git. Never widen the allowlist to `*`.
 
 ```sh
 npx wrangler d1 execute photostory --remote --file worker/schema.sql --config wrangler.local.jsonc
-npx wrangler deploy --config wrangler.local.jsonc
+npm run deploy
 ```
+
+`npm run preview` and `npm run deploy` deliberately use the ignored
+`wrangler.local.jsonc`. This prevents a copied public template from targeting
+someone else's Worker or database; create the local file before running either
+command.
 
 The public shell and demo are available immediately. Private data endpoints deny
 unauthenticated access, and OAuth stays disabled until fully configured.

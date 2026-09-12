@@ -48,7 +48,9 @@ Instagram 授权由现有 VPS 维护 timer 在剩余不足 30 天时自动续期
 
 ## 部署与授权
 
-完整命令和各项配置见 [英文部署说明](README.md#deploy-your-own)。
+完整命令和各项配置见 [英文部署说明](README.md#deploy-your-own)。复制
+`wrangler.jsonc` 为本机忽略的 `wrangler.local.jsonc` 并完成配置后，使用
+`npm run deploy` 发布；该命令不会读取公开模板中的占位数据库 ID。
 
 | 位置 | 配置 | 用途 |
 |---|---|---|
