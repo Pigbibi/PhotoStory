@@ -87,3 +87,42 @@ test('unfinished containers are polled at most once per minute',async t=>{
  await pub.advance(env,'d',p.id);const waiting=await pub.advance(env,'d',p.id);
  assert.ok(waiting.retryAfterMs>0);await pub.advance(env,'d',p.id);assert.equal(calls,2);
 });
+
+test('permission errors retain safe diagnostics and never retry',async t=>{
+ const {env,d,DB}=await fixture(t,1);const p=await pub.prepare(env,'d',1);
+ await pub.upload(env,'d',p.id,d.photos[0].id,jpeg());await pub.begin(env,'d',p.id,1,'landscapes');
+ let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;return Response.json({error:{code:200,error_subcode:123,message:'private-token https://secret.example',error_data:{token:'private'}}},{status:400});});
+ const result=await pub.advance(env,'d',p.id);
+ assert.equal(result.failure.category,'authorization');assert.equal(result.failure.stage,'create_image');assert.equal(result.failure.code,200);assert.equal(result.failure.httpStatus,400);
+ assert.ok(Number.isSafeInteger(result.failure.at));
+ const stored=(await DB.prepare('SELECT body FROM publications').first()).body;
+ assert.ok(!stored.includes('private-token'));assert.ok(!stored.includes('secret.example'));
+ await pub.advance(env,'d',p.id);assert.equal(calls,1);
+ assert.equal((await pub.issue(env)).failure.code,200);
+});
+
+test('read-only account check reports authorization errors without creating media',async t=>{
+ const {env}=await fixture(t);const {publishingHealth}=await import('../worker/instagram.mjs');let calls=0;
+ t.mock.method(globalThis,'fetch',async(url,o)=>{calls++;assert.ok(!o.method||o.method==='GET');return Response.json({error:{code:200,message:'private-token'}},{status:400});});
+ const result=await publishingHealth(env);assert.equal(result.ok,false);assert.equal(result.category,'authorization');assert.equal(result.code,200);assert.ok(!JSON.stringify(result).includes('private-token'));assert.equal(calls,1);
+});
+
+test('owner recovery is limited to one settled first-container failure with intact images',async t=>{
+ const {env,DB,d}=await fixture(t,1);const p=await pub.prepare(env,'d',1);
+ await pub.upload(env,'d',p.id,d.photos[0].id,jpeg());await pub.begin(env,'d',p.id,1,'landscapes');
+ t.mock.method(globalThis,'fetch',async()=>Response.json({error:{code:200}},{status:400}));await pub.advance(env,'d',p.id);
+ await assert.rejects(pub.recover(env,'d',p.id,1,'landscapes'),/publication_conflict/);
+ await DB.prepare("UPDATE publications SET body=json_set(body,'$.touched',?)").bind(Date.now()-130000).run();
+ t.mock.method(globalThis,'fetch',async()=>Response.json({id:'123',username:'landscapes'}));
+ const recovered=await pub.recover(env,'d',p.id,1,'landscapes');assert.equal(recovered.status,'publishing');
+ const body=JSON.parse((await DB.prepare('SELECT body FROM publications').first()).body);assert.equal(body.recoveries.length,1);assert.equal(body.recoveries[0].failure.code,200);
+ await DB.prepare("UPDATE publications SET status='uncertain',body=json_set(body,'$.touched',?)").bind(Date.now()-130000).run();
+ await assert.rejects(pub.recover(env,'d',p.id,1,'landscapes'),/publication_conflict/);
+});
+
+test('owner recovery cannot replay a later or possibly published operation',async t=>{
+ const {env,DB,d}=await fixture(t,1);const p=await pub.prepare(env,'d',1);await pub.upload(env,'d',p.id,d.photos[0].id,jpeg());
+ await DB.prepare("UPDATE publications SET status='uncertain',body=json_set(body,'$.touched',?,'$.parent','100','$.ready',1)").bind(Date.now()-130000).run();
+ let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;throw new Error('must not call')});
+ await assert.rejects(pub.recover(env,'d',p.id,1,'landscapes'),/publication_conflict/);assert.equal(calls,0);
+});

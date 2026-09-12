@@ -256,5 +256,9 @@
   "本月图片请求额度已用完，请检查存储设置。": "本月图片请求额度已用完，请检查存储设置。",
   "图片上传状态待核实，请稍后检查，未覆盖原图。": "图片上传状态待核实，请稍后检查，未覆盖原图。",
   "图片内容发生冲突，已停止覆盖。": "图片内容发生冲突，已停止覆盖。",
-  "图片存储暂不可用，请检查 R2 连接。": "图片存储暂不可用，请检查 R2 连接。"
+  "图片存储暂不可用，请检查 R2 连接。": "图片存储暂不可用，请检查 R2 连接。",
+  "Instagram authorization needs attention": "Instagram 授权异常：请完成 Meta 账户验证并检查权限。系统已阻止自动重试。",
+  "Instagram publication needs attention": "Instagram 发布需要处理：请先核对账户，系统已阻止自动重试。",
+  "Publication failure details": "记录时间 {time} · 错误码 {code}",
+  "Resume after account verification": "账户验证后恢复这次发布"
 }

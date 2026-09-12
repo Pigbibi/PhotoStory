@@ -90,6 +90,11 @@ function App() {
       history.replaceState(null, "", location.pathname);
     }
   }, []);
+  useEffect(()=>{
+    if(!session?.user||demo)return;
+    const timer=setInterval(()=>api('/api/session').then(setSession).catch(()=>{}),60000);
+    return ()=>clearInterval(timer);
+  },[session?.user?.login,demo]);
   const startDemo = () => {
     setDemo(true);
     setDrafts([{...structuredClone(demoDraft),title:t(demoDraft.title),reason:t(demoDraft.reason),photos:demoDraft.photos.map(p=>({...p,alt:t(p.alt)}))}]);
@@ -207,6 +212,11 @@ function App() {
                 : t("按时间与地点整理 · 风景选片 · 文案")}
           </p>
         </section>
+        {session?.user && session.publishingIssue && !demo && <div className="notice" role="alert">
+          <p>{t(session.publishingIssue.failure?.category==='authorization'?'Instagram authorization needs attention':'Instagram publication needs attention')}</p>
+          {session.publishingIssue.failure && <p>{t('Publication failure details',{time:new Date(session.publishingIssue.failure.at).toLocaleString(),stage:session.publishingIssue.failure.stage,code:session.publishingIssue.failure.code??session.publishingIssue.failure.httpStatus??'—'})}</p>}
+          <button onClick={()=>{setView('queue');setSelected(session.publishingIssue.draftId);}}>{t('Publishing Queue')}</button>
+        </div>}
         {message && (
           <div className="notice" role="status">
             {t(message)}

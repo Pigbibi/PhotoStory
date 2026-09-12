@@ -256,5 +256,9 @@
   "本月图片请求额度已用完，请检查存储设置。": "Limite mensal de pedidos atingido. Verifique as definições.",
   "图片上传状态待核实，请稍后检查，未覆盖原图。": "É necessário verificar o resultado do envio. Os originais não foram substituídos.",
   "图片内容发生冲突，已停止覆盖。": "Conflito no conteúdo. Substituição interrompida.",
-  "图片存储暂不可用，请检查 R2 连接。": "Armazenamento indisponível. Verifique a ligação R2."
+  "图片存储暂不可用，请检查 R2 连接。": "Armazenamento indisponível. Verifique a ligação R2.",
+  "Instagram authorization needs attention": "A autorização do Instagram precisa de atenção. Conclua a verificação da conta Meta e confira as permissões. Novas tentativas automáticas estão bloqueadas.",
+  "Instagram publication needs attention": "A publicação no Instagram precisa de atenção. Confira a conta antes de continuar; novas tentativas automáticas estão bloqueadas.",
+  "Publication failure details": "Registrado em {time} · Erro {code}",
+  "Resume after account verification": "Retomar após verificar a conta"
 }

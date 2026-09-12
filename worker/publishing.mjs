@@ -1,5 +1,5 @@
 import {reviewedDraft} from './originals.mjs';
-import {publishingAccount,publishingRequest} from './instagram.mjs';
+import {publishingAccount,publishingRequest,safeFailure,publishingHealth} from './instagram.mjs';
 import {ASPECTS,aspectValue} from './framing.mjs';
 import {get} from './auth.mjs';
 import {storeImage,readImage} from './storage.mjs';
@@ -28,9 +28,16 @@ export function jpegDimensions(data){
  fail('invalid_publish_image');
 }
 const row=(e,id)=>e.DB.prepare('SELECT * FROM publications WHERE draft_id=?').bind(id).first();
+function recoverable(p){
+ if(!p||p.status!=='uncertain'||p.expires<=Date.now())return false;
+ const b=JSON.parse(p.body);
+ return !b.automatic&&!b.recoveries?.length&&Number.isSafeInteger(b.touched)&&b.touched<Date.now()-120000&&
+  Array.isArray(b.children)&&b.children.length===0&&!b.waiting&&!b.parent&&!b.ready&&!b.mediaId&&
+  (!b.failure||['preflight','create_image'].includes(b.failure.stage));
+}
 function publicState(p){
  if(!p)return null;const b=JSON.parse(p.body);
- return {id:p.id,version:p.version,status:p.status==='working'&&Date.now()-b.touched>120000?'uncertain':p.status,username:b.username,expires:p.expires,completed:b.children.length,total:b.photos.length,mediaId:b.mediaId||null,retryAfterMs:Math.max(0,(b.nextCheck||0)-Date.now())};
+ return {id:p.id,canRecover:recoverable(p),version:p.version,status:p.status==='working'&&Date.now()-b.touched>120000?'uncertain':p.status,username:b.username,expires:p.expires,completed:b.children.length,total:b.photos.length,mediaId:b.mediaId||null,...(b.failure?{failure:b.failure}:{}),retryAfterMs:Math.max(0,(b.nextCheck||0)-Date.now())};
 }
 export async function view(e,id){return publicState(await row(e,id));}
 export async function prepare(e,id,version,automatic=null){
@@ -98,7 +105,7 @@ export async function advance(e,id,publicationId){
  await automaticGuard(e,b);
  const claimed=await e.DB.prepare("UPDATE publications SET status='working',body=? WHERE id=? AND status='publishing' AND body=?").bind(JSON.stringify(b),p.id,p.body).run();
  if(claimed.meta.changes!==1)return view(e,id);
- let status='publishing';
+ let status='publishing',stage='preflight';
  try{
   if(p.expires<=Date.now())fail('publication_failed');
   await reviewedDraft(e,id,p.version);
@@ -108,24 +115,53 @@ export async function advance(e,id,publicationId){
   await automaticGuard(e,b);
   const validId=result=>{if(typeof result?.id!=='string'||!/^\d{1,32}$/.test(result.id))fail('publication_failed');return result.id;};
   if(b.waiting){
+   stage='check_container';
    const result=await call(b.waiting);
    if(result.status_code==='FINISHED'){b.waiting=null;b.nextCheck=0;b.polls=0;if(b.parent)b.ready=true;}
    else if(result.status_code==='IN_PROGRESS'){b.polls=(b.polls||0)+1;if(b.polls>=5)fail('publication_failed');b.nextCheck=Date.now()+60000;}
    else fail('publication_failed');
   }else if(b.children.length<b.photos.length){
    const photo=b.photos[b.children.length],single=b.photos.length===1;
+   stage='create_image';
    const container=validId(await call(b.userId+'/media',{image_url:b.origin+'/delivery/'+p.id+'/'+photo.id,alt_text:photo.alt,...(single?{caption:b.caption}:{is_carousel_item:'true'})}));
    b.children.push(container);b.waiting=container;if(single)b.parent=container;
   }else if(!b.parent){
+   stage='create_carousel';
    b.parent=validId(await call(b.userId+'/media',{media_type:'CAROUSEL',children:b.children.join(','),caption:b.caption}));b.waiting=b.parent;
   }else if(b.ready){
+   stage='publish';
    b.mediaId=validId(await call(b.userId+'/media_publish',{creation_id:b.parent}));status='published';b.publishedAt=Date.now();
   }else fail('publication_failed');
- }catch{status='uncertain';}
+ }catch(error){status='uncertain';b.failure=safeFailure(error,stage);}
  // Never release a lost/ambiguous claim to be retried. A crashed call stays working.
  await e.DB.prepare("UPDATE publications SET status=?,body=? WHERE id=? AND status='working'").bind(status,JSON.stringify(b),p.id).run();
  return view(e,id);
 }
 export async function cleanup(e,now=Date.now()){
  await e.DB.prepare('DELETE FROM publication_images WHERE NOT EXISTS(SELECT 1 FROM publications WHERE publications.id=publication_images.publication_id AND publications.expires>?)').bind(now).run();
+}
+
+export async function issue(e){
+ const p=await e.DB.prepare("SELECT * FROM publications WHERE status='uncertain' OR (status='working' AND json_extract(body,'$.touched')<?) ORDER BY created DESC LIMIT 1").bind(Date.now()-120000).first();
+ return p?{draftId:p.draft_id,...publicState(p)}:null;
+}
+
+// Explicit owner action only. No media_publish call can have occurred at this
+// first-container boundary. Preserve the failed attempt and permit one recovery.
+export async function recover(e,id,publicationId,version,username){
+ const p=await row(e,id);
+ if(!recoverable(p)||p.id!==publicationId||p.version!==version)fail('publication_conflict');
+ const d=await reviewedDraft(e,id,version),a=await publishingAccount(e),b=JSON.parse(p.body);
+ if(a.username!==username||b.username!==username||a.userId!==b.userId||a.origin!==b.origin)fail('instagram_not_connected');
+ for(const photo of d.photos){
+  const image=await privateImage(e,id,p.id,photo.id);
+  if(!image.ok)fail('publication_incomplete');
+  await image.arrayBuffer();
+ }
+ if(!(await publishingHealth(e)).ok)fail('instagram_not_connected');
+ b.recoveries=[{at:Date.now(),failedAt:b.touched,failure:b.failure||{category:'unknown',stage:'create_image'}}];
+ delete b.failure;b.touched=Date.now();
+ const result=await e.DB.prepare("UPDATE publications SET status='publishing',body=?,expires=? WHERE id=? AND status='uncertain' AND body=? AND version=? AND expires>? AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved')")
+  .bind(JSON.stringify(b),Date.now()+HOUR,p.id,p.body,version,Date.now(),id,version).run();
+ if(result.meta.changes!==1)fail('publication_conflict');return view(e,id);
 }

@@ -256,5 +256,9 @@
   "本月图片请求额度已用完，请检查存储设置。": "本月圖片請求額度已用完，請檢查儲存設定。",
   "图片上传状态待核实，请稍后检查，未覆盖原图。": "圖片上傳狀態待確認，未覆蓋原圖。",
   "图片内容发生冲突，已停止覆盖。": "圖片內容衝突，已停止覆蓋。",
-  "图片存储暂不可用，请检查 R2 连接。": "圖片儲存暫不可用，請檢查 R2 連線。"
+  "图片存储暂不可用，请检查 R2 连接。": "圖片儲存暫不可用，請檢查 R2 連線。",
+  "Instagram authorization needs attention": "Instagram 授權異常：請完成 Meta 帳號驗證並檢查權限。系統已阻止自動重試。",
+  "Instagram publication needs attention": "Instagram 發佈需要處理：請先核對帳號，系統已阻止自動重試。",
+  "Publication failure details": "記錄時間 {time} · 錯誤碼 {code}",
+  "Resume after account verification": "帳號驗證後恢復此次發佈"
 }

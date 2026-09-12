@@ -251,3 +251,11 @@ risk but do not guarantee safe or attractive photos. No live automatic post is
 part of the repository's automated test suite.
 
 For a low-frequency deployment, scan the last three months weekly with a 100-photo analysis budget. No new photos or no eligible draft means no post; unused opportunities do not accumulate.
+
+## Account verification and publication alerts
+
+A Meta checkpoint can temporarily prevent API access even while the saved token has not expired. PhotoStory records a failed publication's time, step, HTTP status and numeric Meta codes in its private publication record. Provider messages, tokens and URLs are excluded. A persistent owner-only site alert appears on page load and refreshes every minute while the site is open; this is an in-site notification, not email or push delivery. Codes 10, 190 and 200, or HTTP 401/403, request authorization attention without claiming to identify the exact Meta checkpoint.
+
+Complete verification on Meta's official site and wait for access to return. `GET /internal/instagram-check`, protected by the processor credential, checks the account without creating media. Verification does not automatically retry publication.
+
+The owner can use **Resume after account verification** only for a settled failure before any first-container result, with all publication files still present and unexpired. A fresh account check and exact approval/version check are required. One recovery is allowed, and its prior error is retained. Later-stage failures, automatic posts, unknown publish outcomes and missing files remain blocked; never delete the record to retry.

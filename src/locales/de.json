@@ -256,5 +256,9 @@
   "本月图片请求额度已用完，请检查存储设置。": "Monatliches Anfragelimit erreicht. Speichereinstellungen prüfen.",
   "图片上传状态待核实，请稍后检查，未覆盖原图。": "Upload-Ergebnis muss geprüft werden. Originale wurden nicht überschrieben.",
   "图片内容发生冲突，已停止覆盖。": "Bildinhaltskonflikt. Ersetzen gestoppt.",
-  "图片存储暂不可用，请检查 R2 连接。": "Bildspeicher nicht verfügbar. R2-Verbindung prüfen."
+  "图片存储暂不可用，请检查 R2 连接。": "Bildspeicher nicht verfügbar. R2-Verbindung prüfen.",
+  "Instagram authorization needs attention": "Die Instagram-Autorisierung muss geprüft werden. Bestätige dein Meta-Konto und prüfe die Berechtigungen. Automatische Wiederholungen sind gesperrt.",
+  "Instagram publication needs attention": "Die Instagram-Veröffentlichung muss geprüft werden. Prüfe das Konto vor dem Fortfahren. Automatische Wiederholungen sind gesperrt.",
+  "Publication failure details": "Erfasst {time} · Fehler {code}",
+  "Resume after account verification": "Nach Kontobestätigung fortsetzen"
 }

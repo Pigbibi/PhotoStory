@@ -37,10 +37,15 @@ async function request(url,options={}){
  // Meta's token exchange requires server-side query parameters. Never log these
  // URLs or return provider errors, redirects, codes or tokens to the browser.
  const r=await fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(20000)});
- if(!r.ok||!r.body)throw Object.assign(new Error('instagram_connection_failed'),{httpStatus:r.status});
+ if(!r.body)throw Object.assign(new Error('instagram_connection_failed'),{httpStatus:r.status});
  const reader=r.body.getReader(),parts=[];let size=0;
  while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>65536){await reader.cancel();throw new Error('instagram_connection_failed');}parts.push(value);}
  const bytes=new Uint8Array(size);let at=0;for(const part of parts){bytes.set(part,at);at+=part.length;}
+ if(!r.ok){
+  const error=Object.assign(new Error('instagram_connection_failed'),{httpStatus:r.status});
+  try{const data=JSON.parse(new TextDecoder().decode(bytes));for(const key of ['code','error_subcode'])if(Number.isSafeInteger(data?.error?.[key]))error[key]=data.error[key];}catch{}
+  throw error;
+ }
  try{return JSON.parse(new TextDecoder().decode(bytes),(key,value,context)=>
   (key==='id'||key==='user_id')&&typeof value==='number'&&/^\d{1,32}$/.test(context?.source||'')?context.source:value);}catch{throw Object.assign(new Error('instagram_connection_failed'),{httpStatus:r.status,category:'invalid_json'});}
 }
@@ -101,7 +106,7 @@ export async function publishingRequest(account,path,body){
  const url=new URL('https://graph.instagram.com/v26.0/'+path);
  if(!body)url.searchParams.set('fields','status_code');
  try{return await request(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+account.access},...(body?{body:new URLSearchParams(body)}:{})});}
- catch{throw new Error('publication_failed');}
+ catch(error){throw Object.assign(new Error('publication_failed'),safeFailure(error));}
 }
 
 // Maintenance only: never publishes, changes scopes or replaces a newer login.
@@ -138,4 +143,22 @@ export async function refresh(e,now=Date.now()){
   await e.DB.prepare("UPDATE state SET value=? WHERE key='instagram-refresh' AND value=?")
    .bind(JSON.stringify({...claim,state:'failed'}),claimValue).run();
  }
+}
+
+// Only fixed categories and numeric metadata can leave the provider boundary.
+export function safeFailure(error,stage='account_check'){
+ const result={at:Date.now(),stage,category:[10,190,200].includes(error?.code)||error?.httpStatus===401||error?.httpStatus===403?'authorization':'unknown'};
+ for(const key of ['httpStatus','code','error_subcode'])if(Number.isSafeInteger(error?.[key]))result[key]=error[key];
+ return result;
+}
+
+// Read-only, machine-authenticated account check; never creates media.
+export async function publishingHealth(e){
+ try{
+  const a=await publishingAccount(e);
+  const url=new URL('https://graph.instagram.com/v26.0/me');url.searchParams.set('fields','id,username');
+  const p=await request(url,{headers:{Authorization:'Bearer '+a.access}});
+  if(p.username?.toLowerCase()!==a.username.toLowerCase())throw new Error('instagram_not_connected');
+  return {ok:true,checkedAt:Date.now()};
+ }catch(error){return {ok:false,...safeFailure(error)};}
 }

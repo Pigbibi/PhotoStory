@@ -59,6 +59,7 @@ async function machine(r, e) {
 }
 async function internal(r, e, p) {
   if (!(await machine(r, e))) return failure("unauthorized", 401);
+  if(p==='/internal/instagram-check'&&r.method==='GET')return json(await instagram.publishingHealth(e));
   if(p==='/internal/storage/migrate'&&r.method==='POST')return json(await migrateImages(e));
   if(p==='/internal/autopublish'&&r.method==='POST'){
     const result=await automatic(e,await readJSON(r,2600000));
@@ -220,6 +221,7 @@ async function route(r, e) {
       githubConfigured: auth.configured(e),
       microsoftConfigured: auth.msConfigured(e),
       onedriveConnected: s ? Boolean(await auth.get(e, "microsoft")) : false,
+      publishingIssue: s ? await publishing.issue(e) : undefined,
       publishingEnabled: s ? (await instagram.status(e)).connected : false,
       instagram: s ? await instagram.status(e) : undefined,
       captionLanguage: s ? (e.AI_CAPTION_LANGUAGE||"en") : undefined,
@@ -278,6 +280,7 @@ async function route(r, e) {
       }
       if(parts.length===3&&r.method==='POST'){
         const b=await readJSON(r);
+        if(action==='recover')return json(await publishing.recover(e,id,publicationId,b.version,b.username));
         if(action==='begin')return json(await publishing.begin(e,id,publicationId,b.version,b.username));
         if(action==='advance')return json(await publishing.advance(e,id,publicationId));
       }

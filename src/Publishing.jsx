@@ -20,7 +20,7 @@ export function Publishing({draft,onChange,disabled}){
  const publish=async(start)=>{
   setBusy(true);setError(false);
   try{
-   let next=start?await request(base+'/'+state.id+'/begin',{version:draft.version,username:state.username}):await refresh();
+   let next=start?await request(base+'/'+state.id+(start==='recover'?'/recover':'/begin'),{version:draft.version,username:state.username}):await refresh();
    setState(next);onChange(next);
    for(let i=0;i<120&&['publishing','working'].includes(next.status);i++){
     next=next.status==='working'?await refresh():await request(base+'/'+next.id+'/advance',{});
@@ -43,6 +43,8 @@ export function Publishing({draft,onChange,disabled}){
   </>}
   {state&&['publishing','working'].includes(state.status)&&<button className="button primary" disabled={busy||disabled} onClick={()=>publish(false)}>{t(busy?'Publishing…':'Continue publishing')}</button>}
   {state?.status==='published'&&<p role="status">{t('Published · Instagram ID {id}',{id:state.mediaId})}</p>}
+  {state?.canRecover&&<button className="button secondary" disabled={busy||disabled} onClick={()=>publish('recover')}>{t('Resume after account verification')}</button>}
+  {state?.failure&&<p role="alert">{t(state.failure.category==='authorization'?'Instagram authorization needs attention':'Instagram publication needs attention')}</p>}
   {state?.status==='uncertain'&&<p role="alert">{t('Publishing outcome uncertain. Check Instagram; automatic retries are blocked.')}</p>}
   {error&&<p role="alert">{t('Could not finish. Check Instagram connection, approval, and image size.')}</p>}
  </section>;
