@@ -235,7 +235,7 @@ function App() {
             />
             <div>
               <h2>{t("好照片，值得被看见。")}</h2>
-              <p>{t("让 AI 帮你整理主题、挑选风景、写好文案。")}<br />{t("每一篇，经过你的确认。")}</p>
+              <p>{t("让 AI 帮你整理主题、挑选风景、写好文案。")} {" "}<span className="welcome-sentence">{t("每一篇，经过你的确认。")}</span></p>
               <a className="button primary" href="/auth/github/start">{t("使用 GitHub 登录")}</a>
               <button className="button secondary" onClick={startDemo}>{t("先体验审核流程")}</button>
               <p className="muted">{t("示意图片由 AI 生成。真实照片仅登录后可见。")}</p>
