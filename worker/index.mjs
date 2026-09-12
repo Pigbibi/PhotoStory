@@ -10,6 +10,7 @@ import { jobInput, progressInput } from "./jobs.mjs";
 import {settingsView,saveSettings,maintenance,RETENTION} from './lifecycle.mjs';
 import { validateDraft, reviewDraft, validId } from "./review.mjs";
 import * as auth from "./auth.mjs";
+import * as health from './health.mjs';
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -60,6 +61,7 @@ async function machine(r, e) {
 }
 async function internal(r, e, p) {
   if (!(await machine(r, e))) return failure("unauthorized", 401);
+  if(p==='/internal/health'&&r.method==='GET')return json(await health.view(e));
   if(p==='/internal/instagram-check'&&r.method==='GET')return json(await instagram.publishingHealth(e));
   if(p==='/internal/storage/migrate'&&r.method==='POST')return json(await migrateImages(e));
   if(p==='/internal/autopublish'&&r.method==='POST'){
