@@ -370,6 +370,9 @@ textarea {
   color: #68746d;
   font-size: 15px;
 }
+.welcome-sentence {
+  display: block;
+}
 .welcome .muted,
 .setup-hint {
   font-size: 12px;
@@ -620,12 +623,24 @@ footer span:last-child { margin-left:0; margin-inline-start:auto; }
 [dir="rtl"] .workspace aside { border-right:0; border-left:1px solid var(--line); padding:12px 0 0 16px; }
 [dir="rtl"] .editor { border-left:0; border-right:1px solid var(--line); padding:0 24px 0 0; }
 @media(max-width:900px) {
- nav { flex-wrap:wrap; gap:18px; }
+ nav {
+  flex-wrap:nowrap;
+  gap:18px;
+  overflow-x:auto;
+  overscroll-behavior-x:contain;
+  scrollbar-width:thin;
+ }
+ nav button { flex:0 0 auto; white-space:nowrap; }
  [dir="rtl"] nav,[dir="rtl"] .workspace aside { border:0; padding:0; }
  [dir="rtl"] .editor { border:0; padding:24px 0 0; }
  .date-fields { flex-wrap:wrap; }
  .date-fields label { min-width:120px; }
  .language-switch { max-width:125px; }
+}
+
+@media(max-width:480px) {
+ .framing .date-fields { display:grid; grid-template-columns:1fr; gap:12px; }
+ .framing .date-fields label { min-width:0; margin-bottom:0; }
 }
 
 .settings code { direction:ltr; unicode-bidi:isolate; display:inline-block; max-width:100%; }
