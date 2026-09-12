@@ -98,6 +98,10 @@ export async function migrateImages(e){
 }
 export async function cleanupImages(e,now=Date.now()){
  if(!usesR2(e)||!e.MEDIA_BUCKET)return;
+ // Avoid scanning a long-lived image catalog every minute on the VPS timer.
+ const slot=await e.DB.prepare("INSERT INTO state VALUES('r2-cleanup-next',?,NULL) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE CAST(state.value AS INTEGER)<=? RETURNING key")
+  .bind(String(now+3600000),now).first();
+ if(!slot)return;
  // Keep referenced drafts forever. A grace period protects uploads awaiting
  // their D1 transaction. Expired delivery files can be removed immediately.
  const condition=`(state='deleting' OR state='ready' AND (

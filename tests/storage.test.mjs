@@ -85,3 +85,11 @@ test('disabled R2 cannot silently serve empty blobs or overwrite missing objects
  await storeImage(env,'preview:p',new Uint8Array([1]));env.MEDIA_BUCKET=null;env.MEDIA_STORAGE='r2';
  await assert.rejects(readImage(env,'preview:p',[]),/storage_unavailable/);
 });
+test('maintenance scans image cleanup at most once per hour',async t=>{
+ const {env}=await fixture(t);const now=Date.now()+2*86400000;
+ await storeImage(env,'preview:a',new Uint8Array([1]));await cleanupImages(env,now);
+ assert.equal(env.MEDIA_BUCKET.objects.size,0);
+ await storeImage(env,'preview:b',new Uint8Array([1]));await cleanupImages(env,now+60000);
+ assert.equal(env.MEDIA_BUCKET.objects.size,1);
+ await cleanupImages(env,now+3600000);assert.equal(env.MEDIA_BUCKET.objects.size,0);
+});

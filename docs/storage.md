@@ -68,7 +68,9 @@ The free tier is shared, usage-based, and subject to Cloudflare's current terms.
   publishing starts. Expired or unstarted deliveries remain inaccessible.
 - Referenced pending/approved previews have no expiration. Existing 30-day trash
   retention remains in force; OneDrive originals are never removed.
-- Expired publishing JPEGs are removed by the existing maintenance timer.
+- Expired publishing JPEGs are removed in hourly batches of up to 50 objects by
+  the existing maintenance timer. Expired links are denied immediately, even
+  before physical deletion. Hourly scanning avoids a full catalog scan each minute.
   Unreferenced ready uploads have a 24-hour grace period to protect pending D1
   transactions. Cleanup requires the background timer to be online.
 - An uncertain R2 PUT retains its capacity reservation and is not automatically
