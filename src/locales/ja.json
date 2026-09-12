@@ -262,5 +262,15 @@
   "Publication failure details": "記録日時 {time} · エラー {code}",
   "Resume after account verification": "アカウント確認後に再開",
   "From a start date": "開始日を指定",
-  "Photo preselection explanation": "似た連写をローカルで選別し、AI に送る代表画像だけを上限に数えます。異なる角度は慎重に残し、最高評価の写真を表紙にします。"
+  "Photo preselection explanation": "似た連写をローカルで選別し、AI に送る代表画像だけを上限に数えます。異なる角度は慎重に残し、最高評価の写真を表紙にします。",
+  "Publication history": "公開履歴",
+  "Published records remain after Instagram deletion or temporary image cleanup.": "Published records remain after Instagram deletion or temporary image cleanup.",
+  "History totals": "{posts} posts · {photos} published photos · {unique} unique source photos",
+  "History coverage warning": "Covers PhotoStory publications only. Older Instagram posts have not been matched to OneDrive yet; do not rely on this counter for whole-library duplicate protection.",
+  "Date": "日付",
+  "Photos": "写真",
+  "Read Instagram history page": "Instagram 履歴の次のページを取得",
+  "Instagram history totals": "Instagram inventory: {posts} posts · {photos} photos",
+  "Inventory complete": "一覧の取得完了",
+  "More pages remaining": "続きのページがあります"
 }

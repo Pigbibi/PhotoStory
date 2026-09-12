@@ -1,3 +1,4 @@
+import History from './History.jsx';
 import {Publishing} from './Publishing.jsx';
 import {localizedDraftText} from './i18n-core.mjs';
 import {I18nProvider,LanguageSwitcher,useI18n} from "./i18n.jsx";
@@ -148,6 +149,7 @@ function App() {
           {[
             ["review", t("待审核")],
             ["queue", t("发布队列")],
+            ["history", t("Publication history")],
             ['trash',t('回收站')],
             ["settings", t("连接设置")],
           ].map(([v, label]) => (
@@ -196,7 +198,7 @@ function App() {
       <main>
         <section className="intro">
           <h1>
-            {view === "settings"
+            {view === "history" ? t("Publication history") : view === "settings"
               ? t("让故事，从连接开始。")
               :view==='trash'?t('不着急，留三十天再决定。')
               : view === "queue"
@@ -223,7 +225,7 @@ function App() {
             <button aria-label={t("关闭提示")} onClick={() => setMessage("")}>{t("关闭")}</button>
           </div>
         )}
-        {view === "settings" ? (
+        {view === "history" && session?.user && !demo ? <History api={api}/> : view === "settings" ? (
           <Settings session={session} notify={setMessage} />
         ) : !session?.user && !demo ? (
           <section className="welcome">

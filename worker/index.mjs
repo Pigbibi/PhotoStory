@@ -1,3 +1,4 @@
+import * as history from './history.mjs';
 import * as publishing from './publishing.mjs';
 import {storeImage,readImage,migrateImages} from './storage.mjs';
 import {automatic} from './automatic-publishing.mjs';
@@ -110,7 +111,7 @@ async function internal(r, e, p) {
     const view=await settingsView(e);
     return json({
       accessToken: await auth.microsoftToken(e),
-      knownPhotoIds: used.results.map((x) => x.id),
+      knownPhotoIds: [...new Set([...used.results.map((x) => x.id),...await history.excluded(e)])],
       reviewMode: "manual",
       strictAutoEnabled: view.settings.reviewMode==="strict_auto",
       captionLanguage: "en",
@@ -292,6 +293,8 @@ async function route(r, e) {
       ).all();
       return json(await Promise.all(rows.results.map(async x=>{const d=JSON.parse(x.body);return {...d,publication:await publishing.view(e,d.id)};})));
     }
+    if(p==='/api/history/sync' && r.method==='POST')return json(await history.sync(e));
+    if(p==='/api/history' && r.method==='GET')return json(await history.summary(e));
     if(p==='/api/settings' && r.method==='GET')return json(await settingsView(e));
     if(p==='/api/storage/migrate'&&r.method==='POST')return json(await migrateImages(e));
     if(p==='/api/settings' && r.method==='PUT')return json(await saveSettings(e,await readJSON(r)));
@@ -313,7 +316,8 @@ async function route(r, e) {
     if (p === "/api/jobs" && r.method === "POST") {
       if (!(await auth.get(e, "microsoft")))
         return failure("onedrive_not_connected", 409);
-      const input = {...jobInput(await readJSON(r)),...jobLanguages(e),reviewMode:(await settingsView(e)).settings.reviewMode};
+      const {settings}=await settingsView(e);
+      const input = {...jobInput(await readJSON(r)),...jobLanguages(e),reviewMode:settings.reviewMode,analysisLimit:settings.analysisLimit};
       const running = await e.DB.prepare(
         "SELECT id FROM jobs WHERE status IN ('pending','running') LIMIT 1",
       ).first();

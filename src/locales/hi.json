@@ -262,5 +262,15 @@
   "Publication failure details": "दर्ज समय {time} · त्रुटि {code}",
   "Resume after account verification": "खाता सत्यापन के बाद जारी रखें",
   "From a start date": "आरंभ तिथि से",
-  "Photo preselection explanation": "मिलती-जुलती लगातार तस्वीरें पहले स्थानीय रूप से छाँटी जाती हैं। केवल AI को भेजी तस्वीरें सीमा में गिनी जाती हैं; अलग कोण सुरक्षित रखे जाते हैं। सबसे अधिक अंक वाली तस्वीर कवर बनती है।"
+  "Photo preselection explanation": "मिलती-जुलती लगातार तस्वीरें पहले स्थानीय रूप से छाँटी जाती हैं। केवल AI को भेजी तस्वीरें सीमा में गिनी जाती हैं; अलग कोण सुरक्षित रखे जाते हैं। सबसे अधिक अंक वाली तस्वीर कवर बनती है।",
+  "Publication history": "प्रकाशन इतिहास",
+  "Published records remain after Instagram deletion or temporary image cleanup.": "Published records remain after Instagram deletion or temporary image cleanup.",
+  "History totals": "{posts} posts · {photos} published photos · {unique} unique source photos",
+  "History coverage warning": "Covers PhotoStory publications only. Older Instagram posts have not been matched to OneDrive yet; do not rely on this counter for whole-library duplicate protection.",
+  "Date": "तारीख",
+  "Photos": "फ़ोटो",
+  "Read Instagram history page": "Instagram इतिहास का अगला पृष्ठ पढ़ें",
+  "Instagram history totals": "Instagram inventory: {posts} posts · {photos} photos",
+  "Inventory complete": "सूची पूरी हुई",
+  "More pages remaining": "और पृष्ठ बाकी हैं"
 }

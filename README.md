@@ -164,7 +164,7 @@ or another restricted environment mechanism. Then run:
 One invocation handles a bounded step: at most 50 Graph pages or one AI batch.
 The supplied optional systemd timer continues owner-created jobs and checks the
 owner's weekly/monthly schedule, which is disabled by default. Scheduled runs have
-a separate total analysis budget (default 100); the pending-review threshold
+a separate total analysis budget (default 300); the pending-review threshold
 (default 20 drafts) pauses further batches. Install the timers using the systemd
 deployment guide. This adapter intentionally uses the local backend. Any separate service integration must preserve AIGateway's GitHub Actions OIDC repository/workflow/ref allowlists and HTTPS protections. A private
 GitHub Action may not be callable from public repositories; the documented VPS CLI
@@ -373,15 +373,15 @@ the staged files before starting the existing durable Instagram publisher.
 Rejected preparations return to the human-review queue. Failed/crashed preparations
 are never automatically reclaimed. A browser is not required.
 
-Deploy the Worker and all four processor files together: `process_batch.py`,
-`auto_publish.py`, `systemd_gateway.py`, and `run_isolated_ai.py`. Use the existing
+Deploy the Worker and all Python files under `scripts/` together, including
+`inventory.py`, `preselect.py`, the review modules and the publishing processor. Use the existing
 Pillow environment and a one-minute processor timer. The gateway's bounded JPEG
 input limit is 1.8 MB per image, matching the publisher. During publication the
 processor advances one recorded Meta operation per tick before scanning more
 photos. Keep the timer online; this is best-effort processing, not an exact-time
 posting scheduler. Scheduled photo discovery is a separate setting.
 
-The limit is **one new automatic attempt per rolling 24 hours**, counting manual
+The limit is **one new automatic attempt per rolling 7 days**, counting manual
 publications and failed preparation attempts too. An ambiguous or interrupted
 external request stops the queue for owner inspection; it is never blindly retried.
 Switching to manual blocks subsequent automatic requests, but cannot recall a
@@ -422,3 +422,11 @@ all photos, a fixed custom date range, or a start date through the current day.
 Save to apply; configuration persists across deployments. A custom start date
 supports gradual historical catch-up on the next scheduled run, without sending
 the entire archive to AI at once. Existing saved limits are not silently increased.
+
+New manual scans, like scheduled scans, inherit the saved total AI analysis budget
+(default 300, configurable from 1 to 1000). The batch size is a separate per-step
+limit. See the [deployment security audit](docs/security-audit.zh-CN.md) and
+[current privacy boundaries](docs/privacy.md).
+
+See [publication history and repeat protection](docs/publication-history.md) for
+the owner statistics page and the limits of historical Instagram coverage.

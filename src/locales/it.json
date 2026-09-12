@@ -262,5 +262,15 @@
   "Publication failure details": "Registrato {time} · Errore {code}",
   "Resume after account verification": "Riprendi dopo la verifica dell’account",
   "From a start date": "Da una data",
-  "Photo preselection explanation": "Le raffiche simili vengono filtrate localmente. Solo le foto inviate all’IA contano nel limite; si conservano altri angoli. La foto meglio valutata apre il post."
+  "Photo preselection explanation": "Le raffiche simili vengono filtrate localmente. Solo le foto inviate all’IA contano nel limite; si conservano altri angoli. La foto meglio valutata apre il post.",
+  "Publication history": "Cronologia pubblicazioni",
+  "Published records remain after Instagram deletion or temporary image cleanup.": "Published records remain after Instagram deletion or temporary image cleanup.",
+  "History totals": "{posts} posts · {photos} published photos · {unique} unique source photos",
+  "History coverage warning": "Covers PhotoStory publications only. Older Instagram posts have not been matched to OneDrive yet; do not rely on this counter for whole-library duplicate protection.",
+  "Date": "Data",
+  "Photos": "Foto",
+  "Read Instagram history page": "Leggi la prossima pagina Instagram",
+  "Instagram history totals": "Instagram inventory: {posts} posts · {photos} photos",
+  "Inventory complete": "Inventario completo",
+  "More pages remaining": "Altre pagine disponibili"
 }

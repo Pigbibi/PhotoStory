@@ -262,5 +262,15 @@
   "Publication failure details": "记录时间 {time} · 错误码 {code}",
   "Resume after account verification": "账户验证后恢复这次发布",
   "From a start date": "从指定日期起",
-  "Photo preselection explanation": "先在本地预筛近似连拍，只有交给 AI 的代表照片计入额度；保守保留不同角度。每篇优先以评分最好的照片作为封面。"
+  "Photo preselection explanation": "先在本地预筛近似连拍，只有交给 AI 的代表照片计入额度；保守保留不同角度。每篇优先以评分最好的照片作为封面。",
+  "Publication history": "已发布记录",
+  "Published records remain after Instagram deletion or temporary image cleanup.": "Instagram 删除帖子或临时图片清理后，历史发布记录仍保留。",
+  "History totals": "{posts} 篇帖子 · 发布 {photos} 张照片 · {unique} 张不同来源照片",
+  "History coverage warning": "目前仅覆盖 PhotoStory 发布的照片。以前的 Instagram 帖子尚未与 OneDrive 匹配，不能仅凭此统计认定全相册已完成发布去重。",
+  "Date": "日期",
+  "Photos": "照片数量",
+  "Read Instagram history page": "读取下一页 Instagram 历史",
+  "Instagram history totals": "Instagram 清单：{posts} 篇帖子 · {photos} 张照片",
+  "Inventory complete": "清单已读完",
+  "More pages remaining": "还有后续页面"
 }

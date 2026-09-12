@@ -162,3 +162,24 @@ export async function publishingHealth(e){
   return {ok:true,checkedAt:Date.now()};
  }catch(error){return {ok:false,...safeFailure(error)};}
 }
+
+// Read-only account inventory; never follow provider-supplied pagination URLs.
+export async function mediaHistoryPage(e,after=null){
+ const account=await publishingAccount(e);
+ if(after!==null&&(typeof after!=='string'||after.length>2048||!after))throw new Error('invalid_request');
+ const url=new URL('https://graph.instagram.com/v26.0/'+account.userId+'/media');
+ url.searchParams.set('fields','id,media_type,timestamp,children.limit(100){id,media_type}');
+ url.searchParams.set('limit','25');
+ if(after)url.searchParams.set('after',after);
+ const result=await request(url,{headers:{Authorization:'Bearer '+account.access}});
+ if(!Array.isArray(result.data)||result.data.length>25)throw new Error('instagram_connection_failed');
+ const records=result.data.map(p=>{
+  if(!identifier(p.id)||!['IMAGE','VIDEO','CAROUSEL_ALBUM'].includes(p.media_type)||!Number.isFinite(Date.parse(p.timestamp)))throw new Error('instagram_connection_failed');
+  const children=p.media_type==='CAROUSEL_ALBUM'?p.children?.data:[p];
+  if(!Array.isArray(children)||children.length>100||p.children?.paging?.next||children.some(c=>!identifier(c.id)||!['IMAGE','VIDEO'].includes(c.media_type)))throw new Error('instagram_connection_failed');
+  return {id:p.id,at:Date.parse(p.timestamp),photos:children.filter(c=>c.media_type==='IMAGE').length,photoIds:children.filter(c=>c.media_type==='IMAGE').map(c=>c.id)};
+ });
+ const next=result.paging?.next?result.paging?.cursors?.after:null;
+ if(next!==null&&(typeof next!=='string'||!next||next.length>2048||next===after))throw new Error('instagram_connection_failed');
+ return {userId:account.userId,username:account.username,records,after:next};
+}

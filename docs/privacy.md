@@ -24,7 +24,10 @@ lookup and are not persisted. The implementation requests no repo scope.
 PhotoStory stores selected JPEG review previews and draft text in the configured
 languages. Pending and approved drafts are retained; trash and unreferenced previews
 follow the configurable retention policy described in the README.
-There is no public photo URL or publishing route. Approved originals can be
+Review previews require authentication. Publishing deliberately exposes only the
+prepared JPEGs through unpredictable delivery URLs for a short, state-checked
+window (one hour); anyone holding such a URL can read it until expiry. Never share
+these URLs or enable a public R2 bucket. Approved originals can be
 exported through an authenticated, same-origin, version-checked POST route. All
 responses use no-store and private routes do not accept third-party origins.
 Do not enable analytics or request-body logging for private payloads.
@@ -38,8 +41,10 @@ roles, missing assessments and heavy obstructions are excluded. Public statues
 are not treated as real people. No identities or relationships are inferred. It cannot guarantee every sensitive detail will be detected.
 Only 768px-or-smaller previews are screened, which can hide small details; uncertainty
 must be rejected. Manual review is the default. Strict AI auto-review can be enabled explicitly for
-new jobs; its additional pass is fallible and does not guarantee privacy. It never
-publishes. Changing the reviewed content revokes approval. See the README for gates.
+new jobs; its additional pass is fallible and does not guarantee privacy. Automatic
+publishing is a separate, explicit owner setting: eligible new drafts also require
+a review of the actual rendered JPEGs and server-checked file hashes. Changing the
+reviewed content revokes approval. See the README for gates.
 
 The scanner does not claim complete library analysis. It skips videos, screenshots
 identified by filename, remote shortcuts, and photos without an explicit capture
@@ -48,7 +53,10 @@ exact GPS is never stored or used as a caption location. Time gaps and coarse
 spatial separation split candidate groups; visual themes further refine drafts.
 At most 24 screened candidates per batch enter the composition pass. Other photos
 are unselected, not deleted. Identical preview bytes and previously imported photo
-IDs are deduplicated; perceptual near-duplicates rely on the model and reviewer.
+IDs are deduplicated. Conservative perceptual filtering compares nearby captures
+(within 120 seconds), image shape, hashes and color, keeping a clearer representative.
+It can miss duplicates or misgroup similar scenes; the model and reviewer still
+check variety. Selection never deletes OneDrive originals.
 
 Model text, file metadata and image text are untrusted. Prompts prohibit executing
 instructions found inside them. The gateway is restricted to its read-only path;
@@ -59,7 +67,8 @@ gateway's repository/ref permissions or disable authentication.
 One job may be active at a time. Large ranges are divided into metadata and AI
 steps, each with a new lease. The optional VPS timer continues pending steps, not
 failed calls. New scans are created only by the owner or an explicitly enabled
-weekly/monthly schedule. It never publishes photos. Owners can stop
+weekly/monthly schedule. With publishing explicitly enabled, the timer also
+advances eligible publication steps. Owners can stop
 subsequent steps; a currently running batch is allowed to finish. Requests are not
 automatically retried. If a
 completion upload has an uncertain result, the worker leaves the job for readback
@@ -68,15 +77,18 @@ running; an operator must inspect that exact job before recovery. Do not clear a
 running job while its VPS process may still be operating.
 
 Changing an approved draft's caption, tags, theme or photo order invalidates its
-approval; the next approval must target the saved version. Even an approved draft
-does not trigger any public action in v0.1.
+approval; the next approval must target the saved version. Manual mode requires an
+owner publication action. Automatic mode accepts only new strict-AI-approved drafts
+created after activation and enforces a rolling seven-day attempt limit; manual
+attempts and failed preparation also count. An uncertain Meta result stops the
+queue for verification instead of replaying a possibly successful request.
 
 OAuth starts require the configured AUTH_LIMITER binding and are limited to 20 per minute per Cloudflare location using a fixed key. This mitigates abuse but is not a global hard quota. Expired authentication records are removed in bounded batches on later auth writes. Live sessions and encrypted Microsoft tokens are preserved.
 
 The model subprocess receives only allowlisted environment values and uses local Codex. HOME/CODEX_HOME and the runtime filesystem must be dedicated and restricted; environment filtering does not make host files unreadable. Complete that deployment check before providing real photos.
 
 Private VPS SQLite files retain candidate IDs, capture times, coarse location,
-paging cursors and processed version/preview hashes; no image bytes or model
+paging cursors, processed version/preview hashes and coarse visual fingerprints; no image bytes or model
 captions are stored in this inventory. This metadata has no automatic retention
 purge. The shared processed cache includes exclusions to avoid repeated analysis.
 It is keyed by source version and policy revision; files without version metadata
@@ -91,7 +103,8 @@ A pending local AI batch with no matching remote acknowledgement stops instead.
 Do not expose the inventory directory to the AI service. The default batch limit
 is a per-step resource limit, not a monthly cost or total-library analysis limit.
 
-Scheduled jobs have an additional total analysis limit (default 100) and stop when
+New manual and scheduled jobs inherit the saved total analysis limit (default 300,
+configurable from 1 to 1000) and stop when
 it is reached. The pending-review threshold pauses future claims, with an already
 running batch allowed to finish. Review and approved drafts do not expire.
 Trash is recoverable for 30 days; cleanup checks every remaining draft reference
@@ -119,9 +132,11 @@ then encrypts the access token in D1 with the existing encryption key. Only the
 verified username and stored expiry are displayed to the owner. Tokens, client
 secrets, authorization codes and provider errors are not returned in frontend API
 responses or sent to AI. Meta's token exchange uses private server requests; do not enable request-URL
-logging for those requests. Tokens are not refreshed automatically in this release.
-Revocation is managed in Instagram's Apps and websites settings. No photos or
-captions are uploaded to Instagram by connecting, and publishing remains disabled.
+logging for those requests. Maintenance attempts renewal while the token is valid
+and has less than 30 days remaining, no more than once a day. Expired, revoked or
+verification-blocked credentials may require official reauthorization; this is not
+permanent access. Revocation is managed in Instagram's Apps and websites settings.
+Connecting alone uploads no photos or captions and does not enable publishing.
 
 Failed Instagram connections retain a private diagnostic for at most ten minutes
 of API visibility: a fixed failure stage, HTTP status and expected-field type or
@@ -139,3 +154,15 @@ browser or AI process. Migration verifies a read-back hash before removing match
 D1 bytes. Capacity reservations and conservative monthly request budgets stop new
 work at configured limits; they do not cap account-wide Cloudflare charges.
 See [storage and recovery](storage.md) for retention and interrupted-write handling.
+
+## Operational diagnostics and deletion
+
+Publication failures retain only fixed stages and numeric provider error codes.
+The owner website displays actionable publication alerts; it is not an email or
+push notification service. A Meta checkpoint must be completed on the official
+site. Never paste credentials, authorization callback URLs, database exports or
+private photo URLs into a public issue.
+
+Deleting a post in Instagram does not erase PhotoStory's historical publication
+record or source deduplication cache. Keep these records to avoid an accidental
+repost; a new test should create a new bounded job and a separately reviewed post.

@@ -126,3 +126,10 @@ test('owner recovery cannot replay a later or possibly published operation',asyn
  let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;throw new Error('must not call')});
  await assert.rejects(pub.recover(env,'d',p.id,1,'landscapes'),/publication_conflict/);assert.equal(calls,0);
 });
+test('an old published source cannot be republished in a different draft after image cleanup',async t=>{
+ const {env,DB,d}=await fixture(t,1);
+ await DB.prepare('INSERT INTO publications VALUES(?,?,?,?,?,?,?)').bind('old','old-publication',1,'published',JSON.stringify({photos:[{id:'p0'}],children:[],mediaId:'999'}),1,0).run();
+ const p=await pub.prepare(env,'d',1);await pub.upload(env,'d',p.id,'p0',jpeg());
+ await assert.rejects(pub.begin(env,'d',p.id,1,'landscapes'),/publication_conflict/);
+ assert.equal((await pub.view(env,'d')).status,'prepared');
+});

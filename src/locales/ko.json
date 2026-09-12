@@ -262,5 +262,15 @@
   "Publication failure details": "기록 시간 {time} · 오류 {code}",
   "Resume after account verification": "계정 인증 후 재개",
   "From a start date": "시작 날짜 지정",
-  "Photo preselection explanation": "비슷한 연속 사진을 로컬에서 먼저 선별하며 AI에 보내는 대표 사진만 한도에 포함합니다. 다른 각도는 보수적으로 유지하고 최고 평가 사진을 표지로 사용합니다."
+  "Photo preselection explanation": "비슷한 연속 사진을 로컬에서 먼저 선별하며 AI에 보내는 대표 사진만 한도에 포함합니다. 다른 각도는 보수적으로 유지하고 최고 평가 사진을 표지로 사용합니다.",
+  "Publication history": "게시 기록",
+  "Published records remain after Instagram deletion or temporary image cleanup.": "Published records remain after Instagram deletion or temporary image cleanup.",
+  "History totals": "{posts} posts · {photos} published photos · {unique} unique source photos",
+  "History coverage warning": "Covers PhotoStory publications only. Older Instagram posts have not been matched to OneDrive yet; do not rely on this counter for whole-library duplicate protection.",
+  "Date": "날짜",
+  "Photos": "사진",
+  "Read Instagram history page": "Instagram 기록 다음 페이지 읽기",
+  "Instagram history totals": "Instagram inventory: {posts} posts · {photos} photos",
+  "Inventory complete": "목록 읽기 완료",
+  "More pages remaining": "다음 페이지 있음"
 }

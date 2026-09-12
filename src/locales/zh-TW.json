@@ -262,5 +262,15 @@
   "Publication failure details": "記錄時間 {time} · 錯誤碼 {code}",
   "Resume after account verification": "帳號驗證後恢復此次發佈",
   "From a start date": "從指定日期起",
-  "Photo preselection explanation": "先在本機預篩近似連拍，只有交給 AI 的代表照片計入額度；保守保留不同角度。每篇優先以評分最好的照片作為封面。"
+  "Photo preselection explanation": "先在本機預篩近似連拍，只有交給 AI 的代表照片計入額度；保守保留不同角度。每篇優先以評分最好的照片作為封面。",
+  "Publication history": "已發布紀錄",
+  "Published records remain after Instagram deletion or temporary image cleanup.": "Published records remain after Instagram deletion or temporary image cleanup.",
+  "History totals": "{posts} posts · {photos} published photos · {unique} unique source photos",
+  "History coverage warning": "Covers PhotoStory publications only. Older Instagram posts have not been matched to OneDrive yet; do not rely on this counter for whole-library duplicate protection.",
+  "Date": "日期",
+  "Photos": "照片數量",
+  "Read Instagram history page": "讀取下一頁 Instagram 歷史",
+  "Instagram history totals": "Instagram inventory: {posts} posts · {photos} photos",
+  "Inventory complete": "清單已讀完",
+  "More pages remaining": "還有後續頁面"
 }

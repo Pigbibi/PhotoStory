@@ -262,5 +262,15 @@
   "Publication failure details": "سُجّل في {time} · الخطأ {code}",
   "Resume after account verification": "المتابعة بعد التحقق من الحساب",
   "From a start date": "من تاريخ محدد",
-  "Photo preselection explanation": "تُفرز اللقطات المتشابهة محلياً. تُحتسب الصور المرسلة للذكاء الاصطناعي فقط، مع الاحتفاظ الحذر بالزوايا المختلفة. تتصدر الصورة الأعلى تقييماً المنشور."
+  "Photo preselection explanation": "تُفرز اللقطات المتشابهة محلياً. تُحتسب الصور المرسلة للذكاء الاصطناعي فقط، مع الاحتفاظ الحذر بالزوايا المختلفة. تتصدر الصورة الأعلى تقييماً المنشور.",
+  "Publication history": "سجل المنشورات",
+  "Published records remain after Instagram deletion or temporary image cleanup.": "Published records remain after Instagram deletion or temporary image cleanup.",
+  "History totals": "{posts} posts · {photos} published photos · {unique} unique source photos",
+  "History coverage warning": "Covers PhotoStory publications only. Older Instagram posts have not been matched to OneDrive yet; do not rely on this counter for whole-library duplicate protection.",
+  "Date": "التاريخ",
+  "Photos": "الصور",
+  "Read Instagram history page": "قراءة الصفحة التالية من سجل Instagram",
+  "Instagram history totals": "Instagram inventory: {posts} posts · {photos} photos",
+  "Inventory complete": "اكتمل الجرد",
+  "More pages remaining": "توجد صفحات أخرى"
 }

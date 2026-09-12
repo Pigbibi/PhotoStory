@@ -26,7 +26,7 @@ async function run(t,mode,disableAtCommit=false){
  const job=await(await api('/internal/claim',{},true)).json();
  const d={...draft,id:job.id+'-batch-1'},e={...evidence(),draftId:d.id};
  if(disableAtCommit){const batch=DB.batch;DB.batch=async stmts=>{await DB.prepare("UPDATE state SET value=json_set(value,'$.reviewMode','manual') WHERE key='automation'").bind().run();return batch(stmts);};}
- const r=await api('/internal/complete',{jobId:job.id,lease:job.lease,batchId:'batch',more:false,progress:{phase:'complete',total:1,processed:1,batches:1},drafts:[d],photos:[{id:'p',safety:'allow',flags:[],jpeg:'/9j/'}],autoReviews:[e]},true);
+ const r=await api('/internal/complete',{jobId:job.id,lease:job.lease,batchId:'batch',more:false,progress:{phase:'complete',total:1,processed:1,analyzed:1,batches:1},drafts:[d],photos:[{id:'p',safety:'allow',flags:[],jpeg:'/9j/'}],autoReviews:[e]},true);
  assert.equal(r.status,200);return JSON.parse((await DB.prepare('SELECT body FROM drafts').first()).body);
 }
 test('manual mode never auto-approves even with a positive AI result',async t=>assert.equal((await run(t,'manual')).status,'draft'));

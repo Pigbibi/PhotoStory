@@ -262,5 +262,15 @@
   "Publication failure details": "Записано {time} · Ошибка {code}",
   "Resume after account verification": "Продолжить после проверки аккаунта",
   "From a start date": "Начиная с даты",
-  "Photo preselection explanation": "Похожие серии фильтруются локально. В лимит входят только фото, отправленные ИИ; другие ракурсы сохраняются. Лучшее по оценке фото становится обложкой."
+  "Photo preselection explanation": "Похожие серии фильтруются локально. В лимит входят только фото, отправленные ИИ; другие ракурсы сохраняются. Лучшее по оценке фото становится обложкой.",
+  "Publication history": "История публикаций",
+  "Published records remain after Instagram deletion or temporary image cleanup.": "Published records remain after Instagram deletion or temporary image cleanup.",
+  "History totals": "{posts} posts · {photos} published photos · {unique} unique source photos",
+  "History coverage warning": "Covers PhotoStory publications only. Older Instagram posts have not been matched to OneDrive yet; do not rely on this counter for whole-library duplicate protection.",
+  "Date": "Дата",
+  "Photos": "Фотографии",
+  "Read Instagram history page": "Загрузить следующую страницу Instagram",
+  "Instagram history totals": "Instagram inventory: {posts} posts · {photos} photos",
+  "Inventory complete": "Список загружен",
+  "More pages remaining": "Есть другие страницы"
 }

@@ -184,7 +184,7 @@ including every redirect, so credentials are never forwarded to a redirect targe
 4. Click **Publish to @username**. Only this action starts Meta requests and makes
    temporary output URLs accessible. Originals and Microsoft download URLs remain
    private. Images use 1080px-wide RGB JPEG, a uniform aspect ratio, no EXIF/GPS,
-   and at most 1.8 MB per image (a local D1 storage limit). ICC color profiles are allowed.
+   and at most 1.8 MB per image (the publisher and AI input limit). ICC color profiles are allowed.
 5. Keep the page open while publishing. If it closes between completed steps,
    **Continue publishing** resumes the recorded progress without recreating completed
    containers. Published results show the Instagram media ID. Check the actual
@@ -228,8 +228,8 @@ the staged files before starting the existing durable Instagram publisher.
 Rejected preparations return to the human-review queue. Failed/crashed preparations
 are never automatically reclaimed. A browser is not required.
 
-Deploy the Worker and all four processor files together: `process_batch.py`,
-`auto_publish.py`, `systemd_gateway.py`, and `run_isolated_ai.py`. Use the existing
+Deploy the Worker and all Python files under `scripts/` together, including
+`inventory.py`, `preselect.py`, the review modules and the publishing processor. Use the existing
 Pillow environment and a one-minute processor timer. The gateway's bounded JPEG
 input limit is 1.8 MB per image, matching the publisher. During publication the
 processor advances one recorded Meta operation per tick before scanning more
@@ -250,7 +250,7 @@ an explicitly approved manual post first. AI is fallible; strict checks reduce
 risk but do not guarantee safe or attractive photos. No live automatic post is
 part of the repository's automated test suite.
 
-For a low-frequency deployment, scan the last three months weekly with a 100-photo analysis budget. No new photos or no eligible draft means no post; unused opportunities do not accumulate.
+For a low-frequency deployment, scan the last three months weekly with a configurable analysis budget (default 300). No new photos or no eligible draft means no post; unused opportunities do not accumulate.
 
 ## Account verification and publication alerts
 
