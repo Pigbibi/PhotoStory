@@ -113,6 +113,20 @@ test('a failed scheduled job disables further scheduled scans until owner re-ena
  await maintenance(env,now+40*86400000);
  assert.equal((await DB.prepare('SELECT count(*) AS n FROM jobs').all()).results[0].n,1);
 });
+test('a failed job stores only an allowlisted failure code',async t=>{
+ const {DB,api}=await setup(t);
+ await api('/api/jobs',{folder:'Photos',range:'all',maxPhotos:20});
+ const job=await(await api('/internal/claim',{},true)).json();
+ assert.equal((await api('/internal/fail',{jobId:job.id,lease:job.lease,reason:'thumbnail_missing'},true)).status,200);
+ const row=await DB.prepare('SELECT status,body FROM jobs WHERE id=?').bind(job.id).first();
+ assert.equal(row.status,'failed');
+ assert.deepEqual(JSON.parse(row.body).failure,{code:'thumbnail_missing'});
+ await api('/api/jobs',{folder:'Photos',range:'all',maxPhotos:20});
+ const next=await(await api('/internal/claim',{},true)).json();
+ assert.equal((await api('/internal/fail',{jobId:next.id,lease:next.lease,reason:'provider_token=private'},true)).status,200);
+ const hidden=await DB.prepare('SELECT body FROM jobs WHERE id=?').bind(next.id).first();
+ assert.deepEqual(JSON.parse(hidden.body).failure,{code:'unknown'});
+});
 
 test('fixed start date is saved while the schedule end moves with today',async t=>{
  const {jobInput}=await import('../worker/jobs.mjs');
