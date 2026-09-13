@@ -102,8 +102,9 @@ test("tokens are encrypted, authenticated, and not stored as plaintext", async (
   const enc = await seal(e, { refresh: "private-token" });
   assert.ok(!JSON.stringify(enc).includes("private-token"));
   assert.deepEqual(await unseal(e, enc), { refresh: "private-token" });
+  const changed = (enc.data[0] === "A" ? "B" : "A") + enc.data.slice(1);
   await assert.rejects(() =>
-    unseal(e, { ...enc, data: "AA" + enc.data.slice(2) }),
+    unseal(e, { ...enc, data: changed }),
   );
 });
 test("unconfigured OAuth does not redirect to an external provider", async () => {
