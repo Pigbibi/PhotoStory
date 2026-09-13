@@ -32,7 +32,10 @@ def failure_reason(error):
                'page_limit', 'photo_limit', 'redirect_blocked', 'response_too_large',
                'screen_contract', 'translation_contract', 'setup_required', 'thumbnail_missing', 'thumbnail_origin',
                'history_not_complete', 'history_match_contract'}
-    return str(error) if isinstance(error, Stop) and str(error) in allowed else 'unknown'
+    # Inventory validation raises ValueError for a few fixed, non-sensitive
+    # conditions (for example a missing configured folder). Preserve only this
+    # explicit vocabulary; arbitrary provider text remains hidden.
+    return str(error) if str(error) in allowed else 'unknown'
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

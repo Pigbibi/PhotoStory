@@ -59,6 +59,7 @@ class ScreeningTests(unittest.TestCase):
 class FailureReportingTests(unittest.TestCase):
     def test_only_fixed_failure_reasons_are_reported(self):
         self.assertEqual(b.failure_reason(b.Stop('photo_limit')), 'photo_limit')
+        self.assertEqual(b.failure_reason(ValueError('folder_not_found')), 'folder_not_found')
         self.assertEqual(b.failure_reason(b.Stop('provider secret response')), 'unknown')
         self.assertEqual(b.failure_reason(RuntimeError('provider secret response')), 'unknown')
 
