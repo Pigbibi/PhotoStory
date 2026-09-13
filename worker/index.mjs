@@ -17,6 +17,15 @@ const json = (body, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 const failure = (code, status) => json({ error: code }, status);
+const JOB_FAILURE_CODES = new Set([
+  "folder_limit", "folder_not_found", "gateway_failed", "gateway_not_configured",
+  "group_contract", "history_match_contract", "history_not_complete", "https_required",
+  "image_too_large", "invalid_graph_origin", "page_limit", "photo_limit", "redirect_blocked",
+  "response_too_large", "screen_contract", "setup_required", "thumbnail_missing",
+  "thumbnail_origin", "translation_contract", "unknown",
+]);
+const jobFailureCode = (value) =>
+  typeof value === "string" && JOB_FAILURE_CODES.has(value) ? value : "unknown";
 function secure(r) {
   const h = new Headers(r.headers);
   h.set("Cache-Control", "no-store");
@@ -135,10 +144,11 @@ async function internal(r, e, p) {
     return json({ok:true});
   }
   if (p === "/internal/fail" && r.method === "POST") {
+    const failure = {code:jobFailureCode(b.reason)};
     await e.DB.batch([e.DB.prepare(
-      "UPDATE jobs SET status='failed',lease=NULL WHERE id=? AND status='running'",
+      "UPDATE jobs SET body=json_set(body,'$.failure',json(?)),status='failed',lease=NULL WHERE id=? AND status='running'",
     )
-      .bind(job.id),
+      .bind(JSON.stringify(failure),job.id),
       e.DB.prepare("UPDATE state SET value=json_set(value,'$.enabled',json('false'),'$.nextRun',NULL,'$.pausedReason','failed','$.version',json_extract(value,'$.version')+1) WHERE key='automation' AND json_extract(value,'$.lastJobId')=?").bind(job.id),
     ]);
     return json({ ok: true });
@@ -334,7 +344,7 @@ async function route(r, e) {
       ).all();
       return json(rows.results.map(({body,...row})=>{
         const v=JSON.parse(body);
-        return {...row,mode:v.mode||'selection',folder:v.folder,selection:v.selection,maxPhotos:v.maxPhotos,locationHint:v.locationHint||"",progress:v.progress,stopRequested:Boolean(v.stopRequested),scheduled:Boolean(v.scheduled),analysisLimit:v.analysisLimit};
+        return {...row,mode:v.mode||'selection',folder:v.folder,selection:v.selection,maxPhotos:v.maxPhotos,locationHint:v.locationHint||"",progress:v.progress,failure:v.failure||null,stopRequested:Boolean(v.stopRequested),scheduled:Boolean(v.scheduled),analysisLimit:v.analysisLimit};
       }));
     }
     if (p.startsWith("/api/jobs/") && p.endsWith("/stop") && r.method==="POST") {

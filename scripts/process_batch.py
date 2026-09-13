@@ -524,11 +524,12 @@ def run():
             inventory.reconcile(batch_id)
             print("Completed; draft count:", result["count"])
     except Exception as error:
-        print("Stopped; reason:", failure_reason(error))
+        reason = failure_reason(error)
+        print("Stopped; reason:", reason)
         # An ambiguous completion is left running for readback, never re-submitted.
         if not completion_started:
             try:
-                call("/internal/fail", auth)
+                call("/internal/fail", {**auth, "reason": reason})
             except Exception:
                 pass
         raise Stop("batch_failed_or_outcome_uncertain") from None

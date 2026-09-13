@@ -675,6 +675,7 @@ function Settings({ session, notify }) {
                     {j.analysisLimit && t(" · 本次分析 {done} / {total} 张",{done:j.progress.analyzed||0,total:j.analysisLimit})}
                     {j.status==='pending' && backlogPaused && t(' · 待审核已达阈值，暂停后续批次')}
                   </p>}
+                  {j.status==='failed' && j.failure?.code && <p className="job-progress" role="alert">{t("处理失败，未自动重试")} · {j.failure.code}</p>}
                   {["pending","running"].includes(j.status) && (
                     <button className="text-button" disabled={j.stopRequested} onClick={()=>stopJob(j.id)}>
                       {j.stopRequested ? t("本批结束后停止") : t("停止后续批次")}
