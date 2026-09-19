@@ -180,6 +180,8 @@
   "检查照片范围": "फ़ोटो सीमा जाँचें",
   "每次最多分析新照片": "हर बार नई फ़ोटो का अधिकतम विश्लेषण",
   "每批照片": "हर बैच की फ़ोटो",
+  "每批最多生成草稿": "प्रति बैच अधिकतम ड्राफ्ट",
+  "{count} 篇": "{count} ड्राफ्ट",
   "待审核暂停阈值": "समीक्षा-लंबित रोक सीमा",
   "相同版本的已处理照片会跳过。分析额度用完后结束本次制作，剩余照片留到下个周期。达到待审核阈值后暂停所有后续批次，当前批次可能多生成少量草稿；审核后自动继续。": "समान संस्करण वाली संसाधित फ़ोटो छोड़ दी जाएँगी। विश्लेषण क्रेडिट समाप्त होने पर यह निर्माण समाप्त होगा और शेष फ़ोटो अगले चक्र के लिए रखी जाएँगी। समीक्षा-लंबित सीमा पहुँचने पर सभी बाद के बैच रुक जाएँगे; वर्तमान बैच कुछ अतिरिक्त ड्राफ़्ट बना सकता है। समीक्षा के बाद कार्य स्वचालित रूप से जारी रहेगा।",
   "定期制作已开启": "नियमित निर्माण चालू है",
@@ -276,5 +278,15 @@
   "Historical match status": "OneDrive मिलान: {confirmed} पुष्ट · {proposals} सुझाव",
   "Historical matches require confirmation before exclusion.": "ऐतिहासिक मिलान केवल सुझाव हैं; फोटो हटाने से पहले पुष्टि करें।",
   "Confirm all visible matches": "सभी दिखाई दे रहे मिलानों की पुष्टि करें",
-  "Run history-only verification": "केवल इतिहास सत्यापन चलाएँ"
+  "Run history-only verification": "केवल इतिहास सत्यापन चलाएँ",
+  "严格 AI 与人工排期发布": "Strict AI and owner-scheduled publishing",
+  "严格 AI 自动发布与人工排期发布": "Strict AI automatic and owner-scheduled publishing",
+  "人工批准的草稿会在以下每周窗口发布；严格 AI 自动批准仍按原有安全规则处理。": "Drafts you approve will publish in the weekly window below. Strict AI approvals retain their existing safety rules.",
+  "人工排期发布日": "Owner-scheduled publishing day",
+  "人工排期发布时间": "Owner-scheduled publishing time",
+  "尚未设置": "Not configured",
+  "保存后才会按新的排期生效。": "Schedule changes take effect after saving.",
+  "人工排期尚未设置；人工批准稿会继续留在队列中。": "Owner scheduling is not configured; your approved drafts will remain queued.",
+  " · 人工排期尚未设置": " · Owner scheduling is not configured",
+  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication."
 }

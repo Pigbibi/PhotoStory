@@ -180,6 +180,8 @@
   "检查照片范围": "Verificar intervalo de fotos",
   "每次最多分析新照片": "Máximo de fotos novas analisadas por execução",
   "每批照片": "Fotos por lote",
+  "每批最多生成草稿": "Máximo de rascunhos por lote",
+  "{count} 篇": "{count} rascunhos",
   "待审核暂停阈值": "Limite para pausar a revisão",
   "相同版本的已处理照片会跳过。分析额度用完后结束本次制作，剩余照片留到下个周期。达到待审核阈值后暂停所有后续批次，当前批次可能多生成少量草稿；审核后自动继续。": "Fotos processadas da mesma versão serão ignoradas. Quando a cota de análise acabar, esta produção será encerrada e as fotos restantes ficarão para o próximo ciclo. Ao atingir o limite de revisão, todos os lotes seguintes serão pausados; o lote atual poderá gerar mais alguns rascunhos. O processamento continuará automaticamente após a revisão.",
   "定期制作已开启": "Produção periódica ativada",
@@ -276,5 +278,15 @@
   "Historical match status": "Correspondências do OneDrive: {confirmed} confirmadas · {proposals} propostas",
   "Historical matches require confirmation before exclusion.": "As correspondências históricas são sugestões; confirme antes de excluir uma foto.",
   "Confirm all visible matches": "Confirmar todas as correspondências visíveis",
-  "Run history-only verification": "Executar verificação apenas do histórico"
+  "Run history-only verification": "Executar verificação apenas do histórico",
+  "严格 AI 与人工排期发布": "Strict AI and owner-scheduled publishing",
+  "严格 AI 自动发布与人工排期发布": "Strict AI automatic and owner-scheduled publishing",
+  "人工批准的草稿会在以下每周窗口发布；严格 AI 自动批准仍按原有安全规则处理。": "Drafts you approve will publish in the weekly window below. Strict AI approvals retain their existing safety rules.",
+  "人工排期发布日": "Owner-scheduled publishing day",
+  "人工排期发布时间": "Owner-scheduled publishing time",
+  "尚未设置": "Not configured",
+  "保存后才会按新的排期生效。": "Schedule changes take effect after saving.",
+  "人工排期尚未设置；人工批准稿会继续留在队列中。": "Owner scheduling is not configured; your approved drafts will remain queued.",
+  " · 人工排期尚未设置": " · Owner scheduling is not configured",
+  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication."
 }

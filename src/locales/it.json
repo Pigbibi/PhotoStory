@@ -180,6 +180,8 @@
   "检查照片范围": "Controlla l’intervallo delle foto",
   "每次最多分析新照片": "Nuove foto da analizzare al massimo per esecuzione",
   "每批照片": "Foto per batch",
+  "每批最多生成草稿": "Bozze massime per batch",
+  "{count} 篇": "{count} bozze",
   "待审核暂停阈值": "Soglia di sospensione delle revisioni",
   "相同版本的已处理照片会跳过。分析额度用完后结束本次制作，剩余照片留到下个周期。达到待审核阈值后暂停所有后续批次，当前批次可能多生成少量草稿；审核后自动继续。": "Le foto della stessa versione già elaborate vengono ignorate. Quando i crediti di analisi terminano, la produzione corrente si conclude e le foto rimanenti passano al ciclo successivo. Al raggiungimento della soglia di revisione, tutti i batch successivi vengono sospesi; il batch corrente potrebbe generare ancora alcune bozze in più. Dopo la revisione, la produzione riprenderà automaticamente.",
   "定期制作已开启": "Produzione periodica attivata",
@@ -276,5 +278,15 @@
   "Historical match status": "Corrispondenze OneDrive: {confirmed} confermate · {proposals} proposte",
   "Historical matches require confirmation before exclusion.": "Le corrispondenze storiche sono suggerimenti; confermale prima di escludere una foto.",
   "Confirm all visible matches": "Conferma tutte le corrispondenze visibili",
-  "Run history-only verification": "Esegui la verifica del solo storico"
+  "Run history-only verification": "Esegui la verifica del solo storico",
+  "严格 AI 与人工排期发布": "Strict AI and owner-scheduled publishing",
+  "严格 AI 自动发布与人工排期发布": "Strict AI automatic and owner-scheduled publishing",
+  "人工批准的草稿会在以下每周窗口发布；严格 AI 自动批准仍按原有安全规则处理。": "Drafts you approve will publish in the weekly window below. Strict AI approvals retain their existing safety rules.",
+  "人工排期发布日": "Owner-scheduled publishing day",
+  "人工排期发布时间": "Owner-scheduled publishing time",
+  "尚未设置": "Not configured",
+  "保存后才会按新的排期生效。": "Schedule changes take effect after saving.",
+  "人工排期尚未设置；人工批准稿会继续留在队列中。": "Owner scheduling is not configured; your approved drafts will remain queued.",
+  " · 人工排期尚未设置": " · Owner scheduling is not configured",
+  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication."
 }

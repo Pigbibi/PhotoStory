@@ -83,6 +83,8 @@ export function reviewDraft(current, input, now=Date.now()) {
     ...next,
     version: current.version + 1,
     ...(unchanged && input.action==="save" && current.status==="approved" && current.approvalSource ? {approvalSource:current.approvalSource} : {}),
+    ...(unchanged && current.strictReviewSoftFields ? {strictReviewSoftFields:current.strictReviewSoftFields} : {}),
+    ...(unchanged && current.strictReviewEvidence ? {strictReviewEvidence:current.strictReviewEvidence} : {}),
     status:
       input.action === "approve"
         ? "approved"

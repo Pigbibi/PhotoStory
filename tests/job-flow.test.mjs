@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setup} from './helpers/database.mjs';
+import {put,seal} from '../worker/auth.mjs';
 
 test('large jobs keep one active slot and acknowledge independent batches exactly once',async t=>{
  const {DB,api}=await setup(t);
@@ -58,6 +59,16 @@ test('manual scans inherit the saved total AI budget and cannot override it',asy
  assert.equal((await send(3)).status,200);
  assert.equal((await DB.prepare('SELECT status FROM jobs WHERE id=?').bind(c.id).first()).status,'limited');
  assert.equal(await(await api('/internal/claim',{},true)).json(),null);
+});
+test('the processor receives the configurable draft limit bounded by queue capacity',async t=>{
+ const {DB,api,env}=await setup(t);
+ env.TOKEN_ENCRYPTION_KEY=btoa(String.fromCharCode(...new Uint8Array(32).fill(1)));
+ await put(env,'microsoft',await seal(env,{access:'test-access',refresh:'test-refresh',expires:Date.now()+3600000}));
+ await DB.prepare("INSERT INTO state VALUES('automation',?,NULL)").bind(JSON.stringify({draftLimit:6,pendingLimit:7})).run();
+ assert.equal((await api('/api/jobs',{folder:'Photos',range:'all'})).status,201);
+ const claim=await(await api('/internal/claim',{},true)).json();
+ const source=await(await api('/internal/source',{jobId:claim.id,lease:claim.lease},true)).json();
+ assert.equal(source.draftLimit,6);
 });
 test('history-only verification clones the last source range without enabling AI drafts',async t=>{
  const {DB,api}=await setup(t);

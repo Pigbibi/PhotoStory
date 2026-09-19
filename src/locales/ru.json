@@ -180,6 +180,8 @@
   "检查照片范围": "Проверять диапазон фотографий",
   "每次最多分析新照片": "Максимум новых фотографий для анализа за один запуск",
   "每批照片": "Фотографий в партии",
+  "每批最多生成草稿": "Максимум черновиков на пакет",
+  "{count} 篇": "{count} черновиков",
   "待审核暂停阈值": "Порог приостановки проверки",
   "相同版本的已处理照片会跳过。分析额度用完后结束本次制作，剩余照片留到下个周期。达到待审核阈值后暂停所有后续批次，当前批次可能多生成少量草稿；审核后自动继续。": "Фотографии той же версии, которые уже обрабатывались, пропускаются. После исчерпания квоты анализа текущая обработка завершается, а оставшиеся фотографии переносятся на следующий цикл. При достижении порога проверки все последующие партии приостанавливаются; текущая партия может создать немного больше черновиков. После проверки обработка продолжится автоматически.",
   "定期制作已开启": "Регулярная обработка включена",
@@ -276,5 +278,15 @@
   "Historical match status": "Совпадения OneDrive: подтверждено {confirmed} · предложено {proposals}",
   "Historical matches require confirmation before exclusion.": "Исторические совпадения — только предложения; подтвердите их перед исключением фото.",
   "Confirm all visible matches": "Подтвердить все видимые совпадения",
-  "Run history-only verification": "Запустить проверку только истории"
+  "Run history-only verification": "Запустить проверку только истории",
+  "严格 AI 与人工排期发布": "Strict AI and owner-scheduled publishing",
+  "严格 AI 自动发布与人工排期发布": "Strict AI automatic and owner-scheduled publishing",
+  "人工批准的草稿会在以下每周窗口发布；严格 AI 自动批准仍按原有安全规则处理。": "Drafts you approve will publish in the weekly window below. Strict AI approvals retain their existing safety rules.",
+  "人工排期发布日": "Owner-scheduled publishing day",
+  "人工排期发布时间": "Owner-scheduled publishing time",
+  "尚未设置": "Not configured",
+  "保存后才会按新的排期生效。": "Schedule changes take effect after saving.",
+  "人工排期尚未设置；人工批准稿会继续留在队列中。": "Owner scheduling is not configured; your approved drafts will remain queued.",
+  " · 人工排期尚未设置": " · Owner scheduling is not configured",
+  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication."
 }

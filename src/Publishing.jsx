@@ -7,6 +7,10 @@ async function request(path,body){
 export function Publishing({draft,onChange,disabled}){
  const {t}=useI18n(),[state,setState]=useState(draft.publication),[busy,setBusy]=useState(false),[error,setError]=useState(false),[preview,setPreview]=useState(false);
  const base='/api/publish/'+draft.id;
+ if(draft.approvalSource==='owner_scheduled_v1') return <section className="publication" aria-label={t('Instagram publishing')}>
+  <h3>{t('Instagram publishing')}</h3>
+  <p role="status">{t('已由你批准，正等待排期发布。')}</p>
+ </section>;
  const refresh=async()=>{const next=await request(base);setState(next);return next;};
  const prepare=async()=>{
   setBusy(true);setError(false);
