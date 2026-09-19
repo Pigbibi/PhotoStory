@@ -137,7 +137,7 @@ async function internal(r, e, p) {
       captionLanguage: "en",
       editorLanguage: "zh-CN", // Legacy jobs keep their original prompt language.
       ...JSON.parse(job.body),
-      draftLimit: Math.max(0,Math.min(3,view.settings.pendingLimit-view.pending)),
+      draftLimit: Math.max(0,Math.min(8,view.settings.draftLimit,view.settings.pendingLimit-view.pending)),
     });
   }
   if (p === "/internal/checkpoint" && r.method === "POST") {

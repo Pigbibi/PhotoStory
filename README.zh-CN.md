@@ -1,221 +1,161 @@
 # PhotoStory
 
-Pigbibi 的开源旅行照片编辑台，采用 [MIT 协议](LICENSE)。
-
-从 OneDrive 手机备份中筛选风景照，整理主题，生成英文文案和 hashtag，
-然后在私人管理网站上逐篇审核。代码可公开，照片、草稿和密钥不公开。
-
-**支持选片、审核、成品导出和 Instagram 手动发布。** 已批准草稿生成真实成品预览后，可明确点击发布到已连接账号；支持单图和最多 8 张轮播。严格 AI 审核仍不等于自动发布。
-Instagram 授权仅核对预设的专业账号并在服务端加密保存令牌。
-公共演示使用 AI 生成的海岸图，不是用户的真实照片。
-
 [English](README.md)
 
+PhotoStory 是面向单个私人照片工作流的开源自部署选片台。它从 OneDrive 的有限
+范围读取照片，生成可编辑草稿，再由所有者决定是否发布。
 
-Instagram 授权由现有 VPS 维护 timer 在剩余不足 30 天时自动续期。即使关闭定期生成，也请保持 timer 在线。失败会保留旧连接；过期或被撤销后需要重新授权。详见 [Instagram 配置](docs/instagram-setup.zh-CN.md)。
+仓库不包含任何真实照片、账号、令牌、数据库导出或作者的 AI 服务。每位部署者
+使用自己的 Cloudflare 资源、OneDrive、VPS 和 AI 运行环境。
 
+![界面设计示意](docs/design-concept.png)
 
-## 日常使用
+## 能做什么
 
-1. 使用允许名单中的 GitHub 账号登录。
-2. 在「连接设置」中完成 Microsoft 官方授权，只申请读取权限。
-3. 选择照片文件夹、起止日期，创建选片任务。会遍历年月子目录。
-4. 已配置的 VPS 处理器运行一次：读取预览、排除敏感内容、筛选风景、生成草稿。
-5. 查看每张照片，修改英文文案和 hashtag，调整顺序或移除照片。
-6. 保存后批准，草稿进入队列。修改已批准的内容会使批准失效，重新待审。
+- 在生成草稿前筛选隐私、人物、构图和风景适宜性。
+- 按拍摄时间、粗略区域、画幅和视觉主题分组；区分白天、黄金时刻、蓝调与夜景。
+  城市或公共地标只有在画面证据达到高置信度时才会写入文案。
+- 生成可编辑的主题、文案、hashtag、裁切构图和轮播顺序。
+- 原图始终留在 OneDrive；用于审核的预览已去除 EXIF，且仅向登录管理员提供。
+- 支持将已批准草稿手动发布到已连接的 Instagram 专业账号。严格 AI 审核和低频
+  自动发布是彼此独立的可选开关；默认始终是人工审核和人工发布。
+- 保留发布账本，并提供由所有者确认的历史匹配，避免重复使用同一来源照片。
 
-处理器每次运行一个有上限的扫描或分析步骤。安装 VPS timer 后自动衔接；
-也可在设置页启用每周／每月制作，默认关闭，并配置每次分析数量和待审核暂停阈值。
-不采用的草稿可移入回收站，30 天内恢复。详见[制作与保留规则](docs/lifecycle.zh-CN.md)。
+## 所有权与数据隔离
 
-## AI 能筛选到什么程度
+PhotoStory 是单所有者工作流，不是多租户产品。一个部署实例只有一套私有 D1
+数据，草稿、设置、发布记录和选片偏好均由该实例共享。若允许多个 GitHub 账号
+登录同一实例，他们就是共同管理员，也会看到和影响同一套数据。
 
-先判断隐私和公开适宜性，再判断清晰度、光线、构图，最后组织主题。
-默认排除截图、证件、票据、自拍、合影摆拍、以人物为主体的照片、儿童、裸露内容、私人房间和个人信息。
-风景中的路人或船上乘客可以保留；不会推断人物身份、朋友关系或拍摄同意。人物角色不确定时排除。
-程序分别要求人物角色判断和清晰构图判断通过；严重窗框、栏杆遮挡主体的照片不进入选片。
-明显的公共建筑雕像不当作真人。其他隐私限制仍然适用，AI 依然可能漏判。
+不同部署之间不会交换照片、设置、提示词或偏好。给不同个人、团队或组织使用时，
+请分别部署实例、数据库和凭据。
 
-**模型可能漏判，不是隐私安全保证。** 为了筛选，预览图本身需要发送到你配置
-的 Codex 路径；即使最终被排除，也可能已经被 AI 处理。请只授权你愿意让
-该服务处理的照片范围。默认需要你逐张复核；可选的严格 AI 自动审核也不能保证零漏判。
+偏好记录是实例内的轻量信号：
 
-照片按明确的拍摄时间筛选，不把上传时间冒充拍摄时间。没有有效拍摄时间的
-照片会跳过。时区为 Asia/Shanghai，自定义结束日期包含当天。支持最近一个月、
-三个月、六个月、一年、全部及自定义范围。先分页扫描元数据，再按连续拍摄时间、
-可用的粗略地点和画面主题分批筛选；默认每批 50 张、最多 100 张，范围较大不会
-整批失败。网站显示进度并可停止后续批次；已有任务参数会自动恢复。
+- 保存草稿时移除轮播照片，会记录“后续分组要更聚焦同一视觉主题”。
+- 严格 AI 审核认为某项软质量不足，但所有者仍批准时，只记录该项聚合质量信号。
+- 它们仅影响已经安全的候选排序；不会放宽隐私、地点、批准或发布规则，也不会
+  用于训练共享模型。
 
-## 部署与授权
+详细说明见[所有权与偏好](docs/ownership-and-preferences.zh-CN.md)。
 
-完整命令和各项配置见 [英文部署说明](README.md#deploy-your-own)。复制
-`wrangler.jsonc` 为本机忽略的 `wrangler.local.jsonc` 并完成配置后，使用
-`npm run deploy` 发布；该命令不会读取公开模板中的占位数据库 ID。
+## 架构
 
-| 位置 | 配置 | 用途 |
-|---|---|---|
-| Cloudflare | Worker + D1 | 网站、私人草稿、审核状态 |
-| Worker 设置 | `ALLOWED_GITHUB_USERS` | 精确允许登录的 GitHub 用户名 |
-| Worker Secret | `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET` | 新网站独立的 GitHub OAuth App |
-| Worker Secret | `MICROSOFT_CLIENT_ID`、`MICROSOFT_CLIENT_SECRET` | 支持个人账户的 Microsoft Web 应用 |
-| Worker Secret | `TOKEN_ENCRYPTION_KEY` | 32 字节随机密钥的 base64，用于加密 Microsoft 令牌 |
-| Worker Secret / VPS | `BATCH_TOKEN` / `PHOTOSTORY_BATCH_TOKEN` | 独立的后台处理器凭据，两端相同 |
-| VPS 环境 | `PHOTOSTORY_URL` | 你自己的站点地址 |
-| VPS 环境 | `CODEX_GATEWAY_COMMAND` | 你自己的 AIGateway 命令绝对路径 |
+```text
+浏览器 → Cloudflare Worker + D1（可选私有 R2）
+                         ↕ 机器凭据接口
+                 受信任 VPS 处理器 → 隔离 AI 运行环境
+                         ↕
+                    OneDrive 与 Instagram
+```
 
-GitHub 回调地址：`https://你的站点/auth/github/callback`。
+Worker 管理登录、OAuth、设置、草稿、审核和发布状态；VPS 处理有限扫描和模型调用。
+AI 运行环境拿不到 OneDrive refresh token、Worker Secret 或 Instagram 发布权限。
+处理器只接收已去 EXIF 的预览，不会删除 OneDrive 原图。
 
-Microsoft 回调地址：`https://你的站点/auth/microsoft/callback`。
+## 快速部署
 
-密钥通过 Cloudflare 的加密 Secret 输入或受限环境文件配置，**不要放进聊天、
-GitHub、网页输入框或日志**。浏览器只负责官方授权跳转，不持有后端密钥。
-不要直接复用发票网站的 OAuth 凭据或回调配置。
+需要 Node.js 与 npm、Python 3 与 Pillow、Cloudflare 账号、GitHub OAuth App、支持
+个人 Microsoft 账号的 Entra 应用。处理器还需要受信任 Linux VPS 上已认证的 Codex
+CLI 或兼容的本地 AIGateway CLI。
 
-`Files.Read` 是账户级只读权限，文件夹限制由应用执行。原始照片不会被修改
-或删除。草稿保存在私人 D1 数据库中，预览可迁至独立 R2 私有桶。待审核和已批准草稿长期保留；
-开启定期清理后，回收站满 30 天的内容与无其他草稿引用的预览会被清理。
+```sh
+npm ci
+python3 -m venv .venv
+.venv/bin/pip install -r scripts/requirements.txt
+npm test
+.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+cp wrangler.jsonc wrangler.local.jsonc
+npx wrangler d1 create photostory
+```
 
-开源使用者需要自己的 AIGateway 和 Codex 登录环境；本项目不提供访问
-Pigbibi 私有网关的权限。不自动切换 Gemini、付费 API 或其他服务。
+再编辑被 Git 忽略的 `wrangler.local.jsonc`：
 
-## 验证边界
+1. 为 Worker 和 D1 设置自己的名称。
+2. 替换 `REPLACE_WITH_YOUR_D1_DATABASE_ID`。
+3. 将 `ALLOWED_GITHUB_USERS` 设为可以管理本站的精确 GitHub 用户名，不能使用通配符。
+4. 创建自己 Cloudflare 账号下的 `AUTH_LIMITER` namespace，替换示例 ID。
 
-自动测试覆盖访问控制、OAuth 状态校验、令牌加密、审核版本冲突、敏感标记
-拒绝、陌生照片编号拒绝等。浏览器演示和本地数据库检查不能代替真实 OAuth、
-OneDrive 读取、VPS 看图或 Instagram 发布验证。
+```sh
+npx wrangler d1 execute photostory --remote --file worker/schema.sql --config wrangler.local.jsonc
+npm run deploy
+```
 
-更多细节见 [隐私说明](docs/privacy.md)。
+`npm run preview` 和 `npm run deploy` 只读取本地的 `wrangler.local.jsonc`。公开模板
+不会自动指向任何人的 Worker 或数据库。
 
-Linux VPS 可使用[双账户隔离部署说明](deploy/systemd/README.md)，将 OneDrive 读取凭据与 AI 进程分开。
+## 配置登录和存储
 
-AI 模式、从零配置、复用已有服务与 API 成本说明：[完整教程](docs/ai-setup.zh-CN.md)。
+通过 Cloudflare 的交互式 Secret 输入配置敏感值。不要把密钥写进命令历史、源码、
+前端变量、Issue、截图或聊天。
 
-## 界面与 AI 文案语言
-
-默认使用**英语界面＋英语文案**。顶部语言选择器可即时切换，浏览器只保存
-语言代码。支持简体中文、繁体中文、英语、日语、韩语、西班牙语、法语、德语、
-葡萄牙语、意大利语、俄语、阿拉伯语和印地语，阿拉伯语采用从右向左布局。
-项目文档只维护英文和简体中文。
-
-在 Worker 的 `wrangler.jsonc`（或自己的部署配置／Cloudflare Variables and Secrets）
-中设置以下普通 **vars** 并部署；它们不是密钥：
-
-| 变量 | 默认值 | 作用 |
+| 配置 | 存放位置 | 用途 |
 | --- | --- | --- |
-| `AI_CAPTION_LANGUAGE` | `en` | 发布文案、3–5 个 hashtag、图片替代文字 |
-| `AI_EDITOR_LANGUAGE` | `en` | 草稿主题和选片说明 |
+| `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET` | Worker Secret | 管理员登录 |
+| `MICROSOFT_CLIENT_ID`、`MICROSOFT_CLIENT_SECRET` | Worker Secret | OneDrive 授权 |
+| `TOKEN_ENCRYPTION_KEY` | Worker Secret | 用于 Microsoft 令牌的 32 字节 base64 AES-GCM 密钥 |
+| `BATCH_TOKEN` | Worker Secret | 验证 VPS 处理器 |
+| `PHOTOSTORY_BATCH_TOKEN` | VPS 私有环境文件 | 与 Worker 相同的机器凭据 |
+| `PHOTOSTORY_URL` | VPS 私有环境文件 | 你的站点地址 |
+| `CODEX_GATEWAY_COMMAND` | VPS 私有环境文件 | AI CLI 适配命令 |
 
-可用代码：`en`、`zh-CN`、`zh-TW`、`ja`、`ko`、`es`、`fr`、`de`、`pt`、`it`、
-`ru`、`ar`、`hi`。例如英语文案、中文选片说明可分别设置为 `en` 和 `zh-CN`。
-无效代码会在新任务创建时拒绝，避免启动 AI。手动与定期任务共用这些配置，
-浏览器请求不能覆盖管理员配置，不会因此增加新的 AI 服务、登录或付费 API。
+在你的 OAuth 应用中登记：
 
-语言在创建任务时固定，修改只影响新任务。切换网页语言不改写任何草稿；
-功能上线前已创建的任务仍生成英语文案和中文主题／说明，避免处理中途混用。
-改变语言不会清空已处理记录、重新看图或制造重复草稿。
-升级时应同时更新 Worker 和 VPS 处理器，再创建新任务。AI 语言输出仍需人工核对。
+```text
+https://你的站点/auth/github/callback
+https://你的站点/auth/microsoft/callback
+```
 
-## 统一构图与裁剪
+GitHub 登录不申请仓库权限。Microsoft 授权申请读取和离线访问，具体文件夹和日期
+范围由处理器执行。VPS 与 AI 的完整配置见 [AI 与 VPS 配置](docs/ai-setup.zh-CN.md)。
 
-新 AI 批次先按解码后的实际图片方向分组，再按主题选片：横图统一 **3:2**，
-竖图统一 **4:5**，方图统一 **1:1**，同篇不能混入不同方向。
-默认裁剪填满、不加白边；AI 选择裁剪位置，提示词要求跳过会切掉重要主体的照片。
-AI 对构图的判断仍可能出错，请逐张检查预览。
-每批最多进行三次分组调用，整批仍最多三篇。升级时同时更新 Worker 和 VPS 脚本，
-然后创建新任务；不会改写已有草稿及审批。
+## 日常流程
 
-在审核页选择整篇统一的 **4:5 竖版、1:1 方形或 3:2 横版**。
-每张图可选“完整保留 · 白色留边”或“裁剪填满”（新 AI 批次默认）；裁剪模式可分别调整
-水平和垂直位置。大图和缩略列表使用相同的构图参数，不拉伸图片。
-位置滑块控制该方向可裁掉区域的位置；某个方向没有超出画布时，对应滑块不会改变画面。
+1. 使用允许名单中的 GitHub 账号登录并连接 OneDrive。
+2. 在网站选择照片目录和有限的拍摄日期范围。
+3. 在受信任 VPS 运行处理器；每次只处理一个有限的元数据或 AI 步骤。
+4. 检查每篇草稿。修改文案、照片、顺序或构图都会使原批准失效。
+5. 批准草稿后，手动模式仍需在最终预览中明确点击发布。导出 ZIP 不会发布。
 
-保存后逐张检查主体。修改尺寸或裁剪位置会使原有批准失效，重新进入待审核。
-排序、回收站与恢复会保留参数，OneDrive 原图不会被修改。
+可选 timer 只会在在线时推进待处理工作，不会自动重试失败或结果不明的外部操作。
+详见[制作与保留](docs/lifecycle.zh-CN.md)。
 
-批准后可点击 **Download ZIP／下载成品 ZIP**，得到按顺序编号的 JPEG、
-`caption.txt` 文案和 `alt-text.txt` 图片说明。尺寸分别为 1080×1350、1080×1080
-或 1080×720。浏览器按保存的构图处理原图，重新编码时去除 EXIF／GPS 元数据。
-ZIP 使用 MIT 开源库 fflate，只有导出时才加载。
+## 安全边界
 
-原图通过登录保护的 Worker 从 OneDrive 读取，只短暂经过内存，不保存到 D1、R2
-或仓库。下载前后都核对文件身份和 eTag 版本；Graph token 与临时下载链接不会
-暴露给浏览器，也不发送到其他下载主机。生成 ZIP 前再次核对草稿批准状态和版本。
+- 模型输出、图片文字和元数据都是不可信数据，不能当作指令执行。
+- 不确定或缺失的筛选结果不会进入草稿。
+- 不保存或用于文案的精确 GPS。地点名称需要可见的公共证据或明显公共地标。
+- AI 审核可能出错，不是隐私保证，也不会单独授予发布权限。
+- Instagram 的外部结果不明时，系统保留记录供人工核对，不会重放可能已成功的请求。
 
-支持单张最多 25 MB、5000 万像素的 JPEG／PNG，逐张处理且不放大小图。
-原图不存在、变动、格式不支持或清晰度不足，会停止整组导出，绝不用 768px
-审核缩略图冒充原图。HEIC 需要另行支持转换后才能导出。
+详情见[隐私与运行限制](docs/privacy.md)、[Instagram 配置](docs/instagram-setup.zh-CN.md)
+和[发布历史](docs/publication-history.zh-CN.md)。
 
-新导入照片自动保存私有的原图定位和版本。旧照片可从 VPS 的既有 SQLite
-扫描记录补齐，通过仅机器凭据可用的 `/internal/photo-sources`：GET 返回最多
-100 个缺失 ID，POST 每次最多 10 个 `{id,item,fingerprint,policy}`，由后台向
-Graph 核对旧指纹后写入，已有映射不可覆盖。原图记录随过期预览正常清理。
-无法核实的旧照片应重新扫描和审核，不能把当前版本直接当成已审版本。
-不需要扩大微软权限或新增存储服务。**导出不会启用 Instagram 发布。**
+## 文档
 
-## 审核模式：人工批准或严格 AI 自动审核
+- [AI 与 VPS 配置](docs/ai-setup.zh-CN.md)
+- [所有权与偏好](docs/ownership-and-preferences.zh-CN.md)
+- [隐私与运行限制](docs/privacy.md)
+- [制作与保留](docs/lifecycle.zh-CN.md)
+- [Instagram 配置](docs/instagram-setup.zh-CN.md)
+- [发布历史与防重复](docs/publication-history.zh-CN.md)
+- [私有 R2 存储](docs/storage.zh-CN.md)
+- [安全设计与部署检查](docs/security-audit.zh-CN.md)
+- [Linux 处理器隔离](deploy/systemd/README.md)
 
-在连接设置的制作／保留规则中选择模式并保存，默认**人工批准**。
-该设置同时用于之后新建的手动和定期任务，与“定期制作”开关独立。
-不会追溯批准已有草稿；切回人工模式后，即使正在处理的批次已拿到 AI 正面结果，
-数据库写入时也会阻止自动批准。
+## 验证
 
-严格模式要求每张照片初筛美感至少 **9/10**、明确为风景且没有隐私标记，
-再**单独调用一次 AI** 检查整篇文案与按已保存比例和裁剪位置渲染的实际构图。
-隐私、文案和地点依据、主题一致性、构图及无近似重复画面都必须明确通过。
-低分、不确定、缺字段、格式错误或额外复核失败，均保留为人工待审草稿。
-额外调用会消耗更多 Codex 额度，使用同一个配置的服务／模型，并非独立服务的安全保证。
+部署前运行：
 
-后台会绑定被审查的文字、照片 ID／顺序、比例和每张图的裁剪位置，不接受前端直接指定批准状态。
-自动批准的草稿在队列中标注 AI 审核来源；修改文字、照片或构图后取消批准，
-需要人工重新审核。**默认人工发布模式仍需在成品预览后明确点击发布按钮**。9/10 是筛选门槛，不是安全概率。
+```sh
+npm test
+.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+npm run build
+```
 
-Instagram 应用准备与凭据配置说明：[配置教程](docs/instagram-setup.zh-CN.md)。
+这些检查验证仓库行为。OAuth、OneDrive、AI 运行环境与 Instagram 发布仍需在你自己
+的部署中进行受控验证。
 
-仅处理器可访问的 `/internal/photo-sources` 接口支持 `dryRun: true`，只核对旧扫描
-记录与 OneDrive 原图，不保存关联。预检通过后才能补关联；原图版本发生变化时
-需要重新扫描并审核，不能跳过版本检查。
+## 许可证
 
-## 可选自动发布
-
-「连接设置 → 发布模式」提供 **人工发布（默认）** 和 **严格 AI 自动发布**。
-选择后保存即可，设置通过仅限站点所有者、同源及版本检查的接口写入私有 D1，
-重新部署后仍保留。不需要修改源码、把密钥放到 GitHub，也不需要数据库迁移。
-旧站点即使已经开启严格 AI 审核，也仍保持人工发布。自动发布必须连接 Instagram，
-并同时开启严格 AI 审核；将审核切回人工会关闭自动发布。
-
-只接受开启后新生成并由 AI 批准的草稿。旧草稿、人工批准、编辑过的草稿和留白布局
-不进入自动队列。每张至少 9/10，整篇通过独立复核后，VPS 再读取核对过版本的原图，
-确认横竖方向一致，按保存的构图生成宽 1080 像素的 JPEG，不放大小图并移除元数据。
-另一次 AI 调用检查这批真实成品，服务器核对成品文件摘要后才开始发布。
-复核不通过会退回待人工审核。失败或崩溃的准备流程不自动重跑。运行时不需要打开网页。
-
-部署时一并更新 Worker 及仓库 `scripts/` 下的全部 Python 文件（包括
-`inventory.py`、`preselect.py` 和审核/发布模块），使用原有 Pillow 环境和每分钟一次的
-后台定时器。AI 网关单张 JPEG 上限为 1.8 MB，与发布上限一致。发布期间每次后台执行
-推进一个已记录的 Meta 步骤，优先于继续扫描。后台必须在线；这不是精确时刻的发帖排程。
-定期发现和制作新草稿仍是独立设置。
-
-**滚动 7 天最多启动一次自动发布尝试**，人工发布和准备失败也计入间隔。
-外部请求结果不明或中断会停止队列，交给人工核实，不盲目重发。
-切回人工会停止后续自动请求，无法撤回已经发给 Meta 的请求。重新开启不会接续旧的
-自动尝试；进行中或结果不明的记录需要先核实。接管仍为私有准备状态的草稿时，
-切回人工并重新生成发布预览。原有短期成品链接和清理机制保持不变。
-
-开启自动模式即授权系统真实发帖。建议先用自己明确批准的一篇完成手动实测。
-AI 仍可能漏判，严格门槛不保证零风险或每张都好看。仓库自动测试不包含真实自动发帖。
-
-## 私有图片存储
-
-照片较多时可使用独立 R2 私有桶，并限制容量和请求次数。
-参考 [R2 配置与安全迁移](docs/storage.zh-CN.md)。原图继续留在 OneDrive。
-
-## 扫描范围与费用上限
-
-网站可保存最近一个月、三个月、半年、一年、全部、自定义起止日期，或从指定日期持续补扫。
-新建的手动和定时任务均继承设置中的总分析上限（默认 300，范围 1–1000）；
-每批数量只控制单次处理规模。已处理版本和保守判定的近似连拍先去重，再交给 AI，
-不删除原图。封面优先选择本组 AI 美感评分最高的照片，仍可人工调整顺序。
-
-开源部署与隐私审计见 [审计记录](docs/security-audit.zh-CN.md)。
-
-已发布统计与旧帖覆盖边界见 [发布历史与防重复](docs/publication-history.zh-CN.md)。
+[MIT](LICENSE)

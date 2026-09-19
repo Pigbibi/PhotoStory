@@ -19,7 +19,7 @@ class ProcessorRunTests(unittest.TestCase):
   completed=[]
   def request(url,**kwargs):
    if url.endswith('/internal/claim'): result={'id':'job','lease':'test-lease'}
-   elif url.endswith('/internal/source'): result={'pipeline':2,'progress':{'phase':'processing'},'maxPhotos':20,'draftLimit':3,'accessToken':'test-token'}
+   elif url.endswith('/internal/source'): result={'pipeline':2,'progress':{'phase':'processing'},'maxPhotos':20,'draftLimit':6,'accessToken':'test-token'}
    elif url.endswith('/internal/complete'):
     completed.append(kwargs['body']);result={'count':len(kwargs['body']['drafts'])}
    else:result={}
@@ -29,6 +29,7 @@ class ProcessorRunTests(unittest.TestCase):
    self.assertEqual([p['id'] for p in records],['p'])
    self.assertEqual(records[0]['light'],'day');self.assertEqual(records[0]['scene'],'architecture');self.assertEqual(records[0]['place']['city'],'Macau')
    self.assertIn('Target aspect: 3:2',prompt)
+   self.assertIn('Return at most 6 drafts.',prompt)
    return {'drafts':[{'title':'Coast','caption':'A coast.','hashtags':'#Coast','reason':'Theme','photos':[{'id':'p','alt':'Coast','frame':{'mode':'crop','x':50,'y':20}}]}]}
   with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,{'PHOTOSTORY_URL':'https://example.invalid','PHOTOSTORY_BATCH_TOKEN':'test-token','CODEX_GATEWAY_COMMAND':'test-gateway','PHOTOSTORY_STATE_DIR':tmp}),patch('inventory.Inventory',return_value=inv),patch.object(b,'request',side_effect=request),patch.object(b,'thumbnail',return_value=data.getvalue()),patch.object(b,'gateway',side_effect=gateway),patch('translate_labels.translate_labels',side_effect=lambda drafts,*args:drafts):
    b.run()

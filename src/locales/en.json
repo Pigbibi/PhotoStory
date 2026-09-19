@@ -180,6 +180,8 @@
   "检查照片范围": "Check photo range",
   "每次最多分析新照片": "Analyze at most this many new photos each time",
   "每批照片": "Photos per batch",
+  "每批最多生成草稿": "Maximum drafts per batch",
+  "{count} 篇": "{count} drafts",
   "待审核暂停阈值": "Pending Review pause threshold",
   "相同版本的已处理照片会跳过。分析额度用完后结束本次制作，剩余照片留到下个周期。达到待审核阈值后暂停所有后续批次，当前批次可能多生成少量草稿；审核后自动继续。": "Previously processed photos with the same version are skipped. Production ends when the analysis quota is exhausted, and remaining photos are left for the next cycle. Once the Pending Review threshold is reached, all subsequent batches are paused. The current batch may generate a small number of additional drafts; processing continues automatically after review.",
   "定期制作已开启": "Periodic production enabled",

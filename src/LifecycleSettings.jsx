@@ -69,6 +69,7 @@ export default function LifecycleSettings({api,notify,folder,onStatus,settingsDa
     <div className="date-fields">
       <label>{t("每次最多分析新照片")}<input type="number" min={1} max={1000} value={form.analysisLimit} onChange={e=>set('analysisLimit',Number(e.target.value))}/></label>
       <label>{t("每批照片")}<select value={form.maxPhotos} onChange={e=>set('maxPhotos',Number(e.target.value))}>{[20,50,100].map(n=><option key={n} value={n}>{t("{count} 张",{count:n})}</option>)}</select></label>
+      <label>{t("每批最多生成草稿")}<select value={form.draftLimit} onChange={e=>set('draftLimit',Number(e.target.value))}>{[1,3,6,8].map(n=><option key={n} value={n}>{t("{count} 篇",{count:n})}</option>)}</select></label>
       <label>{t("待审核暂停阈值")}<input type="number" min={1} max={100} value={form.pendingLimit} onChange={e=>set('pendingLimit',Number(e.target.value))}/></label>
     </div>
     <p className="muted">{t("相同版本的已处理照片会跳过。分析额度用完后结束本次制作，剩余照片留到下个周期。达到待审核阈值后暂停所有后续批次，当前批次可能多生成少量草稿；审核后自动继续。")}</p>

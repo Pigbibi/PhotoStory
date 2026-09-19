@@ -14,6 +14,8 @@ test('weekly/monthly schedules use Shanghai calendar and skip missed slots',()=>
  assert.equal(new Date(nextRun({...defaults,frequency:'monthly',monthDay:31,hour:9},Date.parse('2026-02-01T00:00Z'))).toISOString(),'2026-02-28T01:00:00.000Z');
  assert.throws(()=>settingsInput({...defaults,enabled:true,folder:'Photos',range:'custom'},now),/invalid/);
  assert.throws(()=>settingsInput({...defaults,pendingLimit:0},now),/invalid/);
+ assert.equal(settingsInput({...defaults,draftLimit:6},now).draftLimit,6);
+ assert.throws(()=>settingsInput({...defaults,draftLimit:9},now),/invalid/);
 });
 test('trash preserves preview references and restores to unapproved draft',()=>{
  const original=draft('one',['p'],'approved');

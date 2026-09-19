@@ -180,6 +180,8 @@
   "检查照片范围": "Verificar intervalo de fotos",
   "每次最多分析新照片": "Máximo de fotos novas analisadas por execução",
   "每批照片": "Fotos por lote",
+  "每批最多生成草稿": "Máximo de rascunhos por lote",
+  "{count} 篇": "{count} rascunhos",
   "待审核暂停阈值": "Limite para pausar a revisão",
   "相同版本的已处理照片会跳过。分析额度用完后结束本次制作，剩余照片留到下个周期。达到待审核阈值后暂停所有后续批次，当前批次可能多生成少量草稿；审核后自动继续。": "Fotos processadas da mesma versão serão ignoradas. Quando a cota de análise acabar, esta produção será encerrada e as fotos restantes ficarão para o próximo ciclo. Ao atingir o limite de revisão, todos os lotes seguintes serão pausados; o lote atual poderá gerar mais alguns rascunhos. O processamento continuará automaticamente após a revisão.",
   "定期制作已开启": "Produção periódica ativada",

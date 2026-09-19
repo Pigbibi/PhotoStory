@@ -180,6 +180,8 @@
   "检查照片范围": "Vérifier la plage de photos",
   "每次最多分析新照片": "Nombre maximal de nouvelles photos à analyser à chaque fois",
   "每批照片": "Photos par lot",
+  "每批最多生成草稿": "Brouillons maximum par lot",
+  "{count} 篇": "{count} brouillons",
   "待审核暂停阈值": "Seuil de suspension des éléments à vérifier",
   "相同版本的已处理照片会跳过。分析额度用完后结束本次制作，剩余照片留到下个周期。达到待审核阈值后暂停所有后续批次，当前批次可能多生成少量草稿；审核后自动继续。": "Les photos d’une même version déjà traitées sont ignorées. Lorsque les crédits d’analyse sont épuisés, la production s’arrête et les photos restantes sont reportées au prochain cycle. Une fois le seuil d’éléments à vérifier atteint, tous les lots suivants sont suspendus ; le lot actuel peut générer quelques brouillons supplémentaires. Le traitement reprend automatiquement après la vérification.",
   "定期制作已开启": "Production périodique activée",

@@ -180,6 +180,8 @@
   "检查照片范围": "Fotobereich prüfen",
   "每次最多分析新照片": "Maximal neue Fotos pro Durchlauf analysieren",
   "每批照片": "Fotos pro Stapel",
+  "每批最多生成草稿": "Maximale Entwürfe pro Batch",
+  "{count} 篇": "{count} Entwürfe",
   "待审核暂停阈值": "Pausenschwellenwert für „Zur Prüfung“",
   "相同版本的已处理照片会跳过。分析额度用完后结束本次制作，剩余照片留到下个周期。达到待审核阈值后暂停所有后续批次，当前批次可能多生成少量草稿；审核后自动继续。": "Bereits verarbeitete Fotos derselben Version werden übersprungen. Wenn das Analyse-Kontingent aufgebraucht ist, endet die Erstellung für diesen Durchlauf; die übrigen Fotos werden im nächsten Zyklus verarbeitet. Nach Erreichen des Schwellenwerts für „Zur Prüfung“ werden alle weiteren Stapel pausiert. Der aktuelle Stapel kann noch wenige zusätzliche Entwürfe erzeugen; nach der Prüfung wird automatisch fortgesetzt.",
   "定期制作已开启": "Regelmäßige Erstellung aktiviert",

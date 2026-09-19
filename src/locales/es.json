@@ -180,6 +180,8 @@
   "检查照片范围": "Comprobar intervalo de fotos",
   "每次最多分析新照片": "Máximo de fotos nuevas que se analizarán cada vez",
   "每批照片": "Fotos por lote",
+  "每批最多生成草稿": "Máximo de borradores por lote",
+  "{count} 篇": "{count} borradores",
   "待审核暂停阈值": "Umbral de pausa de pendientes de revisión",
   "相同版本的已处理照片会跳过。分析额度用完后结束本次制作，剩余照片留到下个周期。达到待审核阈值后暂停所有后续批次，当前批次可能多生成少量草稿；审核后自动继续。": "Las fotos procesadas de la misma versión se omitirán. Cuando se agote la cuota de análisis, esta ejecución terminará y las fotos restantes quedarán para el próximo ciclo. Al alcanzar el umbral de pendientes de revisión, se pausarán todos los lotes posteriores; el lote actual podría generar algunos borradores adicionales. Se reanudará automáticamente después de la revisión.",
   "定期制作已开启": "Producción periódica activada",
