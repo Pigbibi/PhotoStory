@@ -63,6 +63,11 @@ class FailureReportingTests(unittest.TestCase):
         self.assertEqual(b.failure_reason(b.Stop('provider secret response')), 'unknown')
         self.assertEqual(b.failure_reason(RuntimeError('provider secret response')), 'unknown')
 
+    def test_only_fixed_failure_stages_are_reported(self):
+        for stage in ('inventory', 'thumbnail', 'ai_gateway', 'completion'):
+            self.assertEqual(b.failure_stage(stage), stage)
+        self.assertEqual(b.failure_stage('provider secret stage'), 'inventory')
+
 
 class CandidateTests(unittest.TestCase):
     def test_all_and_custom_scope_use_capture_time_and_only_coarse_location(self):

@@ -2,10 +2,10 @@ import History from './History.jsx';
 import {Publishing} from './Publishing.jsx';
 import {localizedDraftText} from './i18n-core.mjs';
 import {I18nProvider,LanguageSwitcher,useI18n} from "./i18n.jsx";
-import React, { useState, useEffect } from "react";
+import React, { lazy, Suspense, useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { reviewDraft } from "../worker/review.mjs";
-import LifecycleSettings from './LifecycleSettings.jsx';
+const LifecycleSettings = lazy(() => import('./LifecycleSettings.jsx'));
 import "./style.css";
 import {frameStyle,photoFrame} from "../worker/framing.mjs";
 const demoDraft = {
@@ -500,12 +500,14 @@ function Settings({ session, notify }) {
     [maxPhotos,setMaxPhotos] = useState(50),
     [locationHint,setLocationHint] = useState(""),
     [jobs, setJobs] = useState([]),
+    [lifecycleState, setLifecycleState] = useState(null),
     [backlogPaused,setBacklogPaused]=useState(false),
     [busy, setBusy] = useState(false);
   const refresh = async (restore=false) => {
     try {
-      const rows=await api("/api/jobs");
+      const [rows, lifecycle]=await Promise.all([api("/api/jobs"), api("/api/settings")]);
       setJobs(rows);
+      setLifecycleState(lifecycle);
       if(restore && rows[0]) {
         const last=rows[0];
         setFolder(last.folder||"");
@@ -520,8 +522,22 @@ function Settings({ session, notify }) {
   useEffect(() => {
     if (!session?.user) return;
     refresh(true);
-    const timer=setInterval(()=>refresh(),15000);
-    return ()=>clearInterval(timer);
+    let timer;
+    let stopped=false;
+    let inFlight=false;
+    const run=()=>{
+      if(stopped||document.visibilityState==='hidden'||inFlight)return;
+      inFlight=true;
+      refresh().finally(()=>{inFlight=false;});
+    };
+    const schedule=()=>{
+      clearInterval(timer);
+      if(document.visibilityState!=='hidden')timer=setInterval(run,15000);
+    };
+    const onVisibility=()=>{schedule();if(document.visibilityState!=='hidden')run();};
+    document.addEventListener('visibilitychange',onVisibility);
+    schedule();
+    return ()=>{stopped=true;clearInterval(timer);document.removeEventListener('visibilitychange',onVisibility);};
   }, [session?.user?.login]);
   const createJob = async () => {
     setBusy(true);
@@ -699,7 +715,7 @@ function Settings({ session, notify }) {
         </>}
         <p><a href={locale.startsWith('zh') ? "https://github.com/Pigbibi/PhotoStory/blob/main/docs/instagram-setup.zh-CN.md" : "https://github.com/Pigbibi/PhotoStory/blob/main/docs/instagram-setup.md"} target="_blank" rel="noreferrer">{t("Instagram 配置教程")}</a></p>
       </section>
-      {session?.user && <LifecycleSettings api={api} notify={notify} folder={folder} onStatus={setBacklogPaused}/>}
+      {session?.user && <Suspense fallback={<p>{t("正在读取制作与保留规则…")}</p>}><LifecycleSettings api={api} notify={notify} folder={folder} onStatus={setBacklogPaused} settingsData={lifecycleState} onSettingsChange={setLifecycleState} onRefresh={refresh}/></Suspense>}
     </div>
   );
 }
