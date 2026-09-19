@@ -20,6 +20,7 @@ from datetime import datetime, timezone, timedelta
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 TZ = timezone(timedelta(hours=8))
+FAILURE_STAGES = {'inventory', 'thumbnail', 'ai_gateway', 'completion'}
 
 
 class Stop(Exception):
@@ -36,6 +37,10 @@ def failure_reason(error):
     # conditions (for example a missing configured folder). Preserve only this
     # explicit vocabulary; arbitrary provider text remains hidden.
     return str(error) if str(error) in allowed else 'unknown'
+
+
+def failure_stage(stage):
+    return stage if isinstance(stage, str) and stage in FAILURE_STAGES else 'inventory'
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -383,6 +388,7 @@ def run():
         return
     auth = {"jobId": job["id"], "lease": job["lease"]}
     completion_started = False
+    stage = 'inventory'
     inventory = None
     try:
         source = call("/internal/source", auth)
@@ -402,6 +408,7 @@ def run():
             completion_started=True
             progress=inventory.progress()
             if complete: progress['phase']='processing'
+            stage = 'completion'
             call('/internal/checkpoint',{**auth,'progress':progress})
             print('Scan checkpoint; discovered:',progress['total'])
             return
@@ -414,6 +421,7 @@ def run():
                 progress['batches']+=1
                 progress['phase']='complete'
                 completion_started=True
+                stage = 'completion'
                 call('/internal/complete',{**auth,'batchId':batch_id,'more':False,'progress':progress,'drafts':[],'photos':[]})
                 inventory.reconcile_history(batch_id)
                 print('History matching complete; no pending photos.')
@@ -422,6 +430,7 @@ def run():
             try:
                 history_match_page(call,inventory)
                 visual_hashes={}
+                stage = 'thumbnail'
                 for photo in candidates:
                     visual_hashes[photo['id']]=dhash(thumbnail(photo,source['accessToken']))
                 history_proposals(call,inventory,visual_hashes)
@@ -432,6 +441,7 @@ def run():
                 more=progress['processed']<progress['total']
                 progress['phase']='processing' if more else 'complete'
                 completion_started=True
+                stage = 'completion'
                 result=call('/internal/complete',{**auth,'batchId':batch_id,'more':more,'progress':progress,'drafts':[],'photos':[]})
                 inventory.reconcile_history(batch_id)
                 print('History matching batch complete; processed:',progress['processed'])
@@ -445,6 +455,7 @@ def run():
         if source.get('draftLimit',3)<=0:
             completion_started=True
             progress=inventory.progress();progress['phase']='processing'
+            stage = 'completion'
             call('/internal/checkpoint',{**auth,'progress':progress})
             return
         candidates=inventory.next_batch(limit)
@@ -456,6 +467,7 @@ def run():
             previews=[];visual_hashes={}
             try: history_match_page(call,inventory)
             except Exception: pass
+            stage = 'thumbnail'
             for photo in candidates:
                 image=thumbnail(photo,source['accessToken'])
                 digest=hashlib.sha256(image).hexdigest()
@@ -469,6 +481,7 @@ def run():
             outcomes={p['id']:'duplicate_burst' for p in candidates if p not in [v[0] for v in selected]}
             # Privacy screening still gates every representative; preselection
             # never grants approval and only actual AI inputs count against quota.
+            stage = 'ai_gateway'
             for offset in range(0,len(selected),6):
                 batch, paths = [], []
                 for photo,image,features in selected[offset:offset+6]:
@@ -523,16 +536,18 @@ def run():
             inventory.save_screening(digests,profiles,outcomes)
             progress=inventory.proposed_progress()
             completion_started = True
+            stage = 'completion'
             result = call("/internal/complete", {**auth, "batchId":batch_id,"more":progress['processed']<progress['total'],"progress":progress,"drafts":drafts, "photos":photos,"autoReviews":auto_reviews})
             inventory.reconcile(batch_id)
             print("Completed; draft count:", result["count"])
     except Exception as error:
         reason = failure_reason(error)
-        print("Stopped; reason:", reason)
+        safe_stage = failure_stage(stage)
+        print("Stopped; reason:", reason, "stage:", safe_stage)
         # An ambiguous completion is left running for readback, never re-submitted.
         if not completion_started:
             try:
-                call("/internal/fail", {**auth, "reason": reason})
+                call("/internal/fail", {**auth, "reason": reason, "stage": safe_stage})
             except Exception:
                 pass
         raise Stop("batch_failed_or_outcome_uncertain") from None

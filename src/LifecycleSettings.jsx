@@ -1,26 +1,27 @@
 import {useI18n} from "./i18n.jsx";
 import React,{useEffect,useState} from 'react';
-export default function LifecycleSettings({api,notify,folder,onStatus}){
+export default function LifecycleSettings({api,notify,folder,onStatus,settingsData,onSettingsChange,onRefresh}){
   const {t,date,weekday}=useI18n();
   const when=value=>value?date(value):t("等待后台首次检查");
   const [state,setState]=useState(null),[form,setForm]=useState(null),[busy,setBusy]=useState(false);
-  const refresh=async restore=>{
-    try{const v=await api('/api/settings');setState(v);onStatus(v.backlogPaused);if(restore)setForm({...v.settings,folder:v.settings.folder||folder});}
-    catch(e){notify(e.message);}
-  };
-  useEffect(()=>{refresh(true);const timer=setInterval(()=>refresh(false),15000);return()=>clearInterval(timer);},[]);
+  useEffect(()=>{
+    if(!settingsData)return;
+    setState(settingsData);
+    onStatus(settingsData.backlogPaused);
+    setForm(f=>f||{...settingsData.settings,folder:settingsData.settings.folder||folder});
+  },[settingsData,folder,onStatus]);
   useEffect(()=>{if(folder)setForm(f=>f&&!f.folder?{...f,folder}:f);},[folder,form!==null]);
   if(!form)return <p>{t("正在读取制作与保留规则…")}</p>;
   const set=(k,v)=>setForm(f=>({...f,[k]:v,...(k==='publishMode'&&v==='automatic'?{reviewMode:'strict_auto'}:{}),...(k==='reviewMode'&&v==='manual'?{publishMode:'manual'}:{})}));
   const save=async()=>{
     setBusy(true);
-    try{const v=await api('/api/settings','PUT',form);setState(v);onStatus(v.backlogPaused);setForm(v.settings);notify('制作与保留规则已保存。正在进行的批次会先完成。');}
+    try{const v=await api('/api/settings','PUT',form);setState(v);onSettingsChange?.(v);onStatus(v.backlogPaused);setForm(v.settings);notify('制作与保留规则已保存。正在进行的批次会先完成。');}
     catch(e){notify(e.message);}
     finally{setBusy(false);}
   };
   const migrate=async()=>{
     setBusy(true);
-    try{await api('/api/storage/migrate','POST',{});await refresh(false);notify('图片迁移批次已完成。');}
+    try{await api('/api/storage/migrate','POST',{});await onRefresh?.();notify('图片迁移批次已完成。');}
     catch(e){notify(e.message);}finally{setBusy(false);}
   };
   return <section className="lifecycle">

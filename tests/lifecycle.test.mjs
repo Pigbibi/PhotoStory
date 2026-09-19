@@ -128,6 +128,24 @@ test('a failed job stores only an allowlisted failure code',async t=>{
  assert.deepEqual(JSON.parse(hidden.body).failure,{code:'unknown'});
 });
 
+test('a batch failure stores only an allowlisted stage with its code',async t=>{
+ const {DB,api}=await setup(t);
+ await api('/api/jobs',{folder:'Photos',range:'all',maxPhotos:20});
+ const job=await(await api('/internal/claim',{},true)).json();
+ assert.equal((await api('/internal/fail',{jobId:job.id,lease:job.lease,reason:'gateway_failed',stage:'ai_gateway'},true)).status,200);
+ const row=await DB.prepare('SELECT body FROM jobs WHERE id=?').bind(job.id).first();
+ assert.deepEqual(JSON.parse(row.body).failure,{code:'gateway_failed',stage:'ai_gateway'});
+});
+
+test('an unknown batch failure stage is omitted without affecting the safe code',async t=>{
+ const {DB,api}=await setup(t);
+ await api('/api/jobs',{folder:'Photos',range:'all',maxPhotos:20});
+ const job=await(await api('/internal/claim',{},true)).json();
+ assert.equal((await api('/internal/fail',{jobId:job.id,lease:job.lease,reason:'thumbnail_missing',stage:'provider_secret'},true)).status,200);
+ const row=await DB.prepare('SELECT body FROM jobs WHERE id=?').bind(job.id).first();
+ assert.deepEqual(JSON.parse(row.body).failure,{code:'thumbnail_missing'});
+});
+
 test('fixed start date is saved while the schedule end moves with today',async t=>{
  const {jobInput}=await import('../worker/jobs.mjs');
  const s=settingsInput({...config(),range:'since',start:'2025-05-01'},now);

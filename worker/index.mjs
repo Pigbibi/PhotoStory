@@ -24,8 +24,11 @@ const JOB_FAILURE_CODES = new Set([
   "response_too_large", "screen_contract", "setup_required", "thumbnail_missing",
   "thumbnail_origin", "translation_contract", "unknown",
 ]);
+const JOB_FAILURE_STAGES = new Set(["inventory", "thumbnail", "ai_gateway", "completion"]);
 const jobFailureCode = (value) =>
   typeof value === "string" && JOB_FAILURE_CODES.has(value) ? value : "unknown";
+const jobFailureStage = (value) =>
+  typeof value === "string" && JOB_FAILURE_STAGES.has(value) ? value : null;
 function secure(r) {
   const h = new Headers(r.headers);
   h.set("Cache-Control", "no-store");
@@ -144,7 +147,8 @@ async function internal(r, e, p) {
     return json({ok:true});
   }
   if (p === "/internal/fail" && r.method === "POST") {
-    const failure = {code:jobFailureCode(b.reason)};
+    const stage = jobFailureStage(b.stage);
+    const failure = {code:jobFailureCode(b.reason), ...(stage ? {stage} : {})};
     await e.DB.batch([e.DB.prepare(
       "UPDATE jobs SET body=json_set(body,'$.failure',json(?)),status='failed',lease=NULL WHERE id=? AND status='running'",
     )

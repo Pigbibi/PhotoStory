@@ -9,6 +9,28 @@ this public repository contains no private gateway code or credentials.
 Use a shared system group `photostory-bridge` and two system users without login
 shells. Install the repository's `scripts`, `runtime`, and `deploy` directories
 under `/opt/photostory/app`, owned by root and not writable by either service user.
+Keep a release marker beside those directories so the installed code can be
+matched to the source revision without storing credentials or photo metadata.
+From a clean checkout, create it before copying the deployment files:
+
+```sh
+python3 scripts/release_provenance.py write \
+  --repo . --output /tmp/photostory-release-provenance.json
+```
+
+Record the printed `commit` value with the deployment change, copy the marker
+to `/opt/photostory/app/release-provenance.json`, and make it root-owned and
+not writable by either service user. After copying, verify the exact recorded
+commit (replace the placeholder with the value recorded above):
+
+```sh
+python3 /opt/photostory/app/scripts/release_provenance.py verify \
+  --marker /opt/photostory/app/release-provenance.json \
+  --commit RECORDED_40_CHARACTER_COMMIT
+```
+
+The command fails closed for a dirty source checkout, malformed markers, or a
+commit mismatch. The marker contains only its format and a full Git commit ID.
 Create a Python venv at `/opt/photostory/venv` and install
 `scripts/requirements.txt` from `https://pypi.org/simple`.
 
