@@ -9,6 +9,12 @@ test('publishing defaults to manual independently of strict AI approval',()=>{
  assert.throws(()=>settingsInput({...defaults,publishMode:'automatic'}),/invalid_settings/);
  assert.equal(settingsInput({...defaults,reviewMode:'strict_auto',publishMode:'automatic'}).publishMode,'automatic');
 });
+test('owner scheduled cadence is optional and must be configured as a pair',()=>{
+ assert.equal(settingsInput({...defaults,reviewMode:'strict_auto',publishMode:'automatic'}).autoPublishWeekday,null);
+ assert.equal(settingsInput({...defaults,reviewMode:'strict_auto',publishMode:'automatic',autoPublishWeekday:2,autoPublishHour:10}).autoPublishHour,10);
+ assert.throws(()=>settingsInput({...defaults,autoPublishWeekday:2}),/invalid_settings/);
+ assert.throws(()=>settingsInput({...defaults,autoPublishHour:10}),/invalid_settings/);
+});
 test('machine cannot request an automatic candidate while publishing is manual',async t=>{
  const {api}=await setup(t);
  const result=await api('/internal/autopublish',{action:'candidate'},true);
@@ -16,7 +22,7 @@ test('machine cannot request an automatic candidate while publishing is manual',
 });
 
 import {seal,put} from '../worker/auth.mjs';
-import {automatic,eligible} from '../worker/automatic-publishing.mjs';
+import {automatic,eligible,claimedEligible} from '../worker/automatic-publishing.mjs';
 import * as pub from '../worker/publishing.mjs';
 const jpeg=()=>new Uint8Array([255,216,255,192,0,17,8,2,208,4,56,3,1,17,0,2,17,0,3,17,0,255,218,0,8,1,1,0,0,63,0,0,255,217]);
 const review={privacySafe:true,captionGrounded:true,locationGrounded:true,coherent:true,compositionGood:true,noDuplicateFrames:true,needsHumanReview:false};
@@ -33,6 +39,14 @@ test('legacy, manual, pre-enable and fitted drafts never qualify',()=>{
  const d={status:'approved',approvalSource:'strict_ai_v1',autoApprovedAt:101,photos:[{frame:{mode:'crop'}}]};
  assert.equal(eligible(d,s),true);
  for(const x of [{...d,autoApprovedAt:undefined},{...d,autoApprovedAt:100},{...d,approvalSource:undefined},{...d,status:'draft'},{...d,photos:[{frame:{mode:'fit'}}]}])assert.equal(eligible(x,s),false);
+});
+test('owner scheduled approval needs an explicit current local week window',()=>{
+ const s={publishMode:'automatic',reviewMode:'strict_auto',autoPublishSince:100,autoPublishWeekday:4,autoPublishHour:9};
+ const d={status:'approved',approvalSource:'owner_scheduled_v1',ownerApprovedAt:101,photos:[{frame:{mode:'crop'}}]};
+ assert.equal(eligible(d,s,Date.parse('2026-09-10T01:15:00Z')),true);
+ assert.equal(eligible(d,s,Date.parse('2026-09-10T02:00:00Z')),false);
+ assert.equal(claimedEligible(d,s),true);
+ assert.equal(eligible(d,{...s,autoPublishWeekday:null,autoPublishHour:null},Date.parse('2026-09-10T01:15:00Z')),false);
 });
 test('automatic preparation is single-claim and never replays an abandoned preparation',async t=>{
  const {env,DB}=await fixture(t);

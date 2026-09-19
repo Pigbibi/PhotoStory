@@ -221,11 +221,21 @@ h2 {
 }
 .photo-tools button,
 .text-button {
-  border: 0;
-  background: none;
-  padding: 5px 0;
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #f1f5f2;
+  padding: 7px 11px;
   color: var(--green);
   font-size: 13px;
+  font-weight: 650;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.photo-tools button:hover:not(:disabled),
+.text-button:hover:not(:disabled) {
+  background: #e6efe9;
+  border-color: #c8d8ce;
+  transform: translateY(-1px);
 }
 .editor {
   border-left: 1px solid var(--line);
@@ -281,25 +291,42 @@ textarea {
   text-decoration: none;
   width: 100%;
   padding: 14px 18px;
-  border-radius: 4px;
+  border-radius: 11px;
   margin-top: 12px;
   font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  box-shadow: 0 1px 2px rgba(24,34,30,.08);
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 .primary {
-  background: var(--green);
+  background: linear-gradient(135deg, #38634e, var(--green));
   border: 1px solid var(--green);
   color: #fff;
 }
 .primary:hover:not(:disabled) {
   background: #2d4d3d;
+  box-shadow: 0 7px 18px rgba(35,72,52,.20);
+  transform: translateY(-1px);
 }
 .secondary {
-  border: 1px solid #ccd3cf;
-  background: #fff;
+  border: 1px solid #c8d5cd;
+  background: #f9fcfa;
   color: #24372b;
 }
-.secondary:hover {
-  background: #f7faf8;
+.secondary:hover:not(:disabled) {
+  background: #edf5ef;
+  border-color: #9eb8a8;
+  transform: translateY(-1px);
+}
+.history-action {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  margin: 4px 12px 18px 0;
+  min-height: 44px;
+  padding: 10px 15px;
+  width: auto;
 }
 .muted {
   color: var(--muted);

@@ -6,7 +6,7 @@ import {jobInput} from './jobs.mjs';
 import {publishingAccount} from './instagram.mjs';
 import {storageView,cleanupImages} from './storage.mjs';
 export const DAY=86400000, RETENTION=30*DAY;
-export const defaults={publishMode:'manual',autoPublishSince:null,reviewMode:"manual",version:0,enabled:false,frequency:'weekly',weekday:1,monthDay:1,hour:9,
+export const defaults={publishMode:'manual',autoPublishSince:null,autoPublishWeekday:null,autoPublishHour:null,reviewMode:"manual",version:0,enabled:false,frequency:'weekly',weekday:1,monthDay:1,hour:9,
   folder:'',range:'1m',start:null,end:null,maxPhotos:20,analysisLimit:300,pendingLimit:20,cleanupEnabled:true,nextRun:null};
 export function nextRun(s,now){
   const local=new Date(now+8*3600000);
@@ -32,9 +32,12 @@ export function settingsInput(b,now=Date.now()){
   for(const [k,min,max] of [['weekday',0,6],['monthDay',1,31],['hour',0,23],['analysisLimit',1,1000],['pendingLimit',1,100]]){
     if(!Number.isInteger(b[k])||b[k]<min||b[k]>max)throw new Error('invalid_settings');s[k]=b[k];
   }
+  const scheduledWeekday=b.autoPublishWeekday??null,scheduledHour=b.autoPublishHour??null;
+  if((scheduledWeekday===null)!==(scheduledHour===null)||
+    (scheduledWeekday!==null&&(!Number.isInteger(scheduledWeekday)||scheduledWeekday<0||scheduledWeekday>6||!Number.isInteger(scheduledHour)||scheduledHour<0||scheduledHour>23)))throw new Error('invalid_settings');
   if(!['weekly','monthly'].includes(b.frequency)||!['1m','3m','6m','12m','all','since','custom'].includes(b.range))throw new Error('invalid_settings');
   const source=jobInput({folder:b.folder||(!b.enabled?'Photos':''),range:b.range,start:b.start,end:b.end,maxPhotos:b.maxPhotos},new Date(now));
-  return {...s,frequency:b.frequency,folder:b.folder?source.folder:'',range:b.range,start:['since','custom'].includes(b.range)?source.selection.start:null,end:b.range==='custom'?source.selection.end:null,maxPhotos:source.maxPhotos,nextRun:s.enabled?nextRun({...s,frequency:b.frequency},now):null};
+  return {...s,autoPublishWeekday:scheduledWeekday,autoPublishHour:scheduledHour,frequency:b.frequency,folder:b.folder?source.folder:'',range:b.range,start:['since','custom'].includes(b.range)?source.selection.start:null,end:b.range==='custom'?source.selection.end:null,maxPhotos:source.maxPhotos,nextRun:s.enabled?nextRun({...s,frequency:b.frequency},now):null};
 }
 export async function settingsView(e,now=Date.now()){
   const settings={...defaults,...await get(e,'automation')};

@@ -4,7 +4,7 @@ import {storeImage,readImage,migrateImages} from './storage.mjs';
 import {automatic} from './automatic-publishing.mjs';
 import * as instagram from './instagram.mjs';
 import {original,reviewedDraft,sourceRecord,recoverSource} from './originals.mjs';
-import {strictApproval} from './auto-review.mjs';
+import {strictApproval,ownerPreferenceCounters} from './auto-review.mjs';
 import {jobLanguages} from './languages.mjs';
 import { jobInput, progressInput } from "./jobs.mjs";
 import {settingsView,saveSettings,maintenance,RETENTION} from './lifecycle.mjs';
@@ -132,6 +132,8 @@ async function internal(r, e, p) {
       knownPhotoIds: [...new Set([...used.results.map((x) => x.id),...await history.excluded(e)])],
       reviewMode: "manual",
       strictAutoEnabled: view.settings.reviewMode==="strict_auto",
+      ownerPreferenceCounters: await auth.get(e,'ownerPreferenceCounters') || {coherent:0,compositionGood:0,noDuplicateFrames:0},
+      ownerCurationFeedback: await auth.get(e,'ownerCurationFeedback') || {removedFromCarousel:0},
       captionLanguage: "en",
       editorLanguage: "zh-CN", // Legacy jobs keep their original prompt language.
       ...JSON.parse(job.body),
@@ -214,12 +216,14 @@ async function internal(r, e, p) {
         );
       }
       const evidence=Array.isArray(b.autoReviews)?b.autoReviews.filter(x=>x?.draftId===d.id):[];
+      const boundedEvidence=evidence.length===1?{policy:evidence[0].policy,photoIds:evidence[0].photoIds,screens:Array.isArray(evidence[0].screens)?evidence[0].screens.map(s=>({id:s.id,decision:s.decision,landscape:s.landscape,flags:Array.isArray(s.flags)?s.flags.slice(0,8):[],aesthetic:s.aesthetic,light:s.light,scene:s.scene,place:s.place})):[],review:evidence[0].review}:null;
       const eligible=evidence.length===1&&strictApproval(d,evidence[0],previous.reviewMode);
-      const approved={...d,status:"approved",approvalSource:"strict_ai_v1",autoApprovedAt:Date.now()};
+      const reviewed={...d,...(boundedEvidence?{strictReviewEvidence:boundedEvidence}: {})};
+      const approved={...reviewed,status:"approved",approvalSource:"strict_ai_v1",autoApprovedAt:Date.now(),strictReviewSoftFields:ownerPreferenceCounters(evidence[0])};
       // Re-read the owner's mode inside the write transaction: switching to
       // manual during inference must prevent automatic approval at commit.
       stmts.push(e.DB.prepare("INSERT INTO drafts(id,body,version) SELECT ?,CASE WHEN ?=1 AND json_extract((SELECT value FROM state WHERE key='automation'),'$.reviewMode')='strict_auto' THEN ? ELSE ? END,1")
-        .bind(d.id,eligible?1:0,JSON.stringify(approved),JSON.stringify(d)));
+        .bind(d.id,eligible?1:0,JSON.stringify(approved),JSON.stringify(reviewed)));
 
     }
     stmts.push(
@@ -397,15 +401,37 @@ async function route(r, e) {
         .bind(id)
         .first();
       if (!row) return failure("not_found", 404);
-      const current = JSON.parse(row.body),
-        next = reviewDraft(current, await readJSON(r));
+      const current = JSON.parse(row.body);
+      const input=await readJSON(r);
+      let next = reviewDraft(current, input);
+      const removedPhotos=current.photos.filter(p=>!next.photos.some(q=>q.id===p.id));
+      let ownerPreference=null;
+      // reviewDraft already rejects an approval of changed content. Compare
+      // its normalized result rather than raw JSON, which may omit defaults.
+      if(input.action==='approve'&&next.status==='approved'){
+        const automation=await auth.get(e,'automation');
+        if(automation?.publishMode==='automatic'&&automation.reviewMode==='strict_auto'){
+          ownerPreference=ownerPreferenceCounters(current.strictReviewEvidence);
+          next={...next,approvalSource:'owner_scheduled_v1',ownerApprovedAt:Date.now(),...(ownerPreference?{ownerPreferenceCounters:ownerPreference}: {})};
+        }
+      }
       const statements=[e.DB.prepare(
         "UPDATE drafts SET body=?,version=? WHERE id=? AND version=? AND NOT EXISTS(SELECT 1 FROM publications WHERE publications.draft_id=drafts.id AND status!='prepared')",
       )
         .bind(JSON.stringify(next), next.version, id, current.version)];
-      for(const removed of current.photos.filter(p=>!next.photos.some(q=>q.id===p.id))){
+      for(const removed of removedPhotos){
         statements.push(e.DB.prepare("INSERT INTO photo_gc(photo_id,expires) SELECT ?,? WHERE EXISTS(SELECT 1 FROM drafts WHERE id=? AND body=?) ON CONFLICT(photo_id) DO UPDATE SET expires=excluded.expires")
           .bind(removed.id,Date.now()+RETENTION,id,JSON.stringify(next)));
+      }
+      if(ownerPreference){
+        const aggregate=await auth.get(e,'ownerPreferenceCounters')||{coherent:0,compositionGood:0,noDuplicateFrames:0};
+        for(const key of Object.keys(ownerPreference))if(ownerPreference[key]===1)aggregate[key]=Math.min(1000,Number(aggregate[key]||0)+1);
+        statements.push(e.DB.prepare("INSERT INTO state(key,value,expires) VALUES('ownerPreferenceCounters',?,NULL) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify(aggregate)));
+      }
+      if(input.action==='save'&&removedPhotos.length){
+        const feedback=await auth.get(e,'ownerCurationFeedback')||{removedFromCarousel:0};
+        feedback.removedFromCarousel=Math.min(1000,Number(feedback.removedFromCarousel||0)+removedPhotos.length);
+        statements.push(e.DB.prepare("INSERT INTO state(key,value,expires) VALUES('ownerCurationFeedback',?,NULL) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify(feedback)));
       }
       const updated=await e.DB.batch(statements);
       if (updated[0].meta.changes !== 1) return failure("version_conflict", 409);

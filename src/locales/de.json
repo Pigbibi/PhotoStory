@@ -276,5 +276,15 @@
   "Historical match status": "OneDrive-Abgleiche: {confirmed} bestätigt · {proposals} Vorschläge",
   "Historical matches require confirmation before exclusion.": "Historische Abgleiche sind nur Vorschläge; bestätige sie vor dem Ausschluss.",
   "Confirm all visible matches": "Alle sichtbaren Abgleiche bestätigen",
-  "Run history-only verification": "Nur-Verlaufsabgleich ausführen"
+  "Run history-only verification": "Nur-Verlaufsabgleich ausführen",
+  "严格 AI 与人工排期发布": "Strict AI and owner-scheduled publishing",
+  "严格 AI 自动发布与人工排期发布": "Strict AI automatic and owner-scheduled publishing",
+  "人工批准的草稿会在以下每周窗口发布；严格 AI 自动批准仍按原有安全规则处理。": "Drafts you approve will publish in the weekly window below. Strict AI approvals retain their existing safety rules.",
+  "人工排期发布日": "Owner-scheduled publishing day",
+  "人工排期发布时间": "Owner-scheduled publishing time",
+  "尚未设置": "Not configured",
+  "保存后才会按新的排期生效。": "Schedule changes take effect after saving.",
+  "人工排期尚未设置；人工批准稿会继续留在队列中。": "Owner scheduling is not configured; your approved drafts will remain queued.",
+  " · 人工排期尚未设置": " · Owner scheduling is not configured",
+  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication."
 }

@@ -7,7 +7,10 @@ spec.loader.exec_module(b)
 
 class ScreeningTests(unittest.TestCase):
     def safe(self, **kw):
-        return dict(id='a', decision='allow', flags=[], landscape=True, aesthetic=8, description='Coast', peopleRole="none", compositionClear=True, **kw)
+        value=dict(id='a', decision='allow', flags=[], landscape=True, aesthetic=8, description='Coast', peopleRole="none", compositionClear=True,
+                   light='day', scene='architecture', place={'city':'Macau','landmark':'The Parisian Macao','evidence':'public landmark','confidence':'high'})
+        value.update(kw)
+        return value
     def test_uncertainty_never_enters_drafts(self):
         for change in ({'decision':'uncertain'}, {'flags':['person']}, {'landscape':False}, {'aesthetic':6}, {'aesthetic':True}, {'flags':None}):
             self.assertEqual(b.accepted_screening({'photos':[{**self.safe(), **change}]}, ['a']), [])
@@ -29,6 +32,14 @@ class ScreeningTests(unittest.TestCase):
             with self.assertRaises(b.Stop): b.accepted_screening({'photos':photos},['a'])
     def test_only_explicit_safe_photo_passes(self):
         self.assertEqual(len(b.accepted_screening({'photos':[self.safe()]},['a'])),1)
+    def test_scene_facts_are_bounded_and_required(self):
+        for change in ({'light':'nighttime'}, {'light':None}, {'scene':'mixed'}, {'place':None},
+                       {'place':{'city':'Macau','landmark':'The Parisian Macao','evidence':'public landmark','confidence':'medium'}},
+                       {'place':{'city':'Macau','landmark':'x'*161,'evidence':'public landmark','confidence':'high'}}):
+            self.assertEqual(b.accepted_screening({'photos':[{**self.safe(),**change}]},['a']),[])
+    def test_different_scenes_are_split_before_caption_generation(self):
+        groups=b.scene_groups([self.safe(id='horse',scene='wildlife'),self.safe(id='yurt',scene='culture'),self.safe(id='field',scene='wildlife')])
+        self.assertEqual([[p['id'] for p in group] for group in groups],[['horse','field'],['yurt']])
     def test_upload_time_is_not_capture_time(self):
         self.assertIsNone(b.photo_time({'createdDateTime':'2026-08-20T12:00:00Z'}))
         self.assertIsNone(b.photo_time({'photo':{'takenDateTime':'2026-08-20T12:00:00'}}))

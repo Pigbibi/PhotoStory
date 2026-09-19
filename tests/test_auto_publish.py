@@ -47,3 +47,12 @@ class AutomaticPublishingTests(unittest.TestCase):
    if b['action']=='begin':raise OSError('network')
   tick(call,lambda *a:self.raw(),lambda *a:{k:k!='needsHumanReview' for k in FIELDS})
   self.assertEqual(calls,['candidate','upload','begin'])
+ def test_owner_scheduled_candidate_skips_second_subjective_review(self):
+  calls=[]
+  def call(path,b):
+   calls.append(b['action'])
+   if b['action']=='candidate':return {'draft':{'id':'d','version':1,'approvalSource':'owner_scheduled_v1','aspect':'3:2','photos':[{'id':'p','frame':{'mode':'crop','x':50,'y':50}}]},'publication':{'id':'p','status':'prepared'}}
+   return {'ok':True}
+  def forbidden(*args):self.fail('owner scheduled must not invoke subjective AI review')
+  self.assertTrue(tick(call,lambda *a:self.raw(),forbidden))
+  self.assertEqual(calls,['candidate','upload','begin'])

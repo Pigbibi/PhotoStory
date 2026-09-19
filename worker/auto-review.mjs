@@ -19,3 +19,8 @@ export function strictApproval(draft,evidence,mode) {
  const r=evidence.review;
  return Boolean(r&&['privacySafe','captionGrounded','locationGrounded','coherent','compositionGood','noDuplicateFrames'].every(k=>r[k]===true)&&r.needsHumanReview===false);
 }
+export function ownerPreferenceCounters(evidence) {
+ const r=evidence?.review;
+ if(!r||r.needsHumanReview!==false)return null;
+ return Object.fromEntries(['coherent','compositionGood','noDuplicateFrames'].map(k=>[k,r[k]===false?1:0]));
+}

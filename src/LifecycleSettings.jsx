@@ -36,11 +36,25 @@ export default function LifecycleSettings({api,notify,folder,onStatus,settingsDa
     </div>}
     <label>{t("审核模式")}<select value={form.reviewMode||'manual'} onChange={e=>set('reviewMode',e.target.value)}><option value="manual">{t("人工批准（默认）")}</option><option value="strict_auto">{t("严格 AI 自动审核")}</option></select></label>
     <p className="muted">{t("严格审核说明")}</p>
-    <label>{t("发布模式")}<select value={form.publishMode||'manual'} onChange={e=>set('publishMode',e.target.value)}><option value="manual">{t("人工发布（默认）")}</option><option value="automatic">{t("严格 AI 自动发布")}</option></select></label>
+    <label>{t("发布模式")}<select value={form.publishMode||'manual'} onChange={e=>set('publishMode',e.target.value)}><option value="manual">{t("人工发布（默认）")}</option><option value="automatic">{t("严格 AI 与人工排期发布")}</option></select></label>
     <p className="muted">{t("自动发布说明")}</p>
-    <p className="approval-note">{state.settings.publishMode==='automatic'?t('自动发布已开启'):t('自动发布已关闭')}</p>
+    {form.publishMode==='automatic'&&<div className="approval-note">
+      <strong>{t('严格 AI 自动发布与人工排期发布')}</strong>
+      <p>{t('人工批准的草稿会在以下每周窗口发布；严格 AI 自动批准仍按原有安全规则处理。')}</p>
+      <div className="date-fields">
+        <label>{t('人工排期发布日')}<select value={Number.isInteger(form.autoPublishWeekday)?form.autoPublishWeekday:''} onChange={e=>set('autoPublishWeekday',e.target.value===''?undefined:Number(e.target.value))}>
+          <option value="">{t('尚未设置')}</option>{Array.from({length:7},(_,i)=><option key={i} value={i}>{weekday(i)}</option>)}
+        </select></label>
+        <label>{t('人工排期发布时间')}<select value={Number.isInteger(form.autoPublishHour)?form.autoPublishHour:''} onChange={e=>set('autoPublishHour',e.target.value===''?undefined:Number(e.target.value))}>
+          <option value="">{t('尚未设置')}</option>{Array.from({length:24},(_,i)=><option key={i} value={i}>{String(i).padStart(2,'0')}:00</option>)}
+        </select></label>
+      </div>
+      <p className="muted">{t('保存后才会按新的排期生效。')}</p>
+      {!(Number.isInteger(form.autoPublishWeekday)&&Number.isInteger(form.autoPublishHour))&&<p className="muted">{t('人工排期尚未设置；人工批准稿会继续留在队列中。')}</p>}
+    </div>}
+    <p className="approval-note">{state.settings.publishMode==='automatic'?t('自动发布已开启'):t('自动发布已关闭')}{state.settings.publishMode==='automatic'&&!(Number.isInteger(state.settings.autoPublishWeekday)&&Number.isInteger(state.settings.autoPublishHour))&&t(' · 人工排期尚未设置')}</p>
     <label className="check"><input type="checkbox" checked={form.enabled} onChange={e=>set('enabled',e.target.checked)}/>{t("定期生成待审核草稿")}</label>
-    {form.reviewMode!=="strict_auto" && <p className="muted">{t("只整理照片和文案，不会自动批准或发布。以下是独立的定期制作配置，不会改变上方的手动任务。")}</p>}
+    {form.reviewMode!=="strict_auto" && form.publishMode!=='automatic' && <p className="muted">{t("只整理照片和文案，不会自动批准或发布。以下是独立的定期制作配置，不会改变上方的手动任务。")}</p>}
     <label>{t("定期制作的照片文件夹")}<input dir="ltr" value={form.folder} maxLength={300} onChange={e=>set('folder',e.target.value)}/></label>
     <div className="date-fields">
       <label>{t("频率")}<select value={form.frequency} onChange={e=>set('frequency',e.target.value)}><option value="weekly">{t("每周")}</option><option value="monthly">{t("每月")}</option></select></label>

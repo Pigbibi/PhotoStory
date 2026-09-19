@@ -430,6 +430,7 @@ function Editor({ draft, demo, busy, update, onPublication, publishingEnabled })
           />
         </label>
         {draft.status==='approved' && draft.approvalSource==='strict_ai_v1' && <p className="muted">{t("由严格 AI 自动审核批准")}</p>}
+        {draft.status==='approved' && draft.approvalSource==='owner_scheduled_v1' && <p className="muted">{t("已由你批准，正等待排期发布。")}</p>}
         <p className="muted">{t("主题可编辑 · 发布内容")}</p>
         <hr />
         <label>{t("文案")}<textarea dir="auto"

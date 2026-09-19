@@ -62,6 +62,19 @@ test('settings updates are owner-only, same-origin and version checked',async t=
  assert.equal((await request(defaults,headers)).status,200);
  assert.equal((await request(defaults,headers)).status,409);
 });
+test('owner approval enters the scheduled queue and records only soft AI feedback',async t=>{
+ const {DB,env}=await setup(t);
+ await DB.prepare('INSERT INTO state VALUES(?,?,NULL)').bind('automation',JSON.stringify({...defaults,publishMode:'automatic',reviewMode:'strict_auto',autoPublishSince:now-1})).run();
+ const original={...draft('owner-approved',['p']),strictReviewEvidence:{review:{privacySafe:true,captionGrounded:true,locationGrounded:true,coherent:false,compositionGood:true,noDuplicateFrames:true,needsHumanReview:false}}};
+ await addDraft(DB,original);
+ const response=await worker.fetch(new Request('https://example.test/api/drafts/owner-approved',{method:'PATCH',headers:{Cookie:'__Host-photostory=session',Origin:'https://example.test'},body:JSON.stringify({...original,action:'approve'})}),env);
+ assert.equal(response.status,200);
+ const saved=await response.json();
+ assert.equal(saved.approvalSource,'owner_scheduled_v1');assert.ok(Number.isSafeInteger(saved.ownerApprovedAt));
+ assert.deepEqual(saved.strictReviewEvidence,original.strictReviewEvidence);
+ const counters=await DB.prepare("SELECT value FROM state WHERE key='ownerPreferenceCounters'").first();
+ assert.deepEqual(JSON.parse(counters.value),{coherent:1,compositionGood:0,noDuplicateFrames:0});
+});
 test('a scheduled analysis budget stops at its exact limit and rejects an overshoot',async t=>{
  const {DB,api}=await setup(t);
  await api('/api/jobs',{folder:'Photos',range:'all',maxPhotos:20});
@@ -91,6 +104,7 @@ test('removing a photo queues delayed collection; stale edits cannot replace the
  assert.equal((await send({...original,action:'trash'})).status,409);
  const gc=await DB.prepare('SELECT * FROM photo_gc WHERE photo_id=?').bind('p2').first();
  assert.ok(gc.expires>=before+30*86400000);
+ assert.deepEqual(JSON.parse((await DB.prepare("SELECT value FROM state WHERE key='ownerCurationFeedback'").first()).value),{removedFromCarousel:1});
 });
 test('disabling the schedule during a tick cannot create a job from stale settings',async t=>{
  const {DB,env}=await setup(t);

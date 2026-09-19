@@ -2,22 +2,29 @@ import sys,unittest,tempfile
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from auto_review import review_drafts,FIELDS
+from auto_review import review_drafts,FIELDS,owner_preference_counters
 from PIL import Image
 class AutoReviewTests(unittest.TestCase):
  def setUp(self):
   self.draft={'id':'d','title':'Coast','caption':'A coast.','hashtags':'#Coast','photos':[{'id':'p','alt':'Coast'}]}
-  self.screen={'id':'p','decision':'allow','flags':[],'landscape':True,'aesthetic':9}
+  self.screen={'id':'p','decision':'allow','flags':[],'landscape':True,'aesthetic':9,
+               'light':'day','scene':'architecture','place':{'city':'Macau','landmark':'The Parisian Macao','evidence':'public landmark','confidence':'high'}}
   self.source={'reviewMode':'strict_auto','strictAutoEnabled':True}
  def test_manual_and_low_score_use_no_extra_inference(self):
   def forbidden(*args):self.fail('extra AI must not run')
   self.assertEqual(review_drafts([self.draft],[self.screen],{},Path('/tmp'),forbidden),[])
   self.assertEqual(review_drafts([self.draft],[{**self.screen,'aesthetic':8}],self.source,Path('/tmp'),forbidden),[])
+ def test_owner_preferences_are_soft_quality_only(self):
+  review={k:True for k in FIELDS};review['needsHumanReview']=False
+  self.assertEqual(owner_preference_counters({'review':review}), {'coherent':0,'compositionGood':0,'noDuplicateFrames':0})
+  review['coherent']=False;review['privacySafe']=False
+  self.assertEqual(owner_preference_counters({'review':review}), {'coherent':1,'compositionGood':0,'noDuplicateFrames':0})
  def test_final_canvas_and_content_are_reviewed_and_temp_is_removed(self):
   with tempfile.TemporaryDirectory() as tmp:
    cwd=Path(tmp);Image.new('RGB',(800,400),'blue').save(cwd/'p.jpg')
    def gateway(prompt,records,paths,schema,path):
     self.assertIn('A coast.',prompt);self.assertEqual(records,[{'id':'p'}])
+    self.assertIn('The Parisian Macao',prompt);self.assertIn('"light": "day"',prompt)
     with Image.open(paths[0]) as image:
      self.assertEqual(image.size,(600,750));self.assertEqual(image.getpixel((0,0)),(255,255,255))
     return {k:k!='needsHumanReview' for k in FIELDS}

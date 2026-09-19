@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {strictApproval} from '../worker/auto-review.mjs';
+import {strictApproval,ownerPreferenceCounters} from '../worker/auto-review.mjs';
 import {setup} from './helpers/database.mjs';
 import {reviewDraft} from '../worker/review.mjs';
 import {defaults} from '../worker/lifecycle.mjs';
@@ -43,4 +43,8 @@ test('cropped approval binds the exact ratio and every crop position',()=>{
  assert.equal(strictApproval({...d,aspect:'4:5'},e,'strict_auto'),false);
  assert.equal(strictApproval({...d,photos:[{...d.photos[0],frame:{mode:'crop',x:50,y:50}}]},e,'strict_auto'),false);
  assert.equal(strictApproval(d,{...e,policy:'strict-v1'},'strict_auto'),false);
+});
+test('owner preference counters count only false soft fields',()=>{
+ const e=evidence();e.review.coherent=false;e.review.compositionGood=false;
+ assert.deepEqual(ownerPreferenceCounters(e),{coherent:1,compositionGood:1,noDuplicateFrames:0});
 });

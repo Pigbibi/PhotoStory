@@ -6,10 +6,20 @@ import {storageView} from './storage.mjs';
 
 const fail=()=>{throw new Error('publication_conflict');};
 const fields=['privacySafe','captionGrounded','locationGrounded','coherent','compositionGood','noDuplicateFrames'];
-export function eligible(d,s){
+export function scheduledWindowOpen(s,now=Date.now()){
+ if(!Number.isInteger(s?.autoPublishWeekday)||!Number.isInteger(s?.autoPublishHour))return false;
+ const local=new Date(now+8*3600000);
+ return local.getUTCDay()===s.autoPublishWeekday&&local.getUTCHours()===s.autoPublishHour;
+}
+export function claimedEligible(d,s){
+ const owner=d.approvalSource==='owner_scheduled_v1';
  return s?.publishMode==='automatic'&&s.reviewMode==='strict_auto'&&Number.isSafeInteger(s.autoPublishSince)&&
-  d.status==='approved'&&d.approvalSource==='strict_ai_v1'&&Number.isSafeInteger(d.autoApprovedAt)&&d.autoApprovedAt>s.autoPublishSince&&
-  d.photos.every(p=>p.frame?.mode==='crop');
+  d.status==='approved'&&(d.approvalSource==='strict_ai_v1'||owner)&&Number.isSafeInteger(owner?d.ownerApprovedAt:d.autoApprovedAt)&&
+  (owner?d.ownerApprovedAt:d.autoApprovedAt)>s.autoPublishSince&&d.photos.every(p=>p.frame?.mode==='crop');
+}
+export function eligible(d,s,now=Date.now()){
+ const owner=d.approvalSource==='owner_scheduled_v1';
+ return claimedEligible(d,s)&&(!owner||scheduledWindowOpen(s,now));
 }
 // Every machine operation is checked against current owner settings. The batch
 // credential is trusted to submit AI evidence, but cannot enable this mode.
@@ -28,23 +38,23 @@ export async function automatic(e,b){
   if(active){
    const d=await reviewedDraft(e,active.draft_id,(await publishing.view(e,active.draft_id)).version);
    const activeRow=await e.DB.prepare('SELECT body FROM publications WHERE draft_id=?').bind(d.id).first();
-   if(!eligible(d,s)||JSON.parse(activeRow.body).autoPublishSince!==s.autoPublishSince)return null;
+   if(!claimedEligible(d,s)||JSON.parse(activeRow.body).autoPublishSince!==s.autoPublishSince)return null;
    return {draft:d,publication:await publishing.view(e,d.id)};
   }
   // Prepared work is never automatically reclaimed after a crash. It remains
   // private for manual inspection. This also bounds failed reviews to one/seven days.
   if(await e.DB.prepare("SELECT id FROM publications WHERE created>? OR status IN ('publishing','working','uncertain') LIMIT 1").bind(Date.now()-publishing.AUTO_PUBLISH_INTERVAL).first())return null;
-  const rows=await e.DB.prepare("SELECT body FROM drafts WHERE json_extract(body,'$.status')='approved' AND json_extract(body,'$.approvalSource')='strict_ai_v1' AND json_extract(body,'$.autoApprovedAt')>? AND NOT EXISTS(SELECT 1 FROM publications WHERE publications.draft_id=drafts.id) ORDER BY json_extract(body,'$.autoApprovedAt') LIMIT 100").bind(s.autoPublishSince).all();
+  const rows=await e.DB.prepare("SELECT body FROM drafts WHERE json_extract(body,'$.status')='approved' AND json_extract(body,'$.approvalSource') IN ('strict_ai_v1','owner_scheduled_v1') AND (json_extract(body,'$.autoApprovedAt')>? OR json_extract(body,'$.ownerApprovedAt')>?) AND NOT EXISTS(SELECT 1 FROM publications WHERE publications.draft_id=drafts.id) ORDER BY COALESCE(json_extract(body,'$.autoApprovedAt'),json_extract(body,'$.ownerApprovedAt')) LIMIT 100").bind(s.autoPublishSince,s.autoPublishSince).all();
   const d=rows.results.map(r=>JSON.parse(r.body)).find(d=>eligible(d,s));
   if(!d)return null;
-  const publication=await publishing.prepare(e,d.id,d.version,{since:s.autoPublishSince,userId:s.autoPublishUserId});
+  const publication=await publishing.prepare(e,d.id,d.version,{since:s.autoPublishSince,userId:s.autoPublishUserId,ownerScheduled:d.approvalSource==='owner_scheduled_v1'});
   return {draft:d,publication};
  }
  const p=await e.DB.prepare('SELECT * FROM publications WHERE draft_id=? AND id=?').bind(b.draftId,b.publicationId).first();
  if(!p)fail();const body=JSON.parse(p.body);
  if(!body.automatic||body.autoPublishSince!==s.autoPublishSince||body.userId!==s.autoPublishUserId)fail();
  const d=await reviewedDraft(e,b.draftId,p.version);
- if(!eligible(d,s)||b.version!==d.version)fail();
+ if(!claimedEligible(d,s)||b.version!==d.version)fail();
  if(b.action==='advance')return publishing.advance(e,d.id,p.id);
  if(p.status!=='prepared'||p.expires<=Date.now()||body.autoBlocked)fail();
  if(b.action==='original')return original(e,d.id,b.photoId,d.version);
@@ -60,7 +70,9 @@ export async function automatic(e,b){
   return {ok:true};
  }
  if(b.action==='begin'){
-  const r=b.review;
+  const r=d.approvalSource==='owner_scheduled_v1'
+   ? {privacySafe:true,captionGrounded:true,locationGrounded:true,coherent:true,compositionGood:true,noDuplicateFrames:true,needsHumanReview:false}
+   : b.review;
   if(!r||fields.some(k=>r[k]!==true)||r.needsHumanReview!==false)fail();
   const images=(await e.DB.prepare('SELECT photo_id,digest FROM publication_images WHERE publication_id=?').bind(p.id).all()).results;
   if(!Array.isArray(b.images)||images.length!==d.photos.length||b.images.length!==images.length||
