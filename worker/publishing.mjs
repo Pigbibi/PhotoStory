@@ -41,7 +41,7 @@ function publicState(p){
 }
 export async function view(e,id){return publicState(await row(e,id));}
 export async function prepare(e,id,version,automatic=null){
- const draft=await reviewedDraft(e,id,version),account=await publishingAccount(e),existing=await row(e,id),now=Date.now();
+ const draft=await reviewedDraft(e,id,version),account=await publishingAccount(e),existing=await row(e,id),now=Date.now(),local=new Date(now+8*3600000);
  if(existing){
   if(existing.status!=='prepared')fail('publication_conflict');
   if(!automatic&&!JSON.parse(existing.body).automatic&&existing.version===version&&existing.expires>now+600000)return publicState(existing);
@@ -50,8 +50,8 @@ export async function prepare(e,id,version,automatic=null){
  let result;
  if(automatic){
   body.automatic=true;body.autoPublishSince=automatic.since;
-  result=await e.DB.prepare("INSERT INTO publications SELECT ?,?,?,'prepared',?,?,? WHERE EXISTS(SELECT 1 FROM state WHERE key='automation' AND json_extract(value,'$.publishMode')='automatic' AND json_extract(value,'$.reviewMode')='strict_auto' AND json_extract(value,'$.autoPublishSince')=? AND json_extract(value,'$.autoPublishUserId')=?) AND NOT EXISTS(SELECT 1 FROM publications WHERE created>? OR status IN ('publishing','working','uncertain')) AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved' AND json_extract(body,'$.approvalSource')='strict_ai_v1' AND json_extract(body,'$.autoApprovedAt')>?) ON CONFLICT DO NOTHING")
-   .bind(id,publicationId,version,JSON.stringify(body),now,now+HOUR,automatic.since,account.userId,now-AUTO_PUBLISH_INTERVAL,id,version,automatic.since).run();
+  result=await e.DB.prepare("INSERT INTO publications SELECT ?,?,?,'prepared',?,?,? WHERE EXISTS(SELECT 1 FROM state WHERE key='automation' AND json_extract(value,'$.publishMode')='automatic' AND json_extract(value,'$.reviewMode')='strict_auto' AND json_extract(value,'$.autoPublishSince')=? AND json_extract(value,'$.autoPublishUserId')=?) AND NOT EXISTS(SELECT 1 FROM publications WHERE created>? OR status IN ('publishing','working','uncertain')) AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved' AND ((?=0 AND json_extract(body,'$.approvalSource')='strict_ai_v1' AND json_extract(body,'$.autoApprovedAt')>?) OR (?=1 AND json_extract(body,'$.approvalSource')='owner_scheduled_v1' AND json_extract(body,'$.ownerApprovedAt')>? AND json_extract((SELECT value FROM state WHERE key='automation'),'$.autoPublishWeekday')=? AND json_extract((SELECT value FROM state WHERE key='automation'),'$.autoPublishHour')=?))) ON CONFLICT DO NOTHING")
+   .bind(id,publicationId,version,JSON.stringify(body),now,now+HOUR,automatic.since,account.userId,now-AUTO_PUBLISH_INTERVAL,id,version,automatic.ownerScheduled?1:0,automatic.since,automatic.ownerScheduled?1:0,automatic.since,automatic.ownerScheduled?local.getUTCDay():null,automatic.ownerScheduled?local.getUTCHours():null).run();
  }else{
   result=await e.DB.prepare("INSERT INTO publications VALUES(?,?,?,'prepared',?,?,?) ON CONFLICT(draft_id) DO UPDATE SET id=excluded.id,version=excluded.version,status=excluded.status,body=excluded.body,created=excluded.created,expires=excluded.expires WHERE publications.status='prepared'")
    .bind(id,publicationId,version,JSON.stringify(body),now,now+HOUR).run();

@@ -2,7 +2,7 @@
 
 [简体中文](instagram-setup.zh-CN.md)
 
-## Current release
+## What PhotoStory supports
 
 PhotoStory selects, reviews and exports photos, and can connect an Instagram
 professional account through OAuth. Approved drafts support manual single-image

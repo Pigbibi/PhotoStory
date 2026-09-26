@@ -47,6 +47,10 @@ credentials. A monitor should alert on `ok=false` and retain only the category
 and timestamp. The endpoint does not publish, refresh credentials, retry jobs or
 mutate state.
 
+When approved owner-scheduled drafts have no saved publishing day and hour, health
+reports `owner_publish_schedule_missing`. The owner must set both values in the
+website; the monitor never chooses a time or starts publication.
+
 Before enabling automatic publishing, verify the in-site alert path with an
 owner account, confirm that the machine timer is supervised, and test an
 uncertain-result response in a non-production environment.

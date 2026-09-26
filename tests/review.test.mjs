@@ -20,6 +20,11 @@ test("approval is bound to the reviewed version", () => {
     /conflict/,
   );
 });
+test("owner approval metadata is added only by the automation route", () => {
+ const approved=reviewDraft({...draft(),status:"approved",approvalSource:"strict_ai_v1",strictReviewSoftFields:{coherent:true,compositionGood:true,noDuplicateFrames:true}}, {...draft(),status:"approved",approvalSource:"strict_ai_v1",strictReviewSoftFields:{coherent:true,compositionGood:true,noDuplicateFrames:true},action:"approve"});
+ assert.equal(approved.approvalSource,undefined);
+ assert.equal(approved.ownerApprovedAt,undefined);
+});
 test("editing an approved draft invalidates approval", () => {
   assert.equal(
     reviewDraft(

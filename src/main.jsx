@@ -143,6 +143,7 @@ function App() {
     <>
       <header>
         <a href="/" className="brand">
+          <img className="brand-icon" src="/favicon.svg" alt="" width="32" height="32" />
           Fieldnotes<span>PhotoStory</span>
         </a>
         <nav aria-label={t("主导航")}>
@@ -294,6 +295,8 @@ function App() {
                 update={update}
                 onPublication={p=>setDrafts(ds=>ds.map(d=>d.id===current.id?{...d,publication:p}:d))}
                 publishingEnabled={session?.publishingEnabled}
+                publishingSchedule={session?.publishingSchedule}
+                onPublishingSettings={()=>setView('settings')}
               />
             ) : (
               <div className="empty">
@@ -324,7 +327,7 @@ function App() {
     </>
   );
 }
-function Editor({ draft, demo, busy, update, onPublication, publishingEnabled }) {
+function Editor({ draft, demo, busy, update, onPublication, publishingEnabled, publishingSchedule, onPublishingSettings }) {
   const locked=Boolean(draft.publication&&draft.publication.status!=='prepared');
   busy=busy||locked;
   const {t,date,locale}=useI18n();
@@ -430,6 +433,7 @@ function Editor({ draft, demo, busy, update, onPublication, publishingEnabled })
           />
         </label>
         {draft.status==='approved' && draft.approvalSource==='strict_ai_v1' && <p className="muted">{t("由严格 AI 自动审核批准")}</p>}
+        {draft.status==='approved' && draft.approvalSource==='owner_scheduled_v1' && <p className="muted">{t("已由你批准，正等待排期发布。")}</p>}
         <p className="muted">{t("主题可编辑 · 发布内容")}</p>
         <hr />
         <label>{t("文案")}<textarea dir="auto"
@@ -487,7 +491,7 @@ function Editor({ draft, demo, busy, update, onPublication, publishingEnabled })
         <button className="text-button" disabled={busy||dirty} onClick={()=>update(draft,'trash')}>{t("不采用，移入回收站")}</button>
         </>}
       </section>
-      {!demo&&draft.status==='approved'&&publishingEnabled&&<Publishing draft={draft} onChange={onPublication} disabled={dirty} />}
+      {!demo&&draft.status==='approved'&&(publishingEnabled||draft.approvalSource==='owner_scheduled_v1')&&<Publishing draft={draft} onChange={onPublication} disabled={dirty} schedule={publishingSchedule} onSettings={onPublishingSettings} />}
     </>
   );
 }

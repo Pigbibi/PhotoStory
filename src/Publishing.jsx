@@ -4,9 +4,28 @@ async function request(path,body){
  const r=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':body instanceof Uint8Array?'image/jpeg':'application/json'},body:body instanceof Uint8Array?body:JSON.stringify(body)});
  if(!r.ok)throw new Error('publish_failed');return r.json();
 }
-export function Publishing({draft,onChange,disabled}){
- const {t}=useI18n(),[state,setState]=useState(draft.publication),[busy,setBusy]=useState(false),[error,setError]=useState(false),[preview,setPreview]=useState(false);
+export function nextOwnerWindow(schedule,now=Date.now()){
+ if(!Number.isInteger(schedule?.weekday)||schedule.weekday<0||schedule.weekday>6||!Number.isInteger(schedule?.hour)||schedule.hour<0||schedule.hour>23)return null;
+ const local=new Date(now+8*3600000);
+ let slot=Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),local.getUTCDate()+(schedule.weekday-local.getUTCDay()+7)%7,schedule.hour)-8*3600000;
+ if(slot<=now)slot+=7*86400000;
+ return slot;
+}
+export function Publishing({draft,onChange,disabled,schedule,onSettings}){
+ const {t,date}=useI18n(),[state,setState]=useState(draft.publication),[busy,setBusy]=useState(false),[error,setError]=useState(false),[preview,setPreview]=useState(false);
  const base='/api/publish/'+draft.id;
+ if(draft.approvalSource==='owner_scheduled_v1') return <section className="publication" aria-label={t('Instagram publishing')}>
+  <h3>{t('Instagram publishing')}</h3>
+  {state?.status==='published'?<p role="status">{t('Published · Instagram ID {id}',{id:state.mediaId})}</p>:
+   schedule?.publishMode!=='automatic'||schedule?.reviewMode!=='strict_auto'?<p role="status">{t('自动发布已关闭；批准稿会留在队列中。')}</p>:
+   nextOwnerWindow(schedule)===null?<>
+    <p role="status">{t('人工排期尚未设置；人工批准稿会继续留在队列中。')}</p>
+    <button className="text-button" onClick={onSettings}>{t('设置人工发布时间')}</button>
+   </>:<>
+    <p role="status">{t('下一个可用发布窗口：{time}',{time:date(nextOwnerWindow(schedule))})}</p>
+    <p className="muted">{t('每七天最多一次发布尝试；如有前次尝试或授权问题，可能继续等待。')}</p>
+   </>}
+ </section>;
  const refresh=async()=>{const next=await request(base);setState(next);return next;};
  const prepare=async()=>{
   setBusy(true);setError(false);
