@@ -15,6 +15,14 @@ test('owner scheduled cadence is optional and must be configured as a pair',()=>
  assert.throws(()=>settingsInput({...defaults,autoPublishWeekday:2}),/invalid_settings/);
  assert.throws(()=>settingsInput({...defaults,autoPublishHour:10}),/invalid_settings/);
 });
+test('session reports only publishing schedule fields needed by the owner queue',async t=>{
+ const {env,DB}=await setup(t);
+ await DB.prepare('INSERT INTO state VALUES(?,?,NULL)').bind('automation',JSON.stringify({...defaults,publishMode:'automatic',reviewMode:'strict_auto',autoPublishWeekday:2,autoPublishHour:10,autoPublishUserId:'private-id'})).run();
+ const response=await (await import('../worker/index.mjs')).default.fetch(new Request('https://example.test/api/session',{headers:{Cookie:'__Host-photostory=session'}}),env);
+ const value=await response.json();
+ assert.deepEqual(value.publishingSchedule,{publishMode:'automatic',reviewMode:'strict_auto',weekday:2,hour:10});
+ assert.ok(!JSON.stringify(value).includes('private-id'));
+});
 test('machine cannot request an automatic candidate while publishing is manual',async t=>{
  const {api}=await setup(t);
  const result=await api('/internal/autopublish',{action:'candidate'},true);

@@ -288,5 +288,9 @@
   "保存后才会按新的排期生效。": "Schedule changes take effect after saving.",
   "人工排期尚未设置；人工批准稿会继续留在队列中。": "Owner scheduling is not configured; your approved drafts will remain queued.",
   " · 人工排期尚未设置": " · Owner scheduling is not configured",
-  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication."
+  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication.",
+  "自动发布已关闭；批准稿会留在队列中。": "स्वचालित प्रकाशन बंद है; स्वीकृत ड्राफ़्ट कतार में रहेंगे।",
+  "设置人工发布时间": "प्रकाशन का समय तय करें",
+  "下一个可用发布窗口：{time}": "अगला उपलब्ध प्रकाशन समय: {time}",
+  "每七天最多一次发布尝试；如有前次尝试或授权问题，可能继续等待。": "हर सात दिन में अधिकतम एक प्रकाशन प्रयास। पिछले प्रयास या प्राधिकरण संबंधी समस्या से इस ड्राफ़्ट में देरी हो सकती है।"
 }

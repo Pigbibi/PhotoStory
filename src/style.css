@@ -68,6 +68,10 @@ header {
   align-items: baseline;
   gap: 12px;
 }
+.brand-icon {
+  flex: 0 0 auto;
+  align-self: center;
+}
 .brand span {
   font:
     11px -apple-system,

@@ -143,6 +143,7 @@ function App() {
     <>
       <header>
         <a href="/" className="brand">
+          <img className="brand-icon" src="/favicon.svg" alt="" width="32" height="32" />
           Fieldnotes<span>PhotoStory</span>
         </a>
         <nav aria-label={t("主导航")}>
@@ -294,6 +295,8 @@ function App() {
                 update={update}
                 onPublication={p=>setDrafts(ds=>ds.map(d=>d.id===current.id?{...d,publication:p}:d))}
                 publishingEnabled={session?.publishingEnabled}
+                publishingSchedule={session?.publishingSchedule}
+                onPublishingSettings={()=>setView('settings')}
               />
             ) : (
               <div className="empty">
@@ -324,7 +327,7 @@ function App() {
     </>
   );
 }
-function Editor({ draft, demo, busy, update, onPublication, publishingEnabled }) {
+function Editor({ draft, demo, busy, update, onPublication, publishingEnabled, publishingSchedule, onPublishingSettings }) {
   const locked=Boolean(draft.publication&&draft.publication.status!=='prepared');
   busy=busy||locked;
   const {t,date,locale}=useI18n();
@@ -488,7 +491,7 @@ function Editor({ draft, demo, busy, update, onPublication, publishingEnabled })
         <button className="text-button" disabled={busy||dirty} onClick={()=>update(draft,'trash')}>{t("不采用，移入回收站")}</button>
         </>}
       </section>
-      {!demo&&draft.status==='approved'&&publishingEnabled&&<Publishing draft={draft} onChange={onPublication} disabled={dirty} />}
+      {!demo&&draft.status==='approved'&&(publishingEnabled||draft.approvalSource==='owner_scheduled_v1')&&<Publishing draft={draft} onChange={onPublication} disabled={dirty} schedule={publishingSchedule} onSettings={onPublishingSettings} />}
     </>
   );
 }

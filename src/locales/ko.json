@@ -288,5 +288,9 @@
   "保存后才会按新的排期生效。": "Schedule changes take effect after saving.",
   "人工排期尚未设置；人工批准稿会继续留在队列中。": "Owner scheduling is not configured; your approved drafts will remain queued.",
   " · 人工排期尚未设置": " · Owner scheduling is not configured",
-  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication."
+  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication.",
+  "自动发布已关闭；批准稿会留在队列中。": "자동 게시가 꺼져 있습니다. 승인된 초안은 대기열에 남습니다.",
+  "设置人工发布时间": "게시 일정 설정",
+  "下一个可用发布窗口：{time}": "다음 게시 가능 시간: {time}",
+  "每七天最多一次发布尝试；如有前次尝试或授权问题，可能继续等待。": "게시 시도는 7일에 최대 한 번입니다. 이전 시도나 인증 문제로 이 초안이 더 지연될 수 있습니다."
 }

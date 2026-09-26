@@ -288,5 +288,9 @@
   "保存后才会按新的排期生效。": "Schedule changes take effect after saving.",
   "人工排期尚未设置；人工批准稿会继续留在队列中。": "Owner scheduling is not configured; your approved drafts will remain queued.",
   " · 人工排期尚未设置": " · Owner scheduling is not configured",
-  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication."
+  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication.",
+  "自动发布已关闭；批准稿会留在队列中。": "自動公開はオフです。承認済みの下書きはキューに残ります。",
+  "设置人工发布时间": "公開日時を設定",
+  "下一个可用发布窗口：{time}": "次に利用可能な公開枠：{time}",
+  "每七天最多一次发布尝试；如有前次尝试或授权问题，可能继续等待。": "公開試行は7日間に最大1回です。以前の試行や認証の問題により、この下書きはさらに待機する場合があります。"
 }

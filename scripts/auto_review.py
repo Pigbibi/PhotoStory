@@ -17,7 +17,15 @@ Do not infer identities or relationships. If their role is unclear, require huma
 review. Clearly inanimate public statues are not real people. Caption, hashtags, title and alt text must be supported
 by visible evidence or the supplied owner place hint; reject invented places,
 personal experiences, emotions, claims or private/live location details. The post
-must have a coherent visual theme and no repetitive near-identical frames.
+must have the same evidenced site, visible light and coherent subject across all
+photos, with no repetitive near-identical frames. A broad city label is not enough.
+Different locations, daytime/dusk/night mixes or unrelated drive-by street shots
+require coherent=false and needsHumanReview=true. Temporary character events,
+pop-up displays and promotional photo spots are not scenery; require human review.
+Permanent Olympic heritage/museum exteriors can qualify. Read visible public
+signs and symbols; generic copy that misses clear museum/Olympic context needs
+revision. Judge the first photo as the cover after cropping; weak snapshots
+must not displace a strong landmark composition. A good single photo is enough.
 You see the final canvas using the supplied aspect and per-photo framing.
 Assess every crop and subject visibility; clipped tower tips, roofs or other
 important subjects require human review. Return only the seven required boolean assessments. A high

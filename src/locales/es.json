@@ -288,5 +288,9 @@
   "保存后才会按新的排期生效。": "Schedule changes take effect after saving.",
   "人工排期尚未设置；人工批准稿会继续留在队列中。": "Owner scheduling is not configured; your approved drafts will remain queued.",
   " · 人工排期尚未设置": " · Owner scheduling is not configured",
-  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication."
+  "已由你批准，正等待排期发布。": "Approved by you; waiting for scheduled publication.",
+  "自动发布已关闭；批准稿会留在队列中。": "La publicación automática está desactivada; los borradores aprobados permanecen en la cola.",
+  "设置人工发布时间": "Configurar horario de publicación",
+  "下一个可用发布窗口：{time}": "Próxima ventana de publicación disponible: {time}",
+  "每七天最多一次发布尝试；如有前次尝试或授权问题，可能继续等待。": "Como máximo un intento de publicación cada siete días. Los intentos anteriores o problemas de autorización pueden retrasar este borrador."
 }

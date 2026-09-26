@@ -7,7 +7,7 @@ spec.loader.exec_module(b)
 
 class ScreeningTests(unittest.TestCase):
     def safe(self, **kw):
-        value=dict(id='a', decision='allow', flags=[], landscape=True, aesthetic=8, description='Coast', peopleRole="none", compositionClear=True,
+        value=dict(id='a', captured='2026-08-18T10:00:00+08:00', area=None, decision='allow', flags=[], landscape=True, aesthetic=8, description='Coast', peopleRole="none", compositionClear=True, contentKind="permanent_scenery",
                    light='day', scene='architecture', place={'city':'Macau','landmark':'The Parisian Macao','evidence':'public landmark','confidence':'high'})
         value.update(kw)
         return value
@@ -40,6 +40,36 @@ class ScreeningTests(unittest.TestCase):
     def test_different_scenes_are_split_before_caption_generation(self):
         groups=b.scene_groups([self.safe(id='horse',scene='wildlife'),self.safe(id='yurt',scene='culture'),self.safe(id='field',scene='wildlife')])
         self.assertEqual([[p['id'] for p in group] for group in groups],[['horse','field'],['yurt']])
+    def test_events_and_missing_content_classification_are_not_admitted(self):
+        for kind in ('temporary_event', 'uncertain', None, '', True):
+            self.assertEqual(b.accepted_screening({'photos':[self.safe(contentKind=kind)]},['a']),[])
+        photo=self.safe();photo.pop('contentKind')
+        self.assertEqual(b.accepted_screening({'photos':[photo]},['a']),[])
+    def test_same_scene_different_lights_and_landmarks_are_separate(self):
+        photos=[self.safe(id='day'),self.safe(id='dusk',light='golden_hour'),
+                self.safe(id='night',light='night'),self.safe(id='day-detail'),
+                self.safe(id='other',place={'city':'Macau','landmark':'Senado Square','evidence':'sign','confidence':'high'})]
+        self.assertEqual([[p['id'] for p in g] for g in b.scene_groups(photos)],
+                         [['day','day-detail'],['dusk'],['night'],['other']])
+    def test_unknown_place_or_light_never_merges_by_generic_scene(self):
+        for change in ({'light':'unknown'}, {'scene':'unknown'},
+                       {'place':{'city':'','landmark':'','evidence':'','confidence':'none'}},
+                       {'place':{'city':'Hong Kong','landmark':'','evidence':'city skyline','confidence':'high'}}):
+            self.assertEqual(len(b.scene_groups([self.safe(id='a',**change),self.safe(id='b',**change)])),2)
+    def test_capture_time_and_location_can_veto_same_visual_site(self):
+        photos=[self.safe(id='a',area=[22.3,114.2]),
+                self.safe(id='near',captured='2026-08-18T03:00:00+00:00',area=[22.3,114.2]),
+                self.safe(id='other-area',area=[22.4,114.1]),
+                self.safe(id='later',captured='2026-08-18T16:00:00+08:00'),
+                self.safe(id='next-day',captured='2026-08-19T10:00:00+08:00')]
+        self.assertEqual([[p['id'] for p in g] for g in b.scene_groups(photos)],
+                         [['a','near'],['other-area'],['later'],['next-day']])
+    def test_missing_or_unzoned_capture_time_stays_single(self):
+        for captured in (None,'invalid','2026-08-18T10:00:00'):
+            self.assertEqual(len(b.scene_groups([self.safe(id='a',captured=captured),self.safe(id='b',captured=captured)])),2)
+    def test_time_window_does_not_chain_into_an_all_day_group(self):
+        photos=[self.safe(id=str(hour),captured=f'2026-08-18T{hour:02}:00:00+08:00') for hour in (10,12,14)]
+        self.assertEqual([[p['id'] for p in g] for g in b.scene_groups(photos)],[['10','12'],['14']])
     def test_upload_time_is_not_capture_time(self):
         self.assertIsNone(b.photo_time({'createdDateTime':'2026-08-20T12:00:00Z'}))
         self.assertIsNone(b.photo_time({'photo':{'takenDateTime':'2026-08-20T12:00:00'}}))

@@ -29,6 +29,10 @@ export async function view(e,now=Date.now()){
  if(s.settings.enabled&&!s.backlogPaused&&Number.isSafeInteger(s.settings.nextRun)&&s.settings.nextRun<now-2*3600000)warnings.push('schedule_overdue');
  if(s.settings.cleanupEnabled&&Number.isSafeInteger(s.cleanup?.nextAt)&&s.cleanup.nextAt<now-2*3600000)warnings.push('cleanup_overdue');
  if(s.settings.enabled&&s.settings.publishMode==='automatic'&&(!ig.connected||ig.refreshState==='expired'))warnings.push('instagram_authorization');
+ if(s.settings.publishMode==='automatic'&&(!Number.isInteger(s.settings.autoPublishWeekday)||!Number.isInteger(s.settings.autoPublishHour))){
+  const waiting=await e.DB.prepare("SELECT id FROM drafts WHERE json_extract(body,'$.status')='approved' AND json_extract(body,'$.approvalSource')='owner_scheduled_v1' AND NOT EXISTS(SELECT 1 FROM publications WHERE publications.draft_id=drafts.id AND publications.status='published') LIMIT 1").first();
+  if(waiting)warnings.push('owner_publish_schedule_missing');
+ }
  if(ig.refreshState==='failed')warnings.push('instagram_refresh_failed');
  if(issue)warnings.push(issue.status==='uncertain'?'publication_uncertain':'publication_attention');
  return {ok:warnings.length===0,checkedAt:now,warnings,

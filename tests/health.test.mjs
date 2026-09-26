@@ -34,3 +34,13 @@ test('health marks an overdue schedule for an external monitor',async t=>{
  const value=await response.json();
  assert.equal(response.status,200);assert.ok(value.warnings.includes('schedule_overdue'));
 });
+test('health reports owner-approved backlog with no publishing window',async t=>{
+ const {env,DB}=await setup(t);
+ await put(env,'automation',{enabled:false,publishMode:'automatic',reviewMode:'strict_auto',autoPublishWeekday:null,autoPublishHour:null,pendingLimit:20});
+ await DB.prepare('INSERT INTO drafts VALUES(?,?,1)').bind('approved',JSON.stringify({id:'approved',status:'approved',approvalSource:'owner_scheduled_v1'})).run();
+ const response=await worker.fetch(new Request('https://example.test/internal/health',{headers:{Authorization:'Bearer machine'}}),env);
+ const value=await response.json();
+ assert.equal(value.ok,false);
+ assert.ok(value.warnings.includes('owner_publish_schedule_missing'));
+ assert.ok(!JSON.stringify(value).includes('approved'));
+});

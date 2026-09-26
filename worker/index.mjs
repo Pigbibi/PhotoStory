@@ -241,6 +241,7 @@ async function route(r, e) {
     p = u.pathname;
   if (p === "/api/session") {
     const s = await auth.session(r, e);
+    const automation = s ? await auth.get(e, "automation") : null;
     return json({
       user: s ? { login: s.login } : null,
       githubConfigured: auth.configured(e),
@@ -248,6 +249,12 @@ async function route(r, e) {
       onedriveConnected: s ? Boolean(await auth.get(e, "microsoft")) : false,
       publishingIssue: s ? await publishing.issue(e) : undefined,
       publishingEnabled: s ? (await instagram.status(e)).connected : false,
+      publishingSchedule: s ? {
+        publishMode: automation?.publishMode || 'manual',
+        reviewMode: automation?.reviewMode || 'manual',
+        weekday: automation?.autoPublishWeekday ?? null,
+        hour: automation?.autoPublishHour ?? null,
+      } : undefined,
       instagram: s ? await instagram.status(e) : undefined,
       captionLanguage: s ? (e.AI_CAPTION_LANGUAGE||"en") : undefined,
     });
