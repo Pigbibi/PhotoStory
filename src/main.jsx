@@ -2,7 +2,7 @@ import History from './History.jsx';
 import {Publishing} from './Publishing.jsx';
 import {localizedDraftText} from './i18n-core.mjs';
 import {I18nProvider,LanguageSwitcher,useI18n} from "./i18n.jsx";
-import React, { lazy, Suspense, useState, useEffect } from "react";
+import React, { lazy, Suspense, useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { reviewDraft } from "../worker/review.mjs";
 const LifecycleSettings = lazy(() => import('./LifecycleSettings.jsx'));
@@ -497,6 +497,7 @@ function Editor({ draft, demo, busy, update, onPublication, publishingEnabled, p
 }
 function Settings({ session, notify }) {
   const {t,locale,date}=useI18n();
+  const startInput=useRef(null), endInput=useRef(null);
   const [folder, setFolder] = useState(""),
     [range,setRange] = useState("1m"),
     [start, setStart] = useState(() => dayInShanghai(-30)),
@@ -546,7 +547,10 @@ function Settings({ session, notify }) {
   const createJob = async () => {
     setBusy(true);
     try {
-      await api("/api/jobs", "POST", { folder, range, start, end, maxPhotos, locationHint });
+      const selectedDates=range==="custom"
+        ? {start:startInput.current?.value,end:endInput.current?.value}
+        : {start,end};
+      await api("/api/jobs", "POST", { folder, range, ...selectedDates, maxPhotos, locationHint });
       notify("任务已排队。处理器会先扫描所选范围，再自动分批整理草稿。");
       await refresh();
     } catch (e) { notify(e.message); }
@@ -628,12 +632,14 @@ function Settings({ session, notify }) {
         {range==="custom" && (
         <div className="date-fields">
           <label>{t("开始日期")}<input
+              ref={startInput}
               type="date"
               value={start}
               onChange={(e) => setStart(e.target.value)}
             />
           </label>
           <label>{t("结束日期（包含当天）")}<input
+              ref={endInput}
               type="date"
               value={end}
               onChange={(e) => setEnd(e.target.value)}
