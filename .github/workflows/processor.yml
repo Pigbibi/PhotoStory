@@ -1,6 +1,11 @@
 name: Process PhotoStory
 on:
   workflow_dispatch:
+    inputs:
+      gateway_smoke:
+        description: Verify CodexGateway with a synthetic image before processing
+        type: boolean
+        default: false
   schedule:
     - cron: '17,47 * * * *'
 permissions:
@@ -30,6 +35,9 @@ jobs:
       - run: python -m pip install -r scripts/requirements.txt
       - name: Verify private Cloudflare inventory
         run: python scripts/cloud_inventory.py status
+      - name: Verify CodexGateway with synthetic image
+        if: inputs.gateway_smoke == true
+        run: python scripts/smoke_gateway.py
       - name: Process one bounded step
         run: python scripts/process_batch.py
         env:

@@ -33,8 +33,9 @@ CodexGateway 服务及登录继续留在 VPS，仍为其他仓库服务；PhotoS
 ## 验证与启用
 
 1. 在 `main` 手动运行 `Process PhotoStory` 工作流。它每次只领取一个有限
-   扫描或 AI 步骤；首次先用无待处理任务验证入口、R2 和登录环境，再用小范围
-   任务核对 OIDC、网关图片输入、Worker 进度、R2 快照和草稿无重复。
+   扫描或 AI 步骤；首次先用无待处理任务验证入口和 R2，再用手动输入
+   `gateway_smoke=true` 发送合成图片，核对 OIDC、CodexGateway 和图片输入。
+   随后用小范围真实任务核对 Worker 进度、R2 快照和草稿无重复。
 2. 中断恢复要验证：已上传但尚未确认的快照不能推进 Worker 指针；确认完成的
    批次在新运行器上从 R2 恢复；结果不明时停止并核对 Worker `lastBatch`，
    不重复提交模型结果。既有草稿审批与 Instagram 发布设置不因迁移改变。
