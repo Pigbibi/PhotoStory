@@ -17,7 +17,6 @@ jobs:
     env:
       PHOTOSTORY_URL: ${{ vars.PHOTOSTORY_URL }}
       PHOTOSTORY_BATCH_TOKEN: ${{ secrets.PHOTOSTORY_BATCH_TOKEN }}
-      PHOTOSTORY_STATE_DIR: ${{ runner.temp }}/photostory-state
       PHOTOSTORY_STATE_BACKEND: cloudflare
       CODEX_GATEWAY_COMMAND: ${{ github.workspace }}/scripts/github_gateway.py
       CODEX_GATEWAY_BACKEND: service
@@ -33,3 +32,5 @@ jobs:
         run: python scripts/cloud_inventory.py status
       - name: Process one bounded step
         run: python scripts/process_batch.py
+        env:
+          PHOTOSTORY_STATE_DIR: ${{ runner.temp }}/photostory-state
