@@ -5,11 +5,18 @@ from unittest.mock import patch,MagicMock
 from PIL import Image
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import process_batch as b
+from cross_review import SCHEMA as CROSS_SCHEMA
+
+def cross_checks(prompt):
+ drafts=json.loads(prompt.split('Post data:\n',1)[1])['drafts']
+ return {'checks':[{'draftId':d['id'],'duplicateIds':[],'captionGrounded':True,'locationGrounded':True,
+                    'copy':{**{k:d[k] for k in ('title','caption','hashtags','reason')},
+                            'photos':[{k:p[k] for k in ('id','alt')} for p in d['photos']]}} for d in drafts]}
 
 class ProcessorRunTests(unittest.TestCase):
  def test_screened_pixels_reach_grouping_and_saved_crop(self):
   data=io.BytesIO();Image.new('RGB',(800,600),'blue').save(data,'JPEG')
-  photo={'id':'p','captured':'2026-08-18T10:00:00+08:00','taken':1000,'area':None}
+  photo={'id':'p','captured':'2026-08-18T10:00:00+08:00','taken':1000,'area':[22.1,113.5]}
   safe={'id':'p','decision':'allow','flags':[],'landscape':True,'aesthetic':8,'description':'Coast','peopleRole':'none','compositionClear':True,'contentKind':'permanent_scenery',
         'light':'day','scene':'architecture','place':{'city':'Macau','landmark':'The Parisian Macao','evidence':'public landmark','confidence':'high'}}
   inv=MagicMock();inv.scan.return_value=True;inv.next_batch.return_value=[photo]
@@ -25,7 +32,10 @@ class ProcessorRunTests(unittest.TestCase):
    else:result={}
    return json.dumps(result).encode()
   def gateway(prompt,records,paths,schema,cwd):
-   if schema==b.SCREEN_SCHEMA:return {'photos':[safe]}
+   if schema==b.SCREEN_SCHEMA:
+    self.assertEqual(records[0]['area'],[22.1,113.5])
+    return {'photos':[safe]}
+   if schema==CROSS_SCHEMA:return cross_checks(prompt)
    self.assertEqual([p['id'] for p in records],['p'])
    self.assertEqual(records[0]['light'],'day');self.assertEqual(records[0]['scene'],'architecture');self.assertEqual(records[0]['place']['city'],'Macau')
    self.assertIn('Target aspect: 3:2',prompt)
@@ -58,6 +68,7 @@ class ProcessorRunTests(unittest.TestCase):
    return json.dumps(result).encode()
   def gateway(prompt,records,paths,schema,cwd):
    if schema==b.SCREEN_SCHEMA:return {'photos':[safe[p['id']] for p in records]}
+   if schema==CROSS_SCHEMA:return cross_checks(prompt)
    ids=[p['id'] for p in records];calls.append(ids)
    # The detail has a lower raw-image score but the better final crop.
    return {'drafts':[{'title':'Landmark','caption':'Public landmark.','hashtags':'#Architecture','reason':'Same site and light',

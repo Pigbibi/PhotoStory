@@ -129,6 +129,7 @@ async function internal(r, e, p) {
   if (!job) return failure("job_conflict", 409);
   if (p === "/internal/source" && r.method === "POST") {
     const used = await e.DB.prepare("SELECT id FROM photos").all();
+    const prior=(await e.DB.prepare("SELECT id,body FROM drafts WHERE json_extract(body,'$.status') IN ('draft','approved') ORDER BY CASE json_extract(body,'$.status') WHEN 'approved' THEN 0 ELSE 1 END,rowid DESC LIMIT 50").all()).results;
     const view=await settingsView(e);
     return json({
       accessToken: await auth.microsoftToken(e),
@@ -141,6 +142,7 @@ async function internal(r, e, p) {
       captionLanguage: "en",
       editorLanguage: "zh-CN", // Legacy jobs keep their original prompt language.
       ...JSON.parse(job.body),
+      referenceDrafts:prior.map(row=>{const d=JSON.parse(row.body);return {id:row.id,status:d.status,title:d.title,caption:d.caption.slice(0,400),photos:d.photos.slice(0,2).map(p=>({alt:p.alt}))};}),
       draftLimit: Math.max(0,Math.min(8,view.settings.draftLimit,view.settings.pendingLimit-view.pending)),
     });
   }
@@ -187,6 +189,8 @@ async function internal(r, e, p) {
       seen = new Set();
     if (new Set(drafts.map((d) => d.id)).size !== drafts.length)
       throw new Error("duplicate_draft");
+    const crossChecks=Array.isArray(b.crossReviews)?b.crossReviews:[];
+    if(crossChecks.length && (crossChecks.length!==drafts.length || new Set(crossChecks.map(x=>x?.draftId)).size!==drafts.length || crossChecks.some(x=>!drafts.some(d=>d.id===x?.draftId))))throw new Error('invalid_batch');
     const photos = new Map(b.photos.map((p) => [p.id, p]));
     const stmts = inventory?[inventory]:[];
     for (const d of drafts) {
@@ -227,8 +231,11 @@ async function internal(r, e, p) {
       }
       const evidence=Array.isArray(b.autoReviews)?b.autoReviews.filter(x=>x?.draftId===d.id):[];
       const boundedEvidence=evidence.length===1?{policy:evidence[0].policy,photoIds:evidence[0].photoIds,screens:Array.isArray(evidence[0].screens)?evidence[0].screens.map(s=>({id:s.id,decision:s.decision,landscape:s.landscape,flags:Array.isArray(s.flags)?s.flags.slice(0,8):[],aesthetic:s.aesthetic,light:s.light,scene:s.scene,place:s.place})):[],review:evidence[0].review}:null;
-      const eligible=evidence.length===1&&strictApproval(d,evidence[0],previous.reviewMode);
-      const reviewed={...d,...(boundedEvidence?{strictReviewEvidence:boundedEvidence}: {})};
+      const check=crossChecks.find(x=>x?.draftId===d.id);
+      if(check && (!Array.isArray(check.duplicateIds)||check.duplicateIds.length>8||new Set(check.duplicateIds).size!==check.duplicateIds.length||check.duplicateIds.some(id=>!validId(id)||id===d.id)||typeof check.captionGrounded!=='boolean'||typeof check.locationGrounded!=='boolean'))throw new Error('invalid_batch');
+      const crossReview=check?{status:'checked',duplicateIds:check.duplicateIds,captionGrounded:check.captionGrounded,locationGrounded:check.locationGrounded}:{status:'unavailable'};
+      const eligible=evidence.length===1&&strictApproval(d,evidence[0],previous.reviewMode)&&crossReview.status==='checked'&&!crossReview.duplicateIds.length&&crossReview.captionGrounded&&crossReview.locationGrounded;
+      const reviewed={...d,crossReview,...(boundedEvidence?{strictReviewEvidence:boundedEvidence}: {})};
       const approved={...reviewed,status:"approved",approvalSource:"strict_ai_v1",autoApprovedAt:Date.now(),strictReviewSoftFields:ownerPreferenceCounters(evidence[0])};
       // Re-read the owner's mode inside the write transaction: switching to
       // manual during inference must prevent automatic approval at commit.

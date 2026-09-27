@@ -84,6 +84,11 @@ export function reviewDraft(current, input, now=Date.now()) {
   const unchanged = ["title", "caption", "hashtags", "photos", "aspect"].every(
     (k) => JSON.stringify(next[k]) === JSON.stringify(normalizedCurrent[k]),
   );
+  const samePhotoIds=next.photos.length===current.photos.length&&next.photos.every(p=>current.photos.some(c=>c.id===p.id));
+  const sameCopy=['title','caption','hashtags'].every(k=>next[k]===normalizedCurrent[k]);
+  const crossReview=current.crossReview&&samePhotoIds
+    ? {...current.crossReview,...(sameCopy?{}:{captionGrounded:null,locationGrounded:null})}
+    : undefined;
   if (input.action === "approve" && !unchanged)
     throw new Error("save_before_approval");
   return {
@@ -92,6 +97,7 @@ export function reviewDraft(current, input, now=Date.now()) {
     ...(unchanged && input.action==="save" && current.status==="approved" && current.approvalSource ? {approvalSource:current.approvalSource} : {}),
     ...(unchanged && current.strictReviewSoftFields ? {strictReviewSoftFields:current.strictReviewSoftFields} : {}),
     ...(unchanged && current.strictReviewEvidence ? {strictReviewEvidence:current.strictReviewEvidence} : {}),
+    ...(crossReview?{crossReview}:{}),
     status:
       input.action === "approve"
         ? "approved"

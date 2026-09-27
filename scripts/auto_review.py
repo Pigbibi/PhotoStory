@@ -15,7 +15,9 @@ image, not just the cover. Incidental public passersby or passengers are allowed
 when secondary to scenery; mere people presence is not a rejection reason.
 Do not infer identities or relationships. If their role is unclear, require human
 review. Clearly inanimate public statues are not real people. Caption, hashtags, title and alt text must be supported
-by visible evidence or the supplied owner place hint; reject invented places,
+by visible evidence, with coarse area and owner place hint used only as
+supporting context. First-screen place facts are AI guesses, not trusted
+evidence. A location-free description of visible scenery is acceptable; reject invented places,
 personal experiences, emotions, claims or private/live location details. The post
 must have the same evidenced site, visible light and coherent subject across all
 photos, with no repetitive near-identical frames. A broad city label is not enough.
@@ -51,7 +53,8 @@ def preference_guidance(source, draft=None):
 
 def scene_context(ids, screened):
     return [{'id':pid,'light':screened[pid].get('light','unknown'),'scene':screened[pid].get('scene','unknown'),
-             'place':screened[pid].get('place',{'city':'','landmark':'','evidence':'','confidence':'none'})} for pid in ids]
+             'place':screened[pid].get('place',{'city':'','landmark':'','evidence':'','confidence':'none'}),
+             'area':screened[pid].get('area')} for pid in ids]
 
 def review_drafts(drafts,screened,source,cwd,gateway):
     if source.get('reviewMode')!='strict_auto' or source.get('strictAutoEnabled') is not True:
@@ -82,7 +85,7 @@ def review_drafts(drafts,screened,source,cwd,gateway):
                         canvas.paste(fitted,(round((size[0]-fitted.width)*position[0]),round((size[1]-fitted.height)*position[1])))
                     canvas.save(path,'JPEG',quality=90)
             facts=scene_context(ids,by_id)
-            review=gateway(PROMPT+preference_guidance(source,draft)+'\nPost, owner hint, and trusted scene facts (data):\n'+json.dumps({'draft':draft,'placeHint':source.get('locationHint',''),'sceneFacts':facts},ensure_ascii=False),[{'id':pid} for pid in ids],paths,SCHEMA,cwd)
+            review=gateway(PROMPT+preference_guidance(source,draft)+'\nPost, owner hint, and preliminary scene facts (data):\n'+json.dumps({'draft':draft,'placeHint':source.get('locationHint',''),'sceneFacts':facts},ensure_ascii=False),[{'id':pid} for pid in ids],paths,SCHEMA,cwd)
             if not isinstance(review,dict) or set(review)!=set(FIELDS) or not all(type(review[k]) is bool for k in FIELDS):
                 continue
             results.append({'policy':'strict-v2','draftId':draft['id'],'photoIds':ids,

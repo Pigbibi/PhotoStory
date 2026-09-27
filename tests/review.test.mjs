@@ -37,6 +37,11 @@ test("editing an approved draft invalidates approval", () => {
     "draft",
   );
 });
+test('duplicate warning follows the same photos while edited copy loses its AI verdict',()=>{
+ const current={...draft(),crossReview:{status:'checked',duplicateIds:['older'],captionGrounded:false,locationGrounded:false}};
+ const saved=reviewDraft(current,{...current,action:'save',caption:'A corrected coast.'});
+ assert.deepEqual(saved.crossReview,{status:'checked',duplicateIds:['older'],captionGrounded:null,locationGrounded:null});
+});
 test("cannot publish through review actions", () => {
   assert.throws(
     () => reviewDraft(draft(), { ...draft(), action: "publish" }),
@@ -99,10 +104,12 @@ test('rejection feedback is validated and stored once for later curation',async 
  assert.deepEqual(feedback,{categories:{weak_cover:1},recent:[{category:'weak_cover',note:'The second frame is stronger.'}]});
  assert.equal((await send({...draft(),action:'trash'})).status,409);
  assert.deepEqual(JSON.parse((await DB.prepare("SELECT value FROM state WHERE key='ownerRejectionFeedback'").first()).value),feedback);
+ await DB.prepare('INSERT INTO drafts VALUES(?,?,1)').bind('prior',JSON.stringify({...draft(),id:'prior',status:'approved'})).run();
  await api('/api/jobs',{folder:'Photos',range:'all'});
  const claim=await(await api('/internal/claim',{},true)).json();
  const sourceResponse=await api('/internal/source',{jobId:claim.id,lease:claim.lease},true);
  assert.equal(sourceResponse.status,200);
  const source=await sourceResponse.json();
  assert.deepEqual(source.ownerRejectionFeedback,feedback);
+ assert.deepEqual(source.referenceDrafts,[{id:'prior',status:'approved',title:'海岸',caption:'A quiet coast.',photos:[{alt:'Coast'}]}]);
 });

@@ -311,5 +311,10 @@
   "按已批准队列调整": "Adapt to approved queue",
   "固定每周窗口": "Fixed weekly window",
   "已批准队列 1–2 篇每 7 天、3–5 篇每 3 天、6 篇以上每天最多 1 篇；有未确定发布结果时暂停。": "With 1–2 approved posts, publish at most every 7 days; with 3–5, every 3 days; with 6 or more, at most once daily. Uncertain publishing outcomes pause the queue.",
-  "实际发布间隔按已批准队列积压量调整，每天最多一篇；前次尝试或授权问题会延后。": "The actual interval follows the approved backlog, with at most one post daily. Earlier attempts or authorization issues may delay it."
+  "实际发布间隔按已批准队列积压量调整，每天最多一篇；前次尝试或授权问题会延后。": "The actual interval follows the approved backlog, with at most one post daily. Earlier attempts or authorization issues may delay it.",
+  "疑似与「{titles}」拍摄同一画面；请只批准要保留的一篇。": "قد تعرض هذه الصورة المشهد نفسه في «{titles}». وافق فقط على المنشور الذي تريد الاحتفاظ به.",
+  "文案或标签含有画面未能证实的细节，请核对并修改。": "قد تتضمن التسمية أو الوسوم تفاصيل لا تؤكدها الصور. راجعها وصححها.",
+  "地点或站名与画面证据可能不符，请逐字核对标牌。": "قد لا يطابق اسم المكان أو المحطة ما يظهر في الصورة. تحقق من حروف اللافتة بدقة.",
+  "跨草稿和文案核对未完成，请人工检查后再批准。": "لم تكتمل مقارنة المسودات ومراجعة التسمية. تحقق منهما يدويًا قبل الموافقة.",
+  "文案修改后尚未重新核对，请人工检查地点和事实。": "لم تُراجع التسمية المعدلة مرة أخرى. تحقق يدويًا من أسماء الأماكن والحقائق."
 }
