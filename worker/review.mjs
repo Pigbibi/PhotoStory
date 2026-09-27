@@ -24,6 +24,15 @@ function translations(value) {
   }
   return {translations:result};
 }
+function travel(value){
+  if(value===undefined)return {};
+  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).sort().join(',')!=='area,day'||
+    !Number.isSafeInteger(value.day)||value.day<0||value.day>100000)throw new Error('invalid_travel');
+  const area=value.area;
+  if(area!==null&&(!Array.isArray(area)||area.length!==2||area.some((x,i)=>
+    typeof x!=='number'||!Number.isFinite(x)||Math.abs(x)>(i===0?90:180)||Math.abs(x-Math.round(x*10)/10)>1e-9)))throw new Error('invalid_travel');
+  return {travel:{day:value.day,area}};
+}
 export function validateDraft(input) {
   if (!input || !validId(input.id)) throw new Error("invalid_id");
   const title = text(input.title, "title", 160),
@@ -46,6 +55,7 @@ export function validateDraft(input) {
     id: input.id,
     title,
     ...translations(input.translations),
+    ...travel(input.travel),
     caption,
     hashtags,
     photos,
@@ -76,6 +86,7 @@ export function reviewDraft(current, input, now=Date.now()) {
     ...input,
     id: current.id,
     reason: current.reason,
+    travel: current.travel,
     translations:input.title===current.title?current.translations:undefined,
   });
   if (next.photos.some((p) => !current.photos.some((c) => c.id === p.id)))

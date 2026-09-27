@@ -76,6 +76,12 @@ test("untrusted generated status is reset on import", () => {
     "draft",
   );
 });
+test('private travel hint survives copy edits and cannot be changed by an owner form',()=>{
+ const current={...draft(),travel:{day:20000,area:[13.7,100.5]}};
+ const saved=reviewDraft(current,{...current,action:'save',caption:'A different coast.',travel:{day:20000,area:[22.3,114.2]}});
+ assert.deepEqual(saved.travel,current.travel);
+ assert.throws(()=>validateDraft({...draft(),travel:{day:20000,area:[91,100.5]}}),/invalid_travel/);
+});
 test("removing all photos is rejected", () => {
   assert.throws(
     () => reviewDraft(draft(), { ...draft(), action: "save", photos: [] }),

@@ -47,6 +47,8 @@ class ProcessorRunTests(unittest.TestCase):
   draft=completed[0]['drafts'][0]
   self.assertEqual(draft['aspect'],'3:2')
   self.assertEqual(draft['photos'][0]['frame'],{'mode':'crop','x':50,'y':20})
+  self.assertEqual(draft['travel']['area'],[22.1,113.5])
+  self.assertIsInstance(draft['travel']['day'],int)
 
  def test_split_calls_have_unique_draft_ids_and_preserve_final_crop_cover(self):
   data=io.BytesIO();Image.new('RGB',(800,600),'blue').save(data,'JPEG')
