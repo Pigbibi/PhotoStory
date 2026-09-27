@@ -32,7 +32,7 @@ test('machine cannot request an automatic candidate while publishing is manual',
 });
 
 import {seal,put} from '../worker/auth.mjs';
-import {automatic,eligible,claimedEligible,adaptiveInterval} from '../worker/automatic-publishing.mjs';
+import {automatic,eligible,claimedEligible,adaptiveInterval,sameTrip} from '../worker/automatic-publishing.mjs';
 import * as pub from '../worker/publishing.mjs';
 const jpeg=()=>new Uint8Array([255,216,255,192,0,17,8,2,208,4,56,3,1,17,0,2,17,0,3,17,0,255,218,0,8,1,1,0,0,63,0,0,255,217]);
 const review={privacySafe:true,captionGrounded:true,locationGrounded:true,coherent:true,compositionGood:true,noDuplicateFrames:true,needsHumanReview:false};
@@ -66,6 +66,26 @@ test('adaptive cadence follows approved backlog with one post per day at most',(
  const d={status:'approved',approvalSource:'owner_scheduled_v1',ownerApprovedAt:101,photos:[{frame:{mode:'crop'}}]};
  assert.equal(eligible(d,s,Date.parse('2026-09-10T11:15:00Z')),true);
  assert.equal(eligible(d,s,Date.parse('2026-09-10T12:15:00Z')),false);
+});
+test('travel continuity uses coarse place and capture days without naming a destination',()=>{
+ const bangkok={travel:{day:20000,area:[13.7,100.5]}};
+ assert.equal(sameTrip(bangkok,{travel:{day:20005,area:[7.9,98.4]}}),true);
+ assert.equal(sameTrip(bangkok,{travel:{day:20005,area:[22.3,114.2]}}),false);
+ assert.equal(sameTrip(bangkok,{travel:{day:20030,area:[13.7,100.5]}}),false);
+ assert.equal(sameTrip(bangkok,{travel:{day:20005,area:null}}),true);
+ assert.equal(sameTrip(bangkok,{travel:{day:20015,area:null}}),false);
+ assert.equal(sameTrip(bangkok,{title:'Legacy draft'}),false);
+});
+test('automatic queue finishes the current trip before an older approved other trip',async t=>{
+ const {env,DB,d}=await fixture(t);
+ const anchor={...d,travel:{day:20000,area:[13.7,100.5]}};
+ await DB.prepare("UPDATE drafts SET body=? WHERE id='d'").bind(JSON.stringify(anchor)).run();
+ const hongkong={...d,id:'hk',autoApprovedAt:d.autoApprovedAt+1,travel:{day:20005,area:[22.3,114.2]},photos:[{...d.photos[0],id:'hk-photo'}]};
+ const thailand={...d,id:'thai',autoApprovedAt:d.autoApprovedAt+2,travel:{day:20005,area:[7.9,98.4]},photos:[{...d.photos[0],id:'thai-photo'}]};
+ await DB.prepare('INSERT INTO drafts VALUES(?,?,1)').bind('hk',JSON.stringify(hongkong)).run();
+ await DB.prepare('INSERT INTO drafts VALUES(?,?,1)').bind('thai',JSON.stringify(thailand)).run();
+ await DB.prepare("INSERT INTO publications VALUES('d','old',1,'published','{}',?,0)").bind(Date.now()-8*86400000).run();
+ assert.equal((await automatic(env,{action:'candidate'})).draft.id,'thai');
 });
 test('adaptive claim uses the current queue size and still blocks recent attempts',async t=>{
  const {env,DB,d,s}=await fixture(t);

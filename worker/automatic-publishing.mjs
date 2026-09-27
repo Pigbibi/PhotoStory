@@ -14,6 +14,16 @@ export function scheduledWindowOpen(s,now=Date.now()){
 export function adaptiveInterval(backlog){
  return backlog>=6?24*3600000:backlog>=3?3*24*3600000:publishing.AUTO_PUBLISH_INTERVAL;
 }
+export function sameTrip(left,right){
+ const a=left?.travel,b=right?.travel;
+ if(!Number.isSafeInteger(a?.day)||!Number.isSafeInteger(b?.day))return false;
+ const days=Math.abs(a.day-b.day);
+ if(days>21)return false;
+ if(!Array.isArray(a.area)||!Array.isArray(b.area))return days<=10;
+ const [lat1,lon1]=a.area.map(x=>x*Math.PI/180),[lat2,lon2]=b.area.map(x=>x*Math.PI/180);
+ const h=Math.sin((lat2-lat1)/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin((lon2-lon1)/2)**2;
+ return 12742*Math.asin(Math.min(1,Math.sqrt(h)))<=900;
+}
 export function claimedEligible(d,s){
  const owner=d.approvalSource==='owner_scheduled_v1';
  return s?.publishMode==='automatic'&&s.reviewMode==='strict_auto'&&Number.isSafeInteger(s.autoPublishSince)&&
@@ -50,8 +60,11 @@ export async function automatic(e,b){
   // Prepared work is never reclaimed after a crash. A recent attempt and any
   // ambiguous operation block the next post even when the queue grows.
   if(await e.DB.prepare("SELECT id FROM publications WHERE created>? OR status IN ('publishing','working','uncertain') LIMIT 1").bind(Date.now()-interval).first())return null;
-  const d=waiting.find(d=>eligible(d,s));
-  if(!d)return null;
+  const ready=waiting.filter(d=>eligible(d,s));
+  if(!ready.length)return null;
+  const last=await e.DB.prepare("SELECT d.body FROM publications p JOIN drafts d ON d.id=p.draft_id WHERE p.status='published' ORDER BY p.created DESC LIMIT 1").first();
+  const anchor=last?JSON.parse(last.body):null;
+  const d=anchor?ready.find(d=>sameTrip(d,anchor))||ready[0]:ready[0];
   const publication=await publishing.prepare(e,d.id,d.version,{since:s.autoPublishSince,userId:s.autoPublishUserId,ownerScheduled:d.approvalSource==='owner_scheduled_v1',adaptive:s.adaptivePublishing===true,interval});
   return {draft:d,publication};
  }

@@ -25,6 +25,9 @@ Cloudflare R2 bucket, and processor.
 - Supports manual publishing to a configured Instagram professional account.
   Strict AI review and low-frequency automatic publishing are separate opt-in
   settings; manual approval and manual publishing are the defaults.
+- When automatic publishing is enabled, it favors another approved post from
+  the most recently published trip, using capture days and coarse area. Missing
+  travel hints fall back to approval order; the publishing cadence is unchanged.
 - Stores publication records and offers owner-confirmed historical matching to
   avoid reusing the same source photo.
 

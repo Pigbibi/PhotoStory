@@ -675,6 +675,14 @@ def run():
                     drafts.extend(validated_groups(grouped,{p['id'] for p in themed},job['id']+'-'+batch_id+'-'+direction+'-'+str(theme_index),dimensions)[:remaining])
             from cross_review import cross_review
             drafts,cross_reviews=cross_review(drafts,allowed,source.get('referenceDrafts',[]),cwd,gateway,source.get('locationHint',''))
+            # A private coarse travel hint orders approved posts later. It is
+            # never used as a place name in the copy or published image.
+            screened_by_id={p['id']:p for p in allowed}
+            for draft in drafts:
+                selected=[screened_by_id[p['id']] for p in draft['photos']]
+                days=[int(photo_time({'photo':{'takenDateTime':p['captured']}}).timestamp()//86400) for p in selected]
+                areas=[p.get('area') for p in selected]
+                draft['travel']={'day':min(days),'area':areas[0] if areas[0] is not None and all(a==areas[0] for a in areas) else None}
             # Unsupported copy is deferred, not saved with a place that the
             # owner would have to fact-check.
             used_ids={p['id'] for d in drafts for p in d['photos']}
