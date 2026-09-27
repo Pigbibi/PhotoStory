@@ -42,7 +42,7 @@ CodexGateway 服务及登录继续留在 VPS，仍为其他仓库服务；PhotoS
    批次在新运行器上从 R2 恢复；结果不明时停止并核对 Worker `lastBatch`，
    不重复提交模型结果。既有草稿审批与 Instagram 发布设置不因迁移改变。
 3. 只有手动运行及恢复验证通过后，将仓库变量
-   `PHOTOSTORY_PROCESSOR_ENABLED=true`。定时任务在每小时第 17、47 分钟
+   `PHOTOSTORY_PROCESSOR_ENABLED=true`。定时任务在每小时第 11、41 分钟
    尝试启动；GitHub schedule 可能延迟或漏跑，须关注工作流失败与长期无运行。
 4. 观察至少一次实际定时运行及任务进度回读，再清理 PhotoStory 专属的
    `photostory-batch` / `photostory-ai` / cleanup timer 与安装目录。先保留
