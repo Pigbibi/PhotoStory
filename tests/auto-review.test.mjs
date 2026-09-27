@@ -19,14 +19,14 @@ test('strict automatic approval requires all evidence and explicit mode',()=>{
  assert.equal(strictApproval({...draft,aspect:'3:2'},evidence(),'strict_auto'),false);
  const e=evidence();e.photoIds=['other'];assert.equal(strictApproval(draft,e,'strict_auto'),false);
 });
-async function run(t,mode,disableAtCommit=false){
+async function run(t,mode,disableAtCommit=false,crossReview={duplicateIds:[],captionGrounded:true,locationGrounded:true}){
  const {env,DB,api}=await setup(t);
  await DB.prepare('INSERT INTO state VALUES(?,?,NULL)').bind('automation',JSON.stringify({...defaults,reviewMode:mode})).run();
  await api('/api/jobs',{folder:'Photos',range:'1m'});
  const job=await(await api('/internal/claim',{},true)).json();
  const d={...draft,id:job.id+'-batch-1'},e={...evidence(),draftId:d.id};
  if(disableAtCommit){const batch=DB.batch;DB.batch=async stmts=>{await DB.prepare("UPDATE state SET value=json_set(value,'$.reviewMode','manual') WHERE key='automation'").bind().run();return batch(stmts);};}
- const r=await api('/internal/complete',{jobId:job.id,lease:job.lease,batchId:'batch',more:false,progress:{phase:'complete',total:1,processed:1,analyzed:1,batches:1},drafts:[d],photos:[{id:'p',safety:'allow',flags:[],jpeg:'/9j/'}],autoReviews:[e]},true);
+ const r=await api('/internal/complete',{jobId:job.id,lease:job.lease,batchId:'batch',more:false,progress:{phase:'complete',total:1,processed:1,analyzed:1,batches:1},drafts:[d],photos:[{id:'p',safety:'allow',flags:[],jpeg:'/9j/'}],autoReviews:[e],crossReviews:crossReview?[{draftId:d.id,...crossReview}]:[]},true);
  assert.equal(r.status,200);return JSON.parse((await DB.prepare('SELECT body FROM drafts').first()).body);
 }
 test('manual mode never auto-approves even with a positive AI result',async t=>assert.equal((await run(t,'manual')).status,'draft'));
@@ -36,6 +36,11 @@ test('strict mode records AI approval; disabling it at commit leaves a draft',as
  const changed=reviewDraft(saved,{...saved,action:'save',caption:'New caption'});assert.equal(changed.status,'draft');assert.equal(changed.approvalSource,undefined);
 });
 test('switching back to manual wins over in-flight positive AI review',async t=>assert.equal((await run(t,'strict_auto',true)).status,'draft'));
+test('duplicate, unsupported place, or missing cross-check prevents AI approval',async t=>{
+ assert.equal((await run(t,'strict_auto',false,{duplicateIds:['prior'],captionGrounded:true,locationGrounded:true})).status,'draft');
+ assert.equal((await run(t,'strict_auto',false,{duplicateIds:[],captionGrounded:true,locationGrounded:false})).status,'draft');
+ assert.equal((await run(t,'strict_auto',false,null)).crossReview.status,'unavailable');
+});
 test('cropped approval binds the exact ratio and every crop position',()=>{
  const d={...draft,aspect:'3:2',photos:[{...draft.photos[0],frame:{mode:'crop',x:50,y:20}}]};
  const e={...evidence(),policy:'strict-v2',reviewedPost:{title:d.title,caption:d.caption,hashtags:d.hashtags,aspect:d.aspect,photos:d.photos}};

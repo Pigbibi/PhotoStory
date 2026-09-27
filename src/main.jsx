@@ -290,6 +290,7 @@ function App() {
               <Editor
                 key={current.id + ":" + current.version}
                 draft={current}
+                relatedDrafts={drafts}
                 demo={demo}
                 busy={busy}
                 update={update}
@@ -328,7 +329,7 @@ function App() {
   );
 }
 const feedbackLabels={not_scenery:'不是景点或风景',wrong_place_time:'地点或时间不符',incoherent:'照片主题不连贯',weak_cover:'封面或构图较弱',inaccurate_caption:'文案或标签不准确',ordinary:'普通或重复',other:'其他原因'};
-function Editor({ draft, demo, busy, update, onPublication, publishingEnabled, publishingSchedule, onPublishingSettings }) {
+function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, publishingEnabled, publishingSchedule, onPublishingSettings }) {
   const locked=Boolean(draft.publication&&draft.publication.status!=='prepared');
   busy=busy||locked;
   const {t,date,locale}=useI18n();
@@ -464,6 +465,11 @@ function Editor({ draft, demo, busy, update, onPublication, publishingEnabled, p
           <strong>{t("发布前，请看每一张照片。")}</strong>
           <p>{t("检查人物、私人信息、地点和文案。AI 可能漏判，批准仍需要你的判断。")}</p>
         </div>
+        {draft.crossReview?.duplicateIds?.length>0 && <p className="review-warning" role="alert">{t("疑似与「{titles}」拍摄同一画面；请只批准要保留的一篇。",{titles:draft.crossReview.duplicateIds.map(id=>relatedDrafts.find(x=>x.id===id)?.title||id).join('、')})}</p>}
+        {draft.crossReview?.captionGrounded===false && <p className="review-warning" role="alert">{t("文案或标签含有画面未能证实的细节，请核对并修改。")}</p>}
+        {draft.crossReview?.locationGrounded===false && <p className="review-warning" role="alert">{t("地点或站名与画面证据可能不符，请逐字核对标牌。")}</p>}
+        {draft.crossReview?.status==='unavailable' && <p className="review-warning" role="alert">{t("跨草稿和文案核对未完成，请人工检查后再批准。")}</p>}
+        {draft.crossReview?.status==='checked' && draft.crossReview.captionGrounded===null && <p className="review-warning" role="alert">{t("文案修改后尚未重新核对，请人工检查地点和事实。")}</p>}
         <button
           className="button primary"
           disabled={busy || dirty || draft.status === "approved"}

@@ -279,6 +279,9 @@ Classify light as day, golden_hour, blue_hour, night, or unknown from visible
 illumination only. Classify one primary scene: landscape, wildlife, architecture,
 culture, street, water, or unknown. A public city or landmark may be named ONLY
 when a clearly readable public sign or an unmistakable public landmark supports it.
+The supplied area is a coarse coordinate hint: use it only to reject an
+inconsistent place, never to name an exact station or building. If the image
+and area do not support the same place, omit the place name.
 Read public venue signs and recognizable heritage symbols carefully: retain the
 specific museum/landmark and Olympic context in the description when visible,
 not merely generic architecture or colorful sculpture. Do not infer an unseen
@@ -316,16 +319,19 @@ an hour alone, especially across time zones. Upload dates are not capture dates.
 Coarse coordinates are grouping hints, not an exact location or a place name.
 Never include coordinates, exact capture times or a personal travel itinerary in
 captions, titles, hashtags or alt text.
-Each candidate includes light and place facts from the safety pass. Mention a
-city or landmark only when every selected photo supplies the same high-confidence
-place fact; never add another place. Describe night, blue hour, golden hour or
+Each candidate includes light and place facts from the safety pass. Those place
+facts may be wrong. Mention a city or landmark only when every selected photo
+supports the same high-confidence place and the coarse area, when available,
+does not conflict. If the exact place is unclear, omit it from title, caption,
+hashtags and alt text; describe what is visible instead. Never turn the coarse
+area or owner hint alone into an exact station or building name. Describe night, blue hour, golden hour or
 daytime only when every selected photo supplies that same light fact. Choose a
 strong cover based on the FINAL CROP, subject clarity and visual impact; a
 preliminary aesthetic score is only a hint. Exclude weak record shots and
 unrelated street scenes even if their score is high. A single clear landmark
 photo is enough. A weak group may be omitted.
-Use readable public signage and supported landmark facts as the caption's main
-subject, including Olympic heritage where visible. Prefer specific supported
+Use clearly readable public signage and supported landmark facts when reliable,
+including Olympic heritage where visible. Prefer specific supported
 content over generic phrases such as sports architecture or color in motion.
 Keep each photo's alt text specific; never transfer a sign from one image to an
 unrelated image. Use
@@ -632,7 +638,7 @@ def run():
                     batch.append(photo);paths.append(path);assets[photo['id']]=image
                 if not batch:
                     continue
-                result = gateway(SCREEN_PROMPT, [{"id":p["id"], "captured":p["captured"]} for p in batch], paths, SCREEN_SCHEMA, cwd)
+                result = gateway(SCREEN_PROMPT, [{"id":p["id"], "captured":p["captured"], "area":p.get("area")} for p in batch], paths, SCREEN_SCHEMA, cwd)
                 safe = accepted_screening(result, [p["id"] for p in batch])
                 safe_ids = {p["id"] for p in safe}
                 for photo in batch:
@@ -667,13 +673,13 @@ def run():
                     themed_prompt=prompt+"\nPrimary scene for this call: "+themed[0].get('scene','unknown')
                     grouped=gateway(themed_prompt,themed,[cwd/(p['id']+'.jpg') for p in themed],GROUP_SCHEMA,cwd)
                     drafts.extend(validated_groups(grouped,{p['id'] for p in themed},job['id']+'-'+batch_id+'-'+direction+'-'+str(theme_index),dimensions)[:remaining])
-            # Preserve the editor's final-crop cover choice, not the raw-image score.
+            from cross_review import cross_review
+            drafts,cross_reviews=cross_review(drafts,allowed,source.get('referenceDrafts',[]),cwd,gateway,source.get('locationHint',''))
+            # Unsupported copy is deferred, not saved with a place that the
+            # owner would have to fact-check.
             used_ids={p['id'] for d in drafts for p in d['photos']}
             for p in allowed:
-                if p['id'] not in used_ids:
-                    outcomes[p['id']]='theme_unmatched'
-                else:
-                    outcomes[p['id']]='grouped'
+                outcomes[p['id']]='grouped' if p['id'] in used_ids else 'theme_unmatched'
             from translate_labels import translate_labels
             drafts=translate_labels(drafts,gateway,cwd)
             auto_reviews=review_drafts(drafts,allowed,source,cwd,gateway)
@@ -683,7 +689,7 @@ def run():
             progress=inventory.proposed_progress()
             completion_started = True
             stage = 'completion'
-            result = call("/internal/complete", {**auth, "batchId":batch_id,"more":progress['processed']<progress['total'],"progress":progress,"drafts":drafts, "photos":photos,"autoReviews":auto_reviews})
+            result = call("/internal/complete", {**auth, "batchId":batch_id,"more":progress['processed']<progress['total'],"progress":progress,"drafts":drafts, "photos":photos,"autoReviews":auto_reviews,"crossReviews":cross_reviews})
             inventory.reconcile(batch_id)
             print("Completed; draft count:", result["count"])
     except Exception as error:

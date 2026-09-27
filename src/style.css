@@ -355,6 +355,13 @@ textarea {
   color: var(--muted);
   margin: 5px 0;
 }
+.review-warning {
+  color: #6b3f18;
+  background: #fff3e4;
+  border-inline-start: 3px solid #b87428;
+  padding: 10px 12px;
+  line-height: 1.5;
+}
 .bottom-note {
   border-top: 1px solid var(--line);
   padding-top: 18px;

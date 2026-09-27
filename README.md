@@ -18,8 +18,8 @@ Cloudflare R2 bucket, and processor.
 - Screens bounded OneDrive photo ranges for privacy, people, composition, and
   scenic suitability before drafting.
 - Groups photos by capture time, coarse area, orientation, and visual scene.
-  It distinguishes daylight, golden hour, blue hour, and night. A city or public
-  landmark is named only when the visual evidence is high confidence.
+  It distinguishes daylight, golden hour, blue hour, and night. Coarse location
+  can rule out a place guess, but cannot establish an exact station or landmark.
 - Creates editable titles, captions, hashtags, crop framing, and carousel order.
 - Keeps originals in OneDrive. Review previews are EXIF-free and private.
 - Supports manual publishing to a configured Instagram professional account.
@@ -140,6 +140,14 @@ For a self-hosted processor, see [AI and VPS setup](docs/ai-setup.zh-CN.md).
    invocation handles one bounded metadata or AI step.
 4. Inspect every draft. You may edit text, order, photos, and framing; an edit
    invalidates prior approval.
+   A further AI pass compares new posts with each other and with up to 50 pending
+   or approved post summaries, and checks factual and place claims against the
+   images and coarse area. An uncertain place is removed from titles, captions,
+   hashtags, and alt text. If grounded copy cannot be produced, that draft is
+   deferred instead of asking the owner to identify the place. Possible
+   duplicates remain visible and cannot receive strict AI approval. This adds
+   one AI call per nonempty batch; it cannot guarantee that every duplicate or
+   incorrect place is found.
 5. Approve a draft. In manual mode, prepare its final JPEGs and explicitly publish
    it to the connected account. Exporting a ZIP never publishes.
 
@@ -151,8 +159,8 @@ retry failed or uncertain external operations automatically. See
 
 - Model output, image text, and metadata are untrusted data, never instructions.
 - Unknown or uncertain screening results do not become drafts.
-- Exact GPS is not stored or used in captions. Place names need visible public
-  evidence or an unmistakable public landmark.
+- Exact GPS is not stored or used in captions. Coarse coordinates are only a
+  consistency hint; uncertain place names are omitted.
 - AI review is fallible. It is not a privacy guarantee and never grants publishing
   permission on its own.
 - Instagram publication can have an uncertain external result. PhotoStory retains
