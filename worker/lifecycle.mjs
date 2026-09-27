@@ -5,6 +5,7 @@ import {get,put} from './auth.mjs';
 import {jobInput} from './jobs.mjs';
 import {publishingAccount} from './instagram.mjs';
 import {storageView,cleanupImages} from './storage.mjs';
+import {cleanupInventories} from './inventory-state.mjs';
 export const DAY=86400000, RETENTION=30*DAY;
 export const defaults={publishMode:'manual',autoPublishSince:null,autoPublishWeekday:null,autoPublishHour:null,reviewMode:"manual",version:0,enabled:false,frequency:'weekly',weekday:1,monthDay:1,hour:9,
   folder:'',range:'1m',start:null,end:null,maxPhotos:20,analysisLimit:300,draftLimit:6,pendingLimit:20,cleanupEnabled:true,nextRun:null};
@@ -65,6 +66,7 @@ export async function maintenance(e,now=Date.now(),temporaryCleanup=null){
   await refreshInstagram(e,now).catch(()=>{});
   await cleanupPublications(e,now);
   await cleanupImages(e,now);
+  await cleanupInventories(e,now).catch(()=>{});
   if(temporaryCleanup && ['ok','busy','error','disabled'].includes(temporaryCleanup.status) && Number.isSafeInteger(temporaryCleanup.at) && temporaryCleanup.at<=now+60000 && temporaryCleanup.at>now-7*DAY){
     const safe={at:temporaryCleanup.at,status:temporaryCleanup.status};
     for(const k of ['files','directories'])if(Number.isSafeInteger(temporaryCleanup[k])&&temporaryCleanup[k]>=0)safe[k]=temporaryCleanup[k];

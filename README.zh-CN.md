@@ -53,6 +53,10 @@ Worker 管理登录、OAuth、设置、草稿、审核和发布状态；VPS 处�
 AI 运行环境拿不到 OneDrive refresh token、Worker Secret 或 Instagram 发布权限。
 处理器只接收已去 EXIF 的预览，不会删除 OneDrive 原图。
 
+也可以把 PhotoStory 处理器迁到 GitHub Actions：临时运行器从私有 Cloudflare R2
+恢复库存，使用 OIDC 调用继续运行在 VPS 的 CodexGateway。迁移步骤见
+[GitHub Actions 处理器迁移](docs/github-actions-processor.zh-CN.md)。
+
 ## 快速部署
 
 需要 Node.js 与 npm、Python 3 与 Pillow、Cloudflare 账号、GitHub OAuth App、支持
@@ -142,6 +146,7 @@ GitHub 登录不申请仓库权限。Microsoft 授权申请读取和离线访问
 - [私有 R2 存储](docs/storage.zh-CN.md)
 - [安全设计与部署检查](docs/security-audit.zh-CN.md)
 - [Linux 处理器隔离](deploy/systemd/README.md)
+- [GitHub Actions 处理器迁移](docs/github-actions-processor.zh-CN.md)
 
 ## 验证
 
