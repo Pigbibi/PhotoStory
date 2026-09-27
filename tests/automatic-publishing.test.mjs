@@ -14,13 +14,15 @@ test('owner scheduled cadence is optional and must be configured as a pair',()=>
  assert.equal(settingsInput({...defaults,reviewMode:'strict_auto',publishMode:'automatic',autoPublishWeekday:2,autoPublishHour:10}).autoPublishHour,10);
  assert.throws(()=>settingsInput({...defaults,autoPublishWeekday:2}),/invalid_settings/);
  assert.throws(()=>settingsInput({...defaults,autoPublishHour:10}),/invalid_settings/);
+ assert.equal(settingsInput({...defaults,reviewMode:'strict_auto',publishMode:'automatic',adaptivePublishing:true,autoPublishHour:19}).adaptivePublishing,true);
+ assert.throws(()=>settingsInput({...defaults,reviewMode:'strict_auto',publishMode:'automatic',adaptivePublishing:true,autoPublishWeekday:2,autoPublishHour:19}),/invalid_settings/);
 });
 test('session reports only publishing schedule fields needed by the owner queue',async t=>{
  const {env,DB}=await setup(t);
  await DB.prepare('INSERT INTO state VALUES(?,?,NULL)').bind('automation',JSON.stringify({...defaults,publishMode:'automatic',reviewMode:'strict_auto',autoPublishWeekday:2,autoPublishHour:10,autoPublishUserId:'private-id'})).run();
  const response=await (await import('../worker/index.mjs')).default.fetch(new Request('https://example.test/api/session',{headers:{Cookie:'__Host-photostory=session'}}),env);
  const value=await response.json();
- assert.deepEqual(value.publishingSchedule,{publishMode:'automatic',reviewMode:'strict_auto',weekday:2,hour:10});
+ assert.deepEqual(value.publishingSchedule,{publishMode:'automatic',reviewMode:'strict_auto',adaptive:false,weekday:2,hour:10});
  assert.ok(!JSON.stringify(value).includes('private-id'));
 });
 test('machine cannot request an automatic candidate while publishing is manual',async t=>{
@@ -30,7 +32,7 @@ test('machine cannot request an automatic candidate while publishing is manual',
 });
 
 import {seal,put} from '../worker/auth.mjs';
-import {automatic,eligible,claimedEligible} from '../worker/automatic-publishing.mjs';
+import {automatic,eligible,claimedEligible,adaptiveInterval} from '../worker/automatic-publishing.mjs';
 import * as pub from '../worker/publishing.mjs';
 const jpeg=()=>new Uint8Array([255,216,255,192,0,17,8,2,208,4,56,3,1,17,0,2,17,0,3,17,0,255,218,0,8,1,1,0,0,63,0,0,255,217]);
 const review={privacySafe:true,captionGrounded:true,locationGrounded:true,coherent:true,compositionGood:true,noDuplicateFrames:true,needsHumanReview:false};
@@ -55,6 +57,26 @@ test('owner scheduled approval needs an explicit current local week window',()=>
  assert.equal(eligible(d,s,Date.parse('2026-09-10T02:00:00Z')),false);
  assert.equal(claimedEligible(d,s),true);
  assert.equal(eligible(d,{...s,autoPublishWeekday:null,autoPublishHour:null},Date.parse('2026-09-10T01:15:00Z')),false);
+});
+test('adaptive cadence follows approved backlog with one post per day at most',()=>{
+ assert.equal(adaptiveInterval(1),7*86400000);
+ assert.equal(adaptiveInterval(3),3*86400000);
+ assert.equal(adaptiveInterval(6),86400000);
+ const s={publishMode:'automatic',reviewMode:'strict_auto',autoPublishSince:100,adaptivePublishing:true,autoPublishHour:19};
+ const d={status:'approved',approvalSource:'owner_scheduled_v1',ownerApprovedAt:101,photos:[{frame:{mode:'crop'}}]};
+ assert.equal(eligible(d,s,Date.parse('2026-09-10T11:15:00Z')),true);
+ assert.equal(eligible(d,s,Date.parse('2026-09-10T12:15:00Z')),false);
+});
+test('adaptive claim uses the current queue size and still blocks recent attempts',async t=>{
+ const {env,DB,d,s}=await fixture(t);
+ const hour=new Date(Date.now()+8*3600000).getUTCHours();
+ await put(env,'automation',{...s,adaptivePublishing:true,autoPublishHour:hour});
+ for(let i=2;i<=3;i++)await DB.prepare('INSERT INTO drafts VALUES(?,?,1)').bind('d'+i,JSON.stringify({...d,id:'d'+i,photos:[{...d.photos[0],id:'p'+i}]})).run();
+ await DB.prepare("INSERT INTO publications VALUES('recent','recent',1,'published','{}',?,0)").bind(Date.now()-2*86400000).run();
+ assert.equal(await automatic(env,{action:'candidate'}),null);
+ for(let i=4;i<=6;i++)await DB.prepare('INSERT INTO drafts VALUES(?,?,1)').bind('d'+i,JSON.stringify({...d,id:'d'+i,photos:[{...d.photos[0],id:'p'+i}]})).run();
+ assert.equal((await automatic(env,{action:'candidate'})).draft.id,'d');
+ assert.equal(await automatic(env,{action:'candidate'}),null);
 });
 test('automatic preparation is single-claim and never replays an abandoned preparation',async t=>{
  const {env,DB}=await fixture(t);

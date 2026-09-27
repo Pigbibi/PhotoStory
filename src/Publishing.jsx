@@ -5,10 +5,10 @@ async function request(path,body){
  if(!r.ok)throw new Error('publish_failed');return r.json();
 }
 export function nextOwnerWindow(schedule,now=Date.now()){
- if(!Number.isInteger(schedule?.weekday)||schedule.weekday<0||schedule.weekday>6||!Number.isInteger(schedule?.hour)||schedule.hour<0||schedule.hour>23)return null;
+ if(!Number.isInteger(schedule?.hour)||schedule.hour<0||schedule.hour>23||(!schedule.adaptive&&(!Number.isInteger(schedule.weekday)||schedule.weekday<0||schedule.weekday>6)))return null;
  const local=new Date(now+8*3600000);
- let slot=Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),local.getUTCDate()+(schedule.weekday-local.getUTCDay()+7)%7,schedule.hour)-8*3600000;
- if(slot<=now)slot+=7*86400000;
+ let slot=Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),local.getUTCDate()+(schedule.adaptive?0:(schedule.weekday-local.getUTCDay()+7)%7),schedule.hour)-8*3600000;
+ if(slot<=now)slot+=(schedule.adaptive?1:7)*86400000;
  return slot;
 }
 export function Publishing({draft,onChange,disabled,schedule,onSettings}){
@@ -23,7 +23,7 @@ export function Publishing({draft,onChange,disabled,schedule,onSettings}){
     <button className="text-button" onClick={onSettings}>{t('设置人工发布时间')}</button>
    </>:<>
     <p role="status">{t('下一个可用发布窗口：{time}',{time:date(nextOwnerWindow(schedule))})}</p>
-    <p className="muted">{t('每七天最多一次发布尝试；如有前次尝试或授权问题，可能继续等待。')}</p>
+    <p className="muted">{schedule.adaptive?t('实际发布间隔按已批准队列积压量调整，每天最多一篇；前次尝试或授权问题会延后。'):t('每七天最多一次发布尝试；如有前次尝试或授权问题，可能继续等待。')}</p>
    </>}
  </section>;
  const refresh=async()=>{const next=await request(base);setState(next);return next;};

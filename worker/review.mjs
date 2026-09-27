@@ -1,6 +1,7 @@
 import {LANGUAGES} from './languages.mjs';
 import {aspectValue,photoFrame} from './framing.mjs';
 const idPattern = /^[A-Za-z0-9_-]{1,128}$/;
+export const FEEDBACK_CATEGORIES=['not_scenery','wrong_place_time','incoherent','weak_cover','inaccurate_caption','ordinary','other'];
 export function validId(value) {
   return typeof value === "string" && idPattern.test(value);
 }
@@ -56,10 +57,16 @@ export function validateDraft(input) {
 }
 export function reviewDraft(current, input, now=Date.now()) {
   if (input.version !== current.version) throw new Error("version_conflict");
-  if(input.action==='trash' && ['draft','approved'].includes(current.status))
-    return {...current,status:'trash',trashedAt:now,version:current.version+1};
+  if(input.action==='trash' && ['draft','approved'].includes(current.status)){
+    let ownerFeedback;
+    if(input.feedback!==undefined){
+      if(!input.feedback||!FEEDBACK_CATEGORIES.includes(input.feedback.category)||typeof input.feedback.note!=='string'||input.feedback.note.length>400)throw new Error('invalid_feedback');
+      ownerFeedback={category:input.feedback.category,note:input.feedback.note.trim()};
+    }
+    return {...current,status:'trash',trashedAt:now,version:current.version+1,...(ownerFeedback?{ownerFeedback}:{})};
+  }
   if(input.action==='restore' && current.status==='trash'){
-    const {trashedAt,...rest}=current;
+    const {trashedAt,ownerFeedback,...rest}=current;
     return {...rest,status:'draft',version:current.version+1};
   }
   if(current.status==='trash')throw new Error('invalid_action');

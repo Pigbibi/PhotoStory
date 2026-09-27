@@ -78,9 +78,11 @@ running job while its VPS process may still be operating.
 
 Changing an approved draft's caption, tags, theme or photo order invalidates its
 approval; the next approval must target the saved version. Manual mode requires an
-owner publication action. Automatic mode accepts only new strict-AI-approved drafts
-created after activation and enforces a rolling seven-day attempt limit; manual
-attempts and failed preparation also count. An uncertain Meta result stops the
+owner publication action. Automatic mode accepts new strict-AI-approved drafts and
+owner-approved scheduled drafts created after activation. The fixed weekly mode
+enforces a rolling seven-day attempt limit; adaptive cadence can shorten it to
+three days or at least 24 hours as the approved backlog grows. Manual attempts
+and failed preparation also count. An uncertain Meta result stops the
 queue for verification instead of replaying a possibly successful request.
 
 OAuth starts require the configured AUTH_LIMITER binding and are limited to 20 per minute per Cloudflare location using a fixed key. This mitigates abuse but is not a global hard quota. Expired authentication records are removed in bounded batches on later auth writes. Live sessions and encrypted Microsoft tokens are preserved.

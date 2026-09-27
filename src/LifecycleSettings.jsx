@@ -12,7 +12,7 @@ export default function LifecycleSettings({api,notify,folder,onStatus,settingsDa
   },[settingsData,folder,onStatus]);
   useEffect(()=>{if(folder)setForm(f=>f&&!f.folder?{...f,folder}:f);},[folder,form!==null]);
   if(!form)return <p>{t("正在读取制作与保留规则…")}</p>;
-  const set=(k,v)=>setForm(f=>({...f,[k]:v,...(k==='publishMode'&&v==='automatic'?{reviewMode:'strict_auto'}:{}),...(k==='reviewMode'&&v==='manual'?{publishMode:'manual'}:{})}));
+  const set=(k,v)=>setForm(f=>({...f,[k]:v,...(k==='publishMode'&&v==='automatic'?{reviewMode:'strict_auto',adaptivePublishing:true,autoPublishWeekday:null,autoPublishHour:f.autoPublishHour??19}:{}),...(k==='reviewMode'&&v==='manual'?{publishMode:'manual'}:{})}));
   const save=async()=>{
     setBusy(true);
     try{const v=await api('/api/settings','PUT',form);setState(v);onSettingsChange?.(v);onStatus(v.backlogPaused);setForm(v.settings);notify('制作与保留规则已保存。正在进行的批次会先完成。');}
@@ -40,19 +40,20 @@ export default function LifecycleSettings({api,notify,folder,onStatus,settingsDa
     <p className="muted">{t("自动发布说明")}</p>
     {form.publishMode==='automatic'&&<div className="approval-note">
       <strong>{t('严格 AI 自动发布与人工排期发布')}</strong>
-      <p>{t('人工批准的草稿会在以下每周窗口发布；严格 AI 自动批准仍按原有安全规则处理。')}</p>
+      <label>{t('发布节奏')}<select value={form.adaptivePublishing?'adaptive':'weekly'} onChange={e=>setForm(f=>({...f,adaptivePublishing:e.target.value==='adaptive',autoPublishWeekday:e.target.value==='adaptive'?null:f.autoPublishWeekday,autoPublishHour:f.autoPublishHour??19}))}><option value="adaptive">{t('按已批准队列调整')}</option><option value="weekly">{t('固定每周窗口')}</option></select></label>
+      <p>{form.adaptivePublishing?t('已批准队列 1–2 篇每 7 天、3–5 篇每 3 天、6 篇以上每天最多 1 篇；有未确定发布结果时暂停。'):t('人工批准的草稿会在以下每周窗口发布；严格 AI 自动批准仍按原有安全规则处理。')}</p>
       <div className="date-fields">
-        <label>{t('人工排期发布日')}<select value={Number.isInteger(form.autoPublishWeekday)?form.autoPublishWeekday:''} onChange={e=>set('autoPublishWeekday',e.target.value===''?undefined:Number(e.target.value))}>
+        {!form.adaptivePublishing&&<label>{t('人工排期发布日')}<select value={Number.isInteger(form.autoPublishWeekday)?form.autoPublishWeekday:''} onChange={e=>set('autoPublishWeekday',e.target.value===''?undefined:Number(e.target.value))}>
           <option value="">{t('尚未设置')}</option>{Array.from({length:7},(_,i)=><option key={i} value={i}>{weekday(i)}</option>)}
-        </select></label>
+        </select></label>}
         <label>{t('人工排期发布时间')}<select value={Number.isInteger(form.autoPublishHour)?form.autoPublishHour:''} onChange={e=>set('autoPublishHour',e.target.value===''?undefined:Number(e.target.value))}>
           <option value="">{t('尚未设置')}</option>{Array.from({length:24},(_,i)=><option key={i} value={i}>{String(i).padStart(2,'0')}:00</option>)}
         </select></label>
       </div>
       <p className="muted">{t('保存后才会按新的排期生效。')}</p>
-      {!(Number.isInteger(form.autoPublishWeekday)&&Number.isInteger(form.autoPublishHour))&&<p className="muted">{t('人工排期尚未设置；人工批准稿会继续留在队列中。')}</p>}
+      {!(Number.isInteger(form.autoPublishHour)&&(form.adaptivePublishing||Number.isInteger(form.autoPublishWeekday)))&&<p className="muted">{t('人工排期尚未设置；人工批准稿会继续留在队列中。')}</p>}
     </div>}
-    <p className="approval-note">{state.settings.publishMode==='automatic'?t('自动发布已开启'):t('自动发布已关闭')}{state.settings.publishMode==='automatic'&&!(Number.isInteger(state.settings.autoPublishWeekday)&&Number.isInteger(state.settings.autoPublishHour))&&t(' · 人工排期尚未设置')}</p>
+    <p className="approval-note">{state.settings.publishMode==='automatic'?t('自动发布已开启'):t('自动发布已关闭')}{state.settings.publishMode==='automatic'&&!(Number.isInteger(state.settings.autoPublishHour)&&(state.settings.adaptivePublishing||Number.isInteger(state.settings.autoPublishWeekday)))&&t(' · 人工排期尚未设置')}</p>
     <label className="check"><input type="checkbox" checked={form.enabled} onChange={e=>set('enabled',e.target.checked)}/>{t("定期生成待审核草稿")}</label>
     {form.reviewMode!=="strict_auto" && form.publishMode!=='automatic' && <p className="muted">{t("只整理照片和文案，不会自动批准或发布。以下是独立的定期制作配置，不会改变上方的手动任务。")}</p>}
     <label>{t("定期制作的照片文件夹")}<input dir="ltr" value={form.folder} maxLength={300} onChange={e=>set('folder',e.target.value)}/></label>

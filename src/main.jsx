@@ -327,12 +327,14 @@ function App() {
     </>
   );
 }
+const feedbackLabels={not_scenery:'不是景点或风景',wrong_place_time:'地点或时间不符',incoherent:'照片主题不连贯',weak_cover:'封面或构图较弱',inaccurate_caption:'文案或标签不准确',ordinary:'普通或重复',other:'其他原因'};
 function Editor({ draft, demo, busy, update, onPublication, publishingEnabled, publishingSchedule, onPublishingSettings }) {
   const locked=Boolean(draft.publication&&draft.publication.status!=='prepared');
   busy=busy||locked;
   const {t,date,locale}=useI18n();
   const [form, setForm] = useState(structuredClone(draft)),
     [index, setIndex] = useState(0),
+    [rejecting,setRejecting]=useState(false),[feedbackCategory,setFeedbackCategory]=useState(''),[feedbackNote,setFeedbackNote]=useState(''),
     [exporting,setExporting]=useState(false),[exportProgress,setExportProgress]=useState(''),[exportError,setExportError]=useState(false);
   const download=async()=>{
     setExporting(true);setExportError(false);setExportProgress('');
@@ -456,6 +458,7 @@ function Editor({ draft, demo, busy, update, onPublication, publishingEnabled, p
         </label>
         {draft.status==='trash'?<>
           <p>{t("保留至 {date}，之后在启用清理时移除。",{date:date(draft.trashedAt+30*86400000)})}</p>
+          {draft.ownerFeedback&&<p>{t('不采用原因')}：{t(feedbackLabels[draft.ownerFeedback.category]||'其他原因')}{draft.ownerFeedback.note?` · ${draft.ownerFeedback.note}`:''}</p>}
           <button className="button primary" disabled={busy} onClick={()=>update(draft,'restore')}>{t("恢复到待审核")}</button>
         </>:<><div className="approval-note">
           <strong>{t("发布前，请看每一张照片。")}</strong>
@@ -475,7 +478,7 @@ function Editor({ draft, demo, busy, update, onPublication, publishingEnabled, p
         >{t("保存修改")}</button>
         <button className="button secondary" disabled={demo||busy||dirty||exporting||draft.status!=='approved'} onClick={download}>{exporting?t('正在生成…')+' '+exportProgress:t('下载成品 ZIP')}</button>
         <p className="muted">{t('从已批准原图生成统一 1080px 宽 JPEG，不保留 GPS；同时附上文案。')}</p>
-        {exportError&&<p role="alert">{t('导出失败：请确认批准和原图版本；仅支持 JPEG/PNG，单张最多 25 MB，且清晰度足够。')}</p>}
+        {exportError&&<p role="alert">{t('导出失败：请确认批准、原图格式和版本；单张最多 25 MB，且清晰度足够。')}</p>}
         {draft.status === "approved" && (
           <button
             className="text-button"
@@ -488,7 +491,13 @@ function Editor({ draft, demo, busy, update, onPublication, publishingEnabled, p
             ? t("请先保存修改，再批准这个版本。修改已批准的内容会重新进入待审核。")
             : t("批准后进入队列，连接 Instagram 后才能发布。")}
         </p>
-        <button className="text-button" disabled={busy||dirty} onClick={()=>update(draft,'trash')}>{t("不采用，移入回收站")}</button>
+        {!rejecting?<button className="text-button" disabled={busy||dirty} onClick={()=>setRejecting(true)}>{t("不采用，移入回收站")}</button>:<div className="approval-note">
+          <label>{t('不采用原因')}<select value={feedbackCategory} onChange={e=>setFeedbackCategory(e.target.value)}><option value="">{t('请选择原因')}</option>{Object.entries(feedbackLabels).map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}</select></label>
+          <label>{t('补充说明（可选）')}<textarea value={feedbackNote} maxLength={400} rows={3} onChange={e=>setFeedbackNote(e.target.value)}/></label>
+          <p className="muted">{t('反馈会作为后续制稿的参考，不会自行更改审核规则。')}</p>
+          <button className="button secondary" disabled={busy||!feedbackCategory||(feedbackCategory==='other'&&!feedbackNote.trim())} onClick={()=>update({...draft,feedback:{category:feedbackCategory,note:feedbackNote}},'trash')}>{t('确认不采用')}</button>
+          <button className="text-button" disabled={busy} onClick={()=>setRejecting(false)}>{t('取消')}</button>
+        </div>}
         </>}
       </section>
       {!demo&&draft.status==='approved'&&(publishingEnabled||draft.approvalSource==='owner_scheduled_v1')&&<Publishing draft={draft} onChange={onPublication} disabled={dirty} schedule={publishingSchedule} onSettings={onPublishingSettings} />}

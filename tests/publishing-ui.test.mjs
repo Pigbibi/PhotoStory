@@ -20,4 +20,6 @@ test('owner-approved draft explains missing schedule and the next available wind
  assert.match(render({publishMode:'automatic',reviewMode:'strict_auto',weekday:null,hour:null}),/Set publishing schedule/);
  assert.match(render({publishMode:'automatic',reviewMode:'strict_auto',weekday:2,hour:10}),/Next available publishing window/);
  assert.equal(nextOwnerWindow({weekday:2,hour:10},Date.parse('2026-09-29T02:00:00Z')),Date.parse('2026-10-06T02:00:00Z'));
+ assert.equal(nextOwnerWindow({adaptive:true,weekday:null,hour:19},Date.parse('2026-09-27T10:00:00Z')),Date.parse('2026-09-27T11:00:00Z'));
+ assert.match(render({publishMode:'automatic',reviewMode:'strict_auto',adaptive:true,weekday:null,hour:19}),/actual interval follows the approved backlog/i);
 });
