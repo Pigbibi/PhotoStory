@@ -676,7 +676,7 @@ function Settings({ session, notify }) {
           <p>{t("接入你已部署的兼容 AIGateway，复用其 Codex 能力。登录是否需要另行配置，取决于现有服务的运行账户和凭据管理。")}</p>
         </details>
         <p><a href={locale.startsWith("zh")?"https://github.com/Pigbibi/PhotoStory/blob/main/docs/ai-setup.zh-CN.md":"https://github.com/Pigbibi/PhotoStory/blob/main/README.md#ai-caption-language"} target="_blank" rel="noreferrer">{t("查看 AI 配置教程、密钥和权限说明 ↗")}</a></p>
-        <p>{t("运行模式在 VPS 上配置；本页的教程不会切换后台配置。任务排队不代表 AI 已经运行。")}</p>
+        <p><a href="https://github.com/Pigbibi/PhotoStory/blob/main/docs/github-actions-processor.zh-CN.md" target="_blank" rel="noreferrer">GitHub Actions + CodexGateway</a></p>
         {session?.user && (
           <>
             <button className="text-button" onClick={()=>refresh()}>{t("刷新任务状态")}</button>

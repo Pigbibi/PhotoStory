@@ -6,7 +6,7 @@ PhotoStory 是面向单个私人照片工作流的开源自部署选片台。它
 范围读取照片，生成可编辑草稿，再由所有者决定是否发布。
 
 仓库不包含任何真实照片、账号、令牌、数据库导出或作者的 AI 服务。每位部署者
-使用自己的 Cloudflare 资源、OneDrive、VPS 和 AI 运行环境。
+使用自己的 Cloudflare 资源、OneDrive、GitHub Actions 处理器和 AI 运行环境。
 
 ![界面设计示意](docs/design-concept.png)
 
@@ -42,26 +42,27 @@ PhotoStory 是单所有者工作流，不是多租户产品。一个部署实例
 ## 架构
 
 ```text
-浏览器 → Cloudflare Worker + D1（可选私有 R2）
+浏览器 → Cloudflare Worker + D1 + 私有 R2
                          ↕ 机器凭据接口
-                 受信任 VPS 处理器 → 隔离 AI 运行环境
-                         ↕
-                    OneDrive 与 Instagram
+                 GitHub Actions 处理器 → VPS CodexGateway
+                         ↕                    ↕
+                      OneDrive               Codex
 ```
 
-Worker 管理登录、OAuth、设置、草稿、审核和发布状态；VPS 处理有限扫描和模型调用。
+Worker 管理登录、OAuth、设置、草稿、审核和发布状态；GitHub Actions 运行有限扫描，
+从 R2 恢复私有 SQLite 库存，通过 GitHub OIDC 调用 VPS 上现有的 CodexGateway。
 AI 运行环境拿不到 OneDrive refresh token、Worker Secret 或 Instagram 发布权限。
 处理器只接收已去 EXIF 的预览，不会删除 OneDrive 原图。
 
-也可以把 PhotoStory 处理器迁到 GitHub Actions：临时运行器从私有 Cloudflare R2
-恢复库存，使用 OIDC 调用继续运行在 VPS 的 CodexGateway。迁移步骤见
+CodexGateway 与 Codex 登录留在 VPS，还可以服务其他仓库；自行托管的 VPS 处理器
+仍是可选方式。迁移步骤见
 [GitHub Actions 处理器迁移](docs/github-actions-processor.zh-CN.md)。
 
 ## 快速部署
 
 需要 Node.js 与 npm、Python 3 与 Pillow、Cloudflare 账号、GitHub OAuth App、支持
-个人 Microsoft 账号的 Entra 应用。处理器还需要受信任 Linux VPS 上已认证的 Codex
-CLI 或兼容的本地 AIGateway CLI。
+个人 Microsoft 账号的 Entra 应用、私有 R2 bucket，以及受信任 Linux 主机上
+已登录 Codex 的 CodexGateway 服务。
 
 ```sh
 npm ci
@@ -98,10 +99,10 @@ npm run deploy
 | `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET` | Worker Secret | 管理员登录 |
 | `MICROSOFT_CLIENT_ID`、`MICROSOFT_CLIENT_SECRET` | Worker Secret | OneDrive 授权 |
 | `TOKEN_ENCRYPTION_KEY` | Worker Secret | 用于 Microsoft 令牌的 32 字节 base64 AES-GCM 密钥 |
-| `BATCH_TOKEN` | Worker Secret | 验证 VPS 处理器 |
-| `PHOTOSTORY_BATCH_TOKEN` | VPS 私有环境文件 | 与 Worker 相同的机器凭据 |
-| `PHOTOSTORY_URL` | VPS 私有环境文件 | 你的站点地址 |
-| `CODEX_GATEWAY_COMMAND` | VPS 私有环境文件 | AI CLI 适配命令 |
+| `BATCH_TOKEN` | Worker Secret | 验证处理器 |
+| `PHOTOSTORY_BATCH_TOKEN` | GitHub Actions Secret | 与 Worker 相同的机器凭据 |
+| `PHOTOSTORY_URL` | GitHub Actions 变量 | 你的站点地址 |
+| `CODEX_GATEWAY_SERVICE_URL` | GitHub Actions 变量 | CodexGateway HTTPS 入口 |
 
 在你的 OAuth 应用中登记：
 
@@ -111,17 +112,19 @@ https://你的站点/auth/microsoft/callback
 ```
 
 GitHub 登录不申请仓库权限。Microsoft 授权申请读取和离线访问，具体文件夹和日期
-范围由处理器执行。VPS 与 AI 的完整配置见 [AI 与 VPS 配置](docs/ai-setup.zh-CN.md)。
+范围由处理器执行。Actions 设置见[处理器迁移指南](docs/github-actions-processor.zh-CN.md)；
+自行托管方案见 [AI 与 VPS 配置](docs/ai-setup.zh-CN.md)。
 
 ## 日常流程
 
 1. 使用允许名单中的 GitHub 账号登录并连接 OneDrive。
 2. 在网站选择照片目录和有限的拍摄日期范围。
-3. 在受信任 VPS 运行处理器；每次只处理一个有限的元数据或 AI 步骤。
+3. 在 GitHub Actions 手动运行 `Process PhotoStory`，或开启其定时开关；每次只处理
+   一个有限的元数据或 AI 步骤。
 4. 检查每篇草稿。修改文案、照片、顺序或构图都会使原批准失效。
 5. 批准草稿后，手动模式仍需在最终预览中明确点击发布。导出 ZIP 不会发布。
 
-可选 timer 只会在在线时推进待处理工作，不会自动重试失败或结果不明的外部操作。
+定时工作流只会在运行时推进待处理工作，不会自动重试失败或结果不明的外部操作。
 详见[制作与保留](docs/lifecycle.zh-CN.md)。
 
 ## 安全边界
