@@ -33,23 +33,32 @@ export async function original(e,draftId,photoId,version){
   stage='metadata';details=undefined;const r=await fetch(endpoint,{headers:{Authorization:'Bearer '+token},redirect:'manual',signal:AbortSignal.timeout(20000)});
   details={status:r.status};const meta=JSON.parse(new TextDecoder().decode(await bytes(r,1024*1024)));
   if(meta.id!==source.item||!meta.parentReference?.driveId||typeof meta.eTag!=='string'||await hash(meta.parentReference.driveId+':'+meta.id)!==photoId||await hash(photoId+'\0'+meta.eTag)!==source.version)throw new Error('source_changed');
-  if(!['image/jpeg','image/png'].includes(meta.file?.mimeType)||meta.video||meta.remoteItem)throw new Error('original_format');
+  const mime=meta.file?.mimeType;
+  if(!['image/jpeg','image/png','image/heic','image/heif'].includes(mime)||meta.video||meta.remoteItem){details={status:r.status,mimeType:mime||null};throw new Error('original_format');}
   if(!Number.isSafeInteger(meta.size)||meta.size<1||meta.size>MAX_ORIGINAL_BYTES)throw new Error('original_too_large');
   if(!Number.isSafeInteger(meta.image?.width)||!Number.isSafeInteger(meta.image?.height)||meta.image.width<1||meta.image.height<1||meta.image.width*meta.image.height>50000000)throw new Error('original_too_large');
   return meta;
  };
  const before=await metadata();
- const url=before['@microsoft.graph.downloadUrl'];
+ const converted=['image/heic','image/heif'].includes(before.file.mimeType);
+ let url=before['@microsoft.graph.downloadUrl'];
+ if(converted){
+  stage='conversion';details=undefined;
+  const r=await fetch(endpoint+'/content?format=jpg&width=2400&height=2400',{headers:{Authorization:'Bearer '+token},redirect:'manual',signal:AbortSignal.timeout(30000)});
+  details={status:r.status};
+  if(r.status!==302)throw new Error('original_format');
+  url=r.headers.get('Location');
+ }
  stage='download_host';details={host:typeof url==='string'?new URL(url).hostname:null};
  if(!downloadHost(url))throw new Error('source_unavailable');
  // The pre-authenticated URL is never exposed to the browser and never receives
  // the Graph bearer token. A second redirect is not followed.
  stage='download';details=undefined;const response=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(60000)});details={status:response.status};
  const data=await bytes(response,MAX_ORIGINAL_BYTES);
- if(data.length!==before.size)throw new Error('source_changed');
- if(before.file.mimeType==='image/jpeg' ? !(data[0]===255&&data[1]===216&&data[2]===255) : !(data[0]===137&&data[1]===80&&data[2]===78&&data[3]===71))throw new Error('original_format');
+ if(!converted&&data.length!==before.size)throw new Error('source_changed');
+ if(converted||before.file.mimeType==='image/jpeg' ? !(data[0]===255&&data[1]===216&&data[2]===255) : !(data[0]===137&&data[1]===80&&data[2]===78&&data[3]===71))throw new Error('original_format');
  await metadata();await reviewedDraft(e,draftId,version);
- return new Response(data,{headers:{'Content-Type':before.file.mimeType,'Content-Disposition':'attachment; filename="original"'}});
+ return new Response(data,{headers:{'Content-Type':converted?'image/jpeg':before.file.mimeType,'Content-Disposition':'attachment; filename="original"'}});
  }catch(err){try{await put(e,'original-diagnostic',{stage,...(details?{details}:{})},Date.now()+600000);}catch{}throw err;}
 }
 export async function recoverSource(e,id,item,fingerprint,policy){
