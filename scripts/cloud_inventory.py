@@ -15,6 +15,7 @@ import zipfile
 MAX_ARCHIVE = 24 * 1024 * 1024
 MAX_UNPACKED = 100 * 1024 * 1024
 DB_NAME = re.compile(r"(?:processed|[A-Za-z0-9_-]{1,80})\.sqlite3\Z")
+USER_AGENT = "PhotoStory/0.1 (+https://github.com/Pigbibi/PhotoStory)"
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -30,8 +31,6 @@ def opener(base):
 
 
 def archive(directory, job_id=None, source=None, policy=None, batch_id=None):
-    from inventory import Inventory
-
     directory = Path(directory)
     with tempfile.TemporaryDirectory(prefix="photostory-snapshot-") as tmp:
         snapshot = Path(tmp)
@@ -45,6 +44,8 @@ def archive(directory, job_id=None, source=None, policy=None, batch_id=None):
             if size > MAX_UNPACKED:
                 raise ValueError("inventory_too_large")
         if batch_id:
+            from inventory import Inventory
+
             copy = Inventory(snapshot, job_id, source, policy)
             try:
                 if source.get("mode") == "history_match":
@@ -95,7 +96,8 @@ class CloudInventory:
         self.token = token
 
     def _request(self, method, *, data=None, job_id=None, lease=None, digest=None, seed=False):
-        headers = {"Authorization": "Bearer " + self.token, "Accept": "application/json"}
+        headers = {"Authorization": "Bearer " + self.token, "Accept": "application/json",
+                   "User-Agent": USER_AGENT}
         if job_id:
             headers["X-Job-Id"] = job_id
         if lease:
@@ -116,7 +118,8 @@ class CloudInventory:
 
     def require_seed(self):
         request = urllib.request.Request(self.url + "/status", method="GET",
-                                         headers={"Authorization": "Bearer " + self.token})
+                                         headers={"Authorization": "Bearer " + self.token,
+                                                  "User-Agent": USER_AGENT})
         with self.opener.open(request, timeout=45) as response:
             status = json.load(response)
         if status.get("ready") is not True:

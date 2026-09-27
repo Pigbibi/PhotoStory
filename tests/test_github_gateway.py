@@ -53,6 +53,7 @@ class GatewayTests(unittest.TestCase):
             self.assertFalse(payload['search'])
             self.assertEqual(len(payload['images']), 1)
             self.assertEqual(requests[1].full_url, 'https://gateway.example/v1/codex')
+            self.assertEqual(requests[1].get_header('User-agent'), gateway.USER_AGENT)
 
     def test_invalid_service_url_fails_closed(self):
         with self.assertRaisesRegex(ValueError, 'invalid_gateway_url'):

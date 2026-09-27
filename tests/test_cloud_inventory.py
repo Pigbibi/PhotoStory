@@ -10,12 +10,21 @@ import os
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from cloud_inventory import archive, restore
+from cloud_inventory import CloudInventory, USER_AGENT, archive, restore
 from inventory import Inventory
 import process_batch
 
 
 class CloudInventoryTests(unittest.TestCase):
+    def test_requests_identify_photostory_client(self):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 204
+        client = CloudInventory('https://example.test', 'test')
+        with patch.object(client.opener, 'open', return_value=response) as opened:
+            client._request('GET')
+            self.assertEqual(opened.call_args.args[0].get_header('User-agent'), USER_AGENT)
+
     def test_processor_uploads_before_acknowledging_checkpoint(self):
         events = []
         cloud = MagicMock()
