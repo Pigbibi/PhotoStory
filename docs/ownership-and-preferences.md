@@ -20,21 +20,23 @@ separate D1 databases, separate OAuth applications, and separate machine tokens.
 
 ## What a preference signal records
 
-PhotoStory records two bounded, aggregate signals:
+PhotoStory records these bounded owner signals:
 
 | Owner action | Stored signal | How it is used |
 | --- | --- | --- |
 | Save a draft after removing one or more carousel photos | A count that the owner prefers a tighter shared visual subject | Future grouping is asked to avoid mixing visually different scenes |
 | Approve a strict-AI-reviewed draft when a soft quality item was false | Counts for coherence, composition, or duplicate-frame disagreement | Future strict review can rank otherwise safe quality choices more carefully |
+| Reject a draft with a reason | Category counts and the latest 20 notes, up to 400 characters each | Future grouping and captioning use them to avoid recurring mistakes |
 
-The signals contain no photo pixels, captions, location history, identity data,
-or per-photo rejection label. They are bounded counters stored in the deployment's
-private D1 state.
+Feedback contains no photo pixels. Owner-written notes may describe places or
+content; they stay in this deployment's private D1 state. Do not enter personal
+sensitive information in a note.
 
 ## What a preference signal cannot do
 
 Preferences are not model training and are not sent to another PhotoStory
-deployment. They cannot:
+deployment. Recent feedback is supplied as data to this deployment's configured
+CodexGateway for future drafts. It cannot:
 
 - make a private, uncertain, or unsafe photo eligible;
 - weaken people, location, privacy, approval, or publishing safeguards;

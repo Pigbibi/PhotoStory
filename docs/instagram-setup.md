@@ -239,8 +239,11 @@ processor advances one recorded Meta operation per tick before scanning more
 photos. Keep the timer online; this is best-effort processing, not an exact-time
 posting scheduler. Scheduled photo discovery is a separate setting.
 
-The limit is **one new automatic attempt per rolling seven days**, counting manual
-publications and failed preparation attempts too. An ambiguous or interrupted
+The fixed weekly mode permits **one new automatic attempt per rolling seven days**.
+The optional adaptive mode uses the approved, unpublished queue: 1–2 posts keep
+a seven-day interval, 3–5 use three days, and 6 or more use at least 24 hours.
+It starts only during the configured Asia/Shanghai hour. Manual publications
+and failed preparation attempts count toward the interval. An ambiguous or interrupted
 external request stops the queue for owner inspection; it is never blindly retried.
 Switching to manual blocks subsequent automatic requests, but cannot recall a
 request already sent to Meta. Re-enabling does not resume old automatic attempts.

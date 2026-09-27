@@ -137,6 +137,7 @@ async function internal(r, e, p) {
       strictAutoEnabled: view.settings.reviewMode==="strict_auto",
       ownerPreferenceCounters: await auth.get(e,'ownerPreferenceCounters') || {coherent:0,compositionGood:0,noDuplicateFrames:0},
       ownerCurationFeedback: await auth.get(e,'ownerCurationFeedback') || {removedFromCarousel:0},
+      ownerRejectionFeedback: await auth.get(e,'ownerRejectionFeedback') || {categories:{},recent:[]},
       captionLanguage: "en",
       editorLanguage: "zh-CN", // Legacy jobs keep their original prompt language.
       ...JSON.parse(job.body),
@@ -261,6 +262,7 @@ async function route(r, e) {
       publishingSchedule: s ? {
         publishMode: automation?.publishMode || 'manual',
         reviewMode: automation?.reviewMode || 'manual',
+        adaptive: automation?.adaptivePublishing === true,
         weekday: automation?.autoPublishWeekday ?? null,
         hour: automation?.autoPublishHour ?? null,
       } : undefined,
@@ -448,6 +450,13 @@ async function route(r, e) {
         const feedback=await auth.get(e,'ownerCurationFeedback')||{removedFromCarousel:0};
         feedback.removedFromCarousel=Math.min(1000,Number(feedback.removedFromCarousel||0)+removedPhotos.length);
         statements.push(e.DB.prepare("INSERT INTO state(key,value,expires) VALUES('ownerCurationFeedback',?,NULL) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify(feedback)));
+      }
+      if(input.action==='trash'&&next.ownerFeedback){
+        const feedback=await auth.get(e,'ownerRejectionFeedback')||{categories:{},recent:[]};
+        const category=next.ownerFeedback.category;
+        feedback.categories[category]=Math.min(1000,Number(feedback.categories[category]||0)+1);
+        feedback.recent=[...(Array.isArray(feedback.recent)?feedback.recent:[]),{category,note:next.ownerFeedback.note}].slice(-20);
+        statements.push(e.DB.prepare("INSERT INTO state(key,value,expires) SELECT 'ownerRejectionFeedback',?,NULL WHERE EXISTS(SELECT 1 FROM drafts WHERE id=? AND body=?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify(feedback),id,JSON.stringify(next)));
       }
       const updated=await e.DB.batch(statements);
       if (updated[0].meta.changes !== 1) return failure("version_conflict", 409);

@@ -7,9 +7,12 @@ import {storageView} from './storage.mjs';
 const fail=()=>{throw new Error('publication_conflict');};
 const fields=['privacySafe','captionGrounded','locationGrounded','coherent','compositionGood','noDuplicateFrames'];
 export function scheduledWindowOpen(s,now=Date.now()){
- if(!Number.isInteger(s?.autoPublishWeekday)||!Number.isInteger(s?.autoPublishHour))return false;
+ if(!Number.isInteger(s?.autoPublishHour))return false;
  const local=new Date(now+8*3600000);
- return local.getUTCDay()===s.autoPublishWeekday&&local.getUTCHours()===s.autoPublishHour;
+ return local.getUTCHours()===s.autoPublishHour&&(s.adaptivePublishing===true||local.getUTCDay()===s.autoPublishWeekday);
+}
+export function adaptiveInterval(backlog){
+ return backlog>=6?24*3600000:backlog>=3?3*24*3600000:publishing.AUTO_PUBLISH_INTERVAL;
 }
 export function claimedEligible(d,s){
  const owner=d.approvalSource==='owner_scheduled_v1';
@@ -19,7 +22,7 @@ export function claimedEligible(d,s){
 }
 export function eligible(d,s,now=Date.now()){
  const owner=d.approvalSource==='owner_scheduled_v1';
- return claimedEligible(d,s)&&(!owner||scheduledWindowOpen(s,now));
+ return claimedEligible(d,s)&&(!(owner||s.adaptivePublishing)||scheduledWindowOpen(s,now));
 }
 // Every machine operation is checked against current owner settings. The batch
 // credential is trusted to submit AI evidence, but cannot enable this mode.
@@ -41,13 +44,15 @@ export async function automatic(e,b){
    if(!claimedEligible(d,s)||JSON.parse(activeRow.body).autoPublishSince!==s.autoPublishSince)return null;
    return {draft:d,publication:await publishing.view(e,d.id)};
   }
-  // Prepared work is never automatically reclaimed after a crash. It remains
-  // private for manual inspection. This also bounds failed reviews to one/seven days.
-  if(await e.DB.prepare("SELECT id FROM publications WHERE created>? OR status IN ('publishing','working','uncertain') LIMIT 1").bind(Date.now()-publishing.AUTO_PUBLISH_INTERVAL).first())return null;
   const rows=await e.DB.prepare("SELECT body FROM drafts WHERE json_extract(body,'$.status')='approved' AND json_extract(body,'$.approvalSource') IN ('strict_ai_v1','owner_scheduled_v1') AND (json_extract(body,'$.autoApprovedAt')>? OR json_extract(body,'$.ownerApprovedAt')>?) AND NOT EXISTS(SELECT 1 FROM publications WHERE publications.draft_id=drafts.id) ORDER BY COALESCE(json_extract(body,'$.autoApprovedAt'),json_extract(body,'$.ownerApprovedAt')) LIMIT 100").bind(s.autoPublishSince,s.autoPublishSince).all();
-  const d=rows.results.map(r=>JSON.parse(r.body)).find(d=>eligible(d,s));
+  const waiting=rows.results.map(r=>JSON.parse(r.body)).filter(d=>claimedEligible(d,s));
+  const interval=s.adaptivePublishing?adaptiveInterval(waiting.length):publishing.AUTO_PUBLISH_INTERVAL;
+  // Prepared work is never reclaimed after a crash. A recent attempt and any
+  // ambiguous operation block the next post even when the queue grows.
+  if(await e.DB.prepare("SELECT id FROM publications WHERE created>? OR status IN ('publishing','working','uncertain') LIMIT 1").bind(Date.now()-interval).first())return null;
+  const d=waiting.find(d=>eligible(d,s));
   if(!d)return null;
-  const publication=await publishing.prepare(e,d.id,d.version,{since:s.autoPublishSince,userId:s.autoPublishUserId,ownerScheduled:d.approvalSource==='owner_scheduled_v1'});
+  const publication=await publishing.prepare(e,d.id,d.version,{since:s.autoPublishSince,userId:s.autoPublishUserId,ownerScheduled:d.approvalSource==='owner_scheduled_v1',adaptive:s.adaptivePublishing===true,interval});
   return {draft:d,publication};
  }
  const p=await e.DB.prepare('SELECT * FROM publications WHERE draft_id=? AND id=?').bind(b.draftId,b.publicationId).first();
