@@ -14,6 +14,7 @@ import urllib.request
 
 
 MAX_REQUEST_BYTES = 15_000_000  # Requires a 16 MB service-side cap for photo batches.
+USER_AGENT = "Pigbibi-CodexGateway/1.0"
 
 
 def regular_bytes(path, limit):
@@ -44,7 +45,8 @@ def oidc_token(audience):
     separator = "&" if parsed.query else "?"
     request = urllib.request.Request(
         url + separator + urllib.parse.urlencode({"audience": audience}),
-        headers={"Authorization": "bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]},
+        headers={"Authorization": "bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"],
+                 "User-Agent": USER_AGENT},
     )
     with urllib.request.urlopen(request, timeout=30) as response:
         token = json.load(response).get("value")
@@ -96,7 +98,8 @@ def main():
     token = oidc_token(os.environ.get("CODEX_GATEWAY_SERVICE_AUDIENCE", "codex-gateway"))
     request = urllib.request.Request(
         endpoint(os.environ["CODEX_GATEWAY_SERVICE_URL"]), data=body,
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json",
+                 "User-Agent": USER_AGENT},
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=660) as response:
