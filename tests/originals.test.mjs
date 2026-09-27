@@ -40,6 +40,39 @@ test('changed original or revoked approval during download prevents delivery',as
  await assert.rejects(original(env,'d',pid,1),/source_changed/);metaCalls=0;changed=false;
  await assert.rejects(original(env,'d',pid,1),/approval_required/);
 });
+test('HEIC originals use Graph JPEG conversion without exposing its token to the download host',async t=>{
+ const {env,pid}=await fixture(t);let metadataCalls=0;
+ t.mock.method(globalThis,'fetch',async(url,options)=>{
+  if(url.endsWith('/content?format=jpg&width=2400&height=2400')){
+   assert.equal(options.headers.Authorization,'Bearer fixture-token');
+   assert.equal(options.redirect,'manual');
+   return new Response(null,{status:302,headers:{Location:'https://files.1drv.com/converted'}});
+  }
+  if(url.startsWith('https://graph.microsoft.com/')){
+   metadataCalls++;
+   return Response.json({id:'item',parentReference:{driveId:'drive'},eTag:'v1',size:10,file:{mimeType:'image/heic'},image:{width:3000,height:2000}});
+  }
+  assert.equal(url,'https://files.1drv.com/converted');
+  assert.equal(options.headers,undefined);
+  return new Response(new Uint8Array([255,216,255,217]));
+ });
+ const response=await original(env,'d',pid,1);
+ assert.equal(response.headers.get('Content-Type'),'image/jpeg');
+ assert.equal((await response.arrayBuffer()).byteLength,4);
+ assert.equal(metadataCalls,2);
+});
+test('HEIC conversion rejects an untrusted redirect and non-JPEG bytes',async t=>{
+ const {env,pid}=await fixture(t);let unsafe=true;
+ t.mock.method(globalThis,'fetch',async(url)=>{
+  if(url.endsWith('/content?format=jpg&width=2400&height=2400'))return new Response(null,{status:302,headers:{Location:unsafe?'https://evil.invalid/file':'https://files.1drv.com/converted'}});
+  if(url.startsWith('https://graph.microsoft.com/'))return Response.json({id:'item',parentReference:{driveId:'drive'},eTag:'v1',size:10,file:{mimeType:'image/heic'},image:{width:3000,height:2000}});
+  assert.equal(url,'https://files.1drv.com/converted');
+  return new Response(new Uint8Array([1,2,3,4]));
+ });
+ await assert.rejects(original(env,'d',pid,1),/source_unavailable/);
+ unsafe=false;
+ await assert.rejects(original(env,'d',pid,1),/original_format/);
+});
 test('original API is private and accepts only same-origin POST requests',async t=>{
  const {env,pid}=await fixture(t);const path='https://example.test/api/export/d/'+pid;
  const r=await worker.fetch(new Request(path,{method:'POST',body:JSON.stringify({version:1})}),env);assert.equal(r.status,401);
