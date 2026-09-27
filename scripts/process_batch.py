@@ -15,6 +15,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import urllib.parse
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
@@ -511,6 +512,7 @@ def run():
     auth = {"jobId": job["id"], "lease": job["lease"]}
     completion_started = False
     stage = 'inventory'
+    inventory_operation = 'source'
     try:
         source = call("/internal/source", auth)
         localized_group_prompt=group_prompt(source.get('captionLanguage','en'),source.get('editorLanguage','zh-CN'))
@@ -519,14 +521,17 @@ def run():
         if not directory or not Path(directory).is_absolute(): raise Stop('setup_required')
         policy=hashlib.sha256((SCREEN_PROMPT+GROUP_PROMPT).encode()).hexdigest()
         if cloud:
+            inventory_operation = 'load'
             cloud.load(directory, job["id"], job["lease"])
         snapshot_source, snapshot_policy = source, policy
+        inventory_operation = 'open'
         inventory=Inventory(directory,job['id'],source,policy)
         inventory.reconcile(source.get('lastBatch'))
         if source.get('stopRequested'):
             completion_started=True
             call('/internal/checkpoint',{**auth,'progress':inventory.progress()})
             return
+        inventory_operation = 'scan'
         complete=inventory.scan(lambda url:graph(url,source['accessToken']),lambda item:candidate(item,source))
         if not complete or source.get('progress',{}).get('phase')=='scanning':
             completion_started=True
@@ -669,6 +674,10 @@ def run():
             inventory.reconcile(batch_id)
             print("Completed; draft count:", result["count"])
     except Exception as error:
+        if stage == 'inventory':
+            code = error.code if isinstance(error, urllib.error.HTTPError) else None
+            print('Inventory diagnostic:', inventory_operation, type(error).__name__,
+                  code if isinstance(code, int) and 400 <= code <= 599 else '')
         reason = failure_reason(error)
         safe_stage = failure_stage(stage)
         print("Stopped; reason:", reason, "stage:", safe_stage)
