@@ -1,0 +1,35 @@
+name: Process PhotoStory
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17,47 * * * *'
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: photostory-processor
+  cancel-in-progress: false
+jobs:
+  process:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PHOTOSTORY_PROCESSOR_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PHOTOSTORY_URL: ${{ vars.PHOTOSTORY_URL }}
+      PHOTOSTORY_BATCH_TOKEN: ${{ secrets.PHOTOSTORY_BATCH_TOKEN }}
+      PHOTOSTORY_STATE_DIR: ${{ runner.temp }}/photostory-state
+      PHOTOSTORY_STATE_BACKEND: cloudflare
+      CODEX_GATEWAY_COMMAND: ${{ github.workspace }}/scripts/github_gateway.py
+      CODEX_GATEWAY_BACKEND: service
+      CODEX_GATEWAY_SERVICE_URL: ${{ vars.CODEX_GATEWAY_SERVICE_URL }}
+      CODEX_GATEWAY_SERVICE_AUDIENCE: ${{ vars.CODEX_GATEWAY_SERVICE_AUDIENCE || 'codex-gateway' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r scripts/requirements.txt
+      - name: Verify private Cloudflare inventory
+        run: python scripts/cloud_inventory.py status
+      - name: Process one bounded step
+        run: python scripts/process_batch.py

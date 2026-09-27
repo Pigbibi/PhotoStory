@@ -65,6 +65,10 @@ The Worker owns authentication, OAuth, settings, drafts, approval state, and
 publication state. The VPS performs bounded scans and model calls. The AI runtime
 does not receive OneDrive refresh tokens, Worker secrets, or publishing authority.
 The processor receives EXIF-free previews; it never deletes OneDrive originals.
+An alternative GitHub Actions processor restores its private SQLite state from
+Cloudflare R2 and calls the existing VPS-hosted CodexGateway over GitHub OIDC.
+The Gateway and its Codex login remain on the VPS; see the
+[processor migration guide](docs/github-actions-processor.zh-CN.md).
 
 ## Quick start
 
@@ -168,6 +172,7 @@ See [privacy and operating limits](docs/privacy.md),
 - [Private R2 storage](docs/storage.md)
 - [Security design and deployment checks](docs/security-audit.zh-CN.md)
 - [Linux processor isolation](deploy/systemd/README.md)
+- [GitHub Actions processor migration](docs/github-actions-processor.zh-CN.md)
 
 ## Validation
 

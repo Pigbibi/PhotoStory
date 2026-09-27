@@ -356,10 +356,14 @@ def gateway_environment():
     # An allowlist prevents unrelated host secrets and loader hooks reaching AI.
     # HOME/CODEX_HOME must still belong to a dedicated, restricted VPS runtime.
     keys = ("PATH", "HOME", "LANG", "LC_ALL", "TZ", "CODEX_HOME")
+    backend = "service" if os.environ.get("CODEX_GATEWAY_BACKEND") == "service" else "local"
+    if backend == "service":
+        keys += ("CODEX_GATEWAY_SERVICE_URL", "CODEX_GATEWAY_SERVICE_AUDIENCE",
+                 "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
     env = {key: os.environ[key] for key in keys if key in os.environ}
     env.update(CODEX_GATEWAY_AUTO_INSTALL_CODEX="false",
                CODEX_GATEWAY_PROVIDER_CHAIN="codex", CODEX_GATEWAY_SEARCH="false",
-               CODEX_GATEWAY_BACKEND="local")
+               CODEX_GATEWAY_BACKEND=backend)
     return env
 
 
@@ -471,10 +475,25 @@ def run():
     token = os.environ.get("PHOTOSTORY_BATCH_TOKEN", "")
     if not base.startswith("https://") or not token or not os.environ.get("CODEX_GATEWAY_COMMAND"):
         raise Stop("setup_required")
+    cloud = None
+    if os.environ.get("PHOTOSTORY_STATE_BACKEND", "local") == "cloudflare":
+        from cloud_inventory import CloudInventory
+        cloud = CloudInventory(base, token)
+        cloud.require_seed()
+    elif os.environ.get("PHOTOSTORY_STATE_BACKEND", "local") != "local":
+        raise Stop("setup_required")
+    inventory = None
+    snapshot_source = snapshot_policy = None
+    directory = os.environ.get("PHOTOSTORY_STATE_DIR")
     def call(path, body):
+        if cloud and path in ("/internal/checkpoint", "/internal/complete"):
+            if not inventory or not directory or not snapshot_source or not snapshot_policy:
+                raise Stop("setup_required")
+            ref = cloud.save(directory, body["jobId"], body["lease"], snapshot_source,
+                             snapshot_policy, body.get("batchId") if path == "/internal/complete" else None)
+            body = {**body, "inventoryRef": ref}
         return json.loads(request(base + path, token=token, body=body))
     report=None
-    directory=os.environ.get('PHOTOSTORY_STATE_DIR')
     if directory:
         try: report=json.loads((Path(directory)/'cleanup-status.json').read_text())
         except (OSError,ValueError): pass
@@ -492,7 +511,6 @@ def run():
     auth = {"jobId": job["id"], "lease": job["lease"]}
     completion_started = False
     stage = 'inventory'
-    inventory = None
     try:
         source = call("/internal/source", auth)
         localized_group_prompt=group_prompt(source.get('captionLanguage','en'),source.get('editorLanguage','zh-CN'))
@@ -500,6 +518,9 @@ def run():
         directory=os.environ.get('PHOTOSTORY_STATE_DIR')
         if not directory or not Path(directory).is_absolute(): raise Stop('setup_required')
         policy=hashlib.sha256((SCREEN_PROMPT+GROUP_PROMPT).encode()).hexdigest()
+        if cloud:
+            cloud.load(directory, job["id"], job["lease"])
+        snapshot_source, snapshot_policy = source, policy
         inventory=Inventory(directory,job['id'],source,policy)
         inventory.reconcile(source.get('lastBatch'))
         if source.get('stopRequested'):

@@ -11,6 +11,7 @@ import {settingsView,saveSettings,maintenance,RETENTION} from './lifecycle.mjs';
 import { validateDraft, reviewDraft, validId } from "./review.mjs";
 import * as auth from "./auth.mjs";
 import * as health from './health.mjs';
+import {inventoryRequest,inventoryCommit,inventoryStatus} from './inventory-state.mjs';
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -73,6 +74,8 @@ async function machine(r, e) {
 }
 async function internal(r, e, p) {
   if (!(await machine(r, e))) return failure("unauthorized", 401);
+  if(p==='/internal/inventory/status'&&r.method==='GET')return inventoryStatus(e);
+  if(p==='/internal/inventory')return inventoryRequest(r,e);
   if(p==='/internal/health'&&r.method==='GET')return json(await health.view(e));
   if(p==='/internal/history-match'&&r.method==='POST')return json(await history.ingestMatches(e,await readJSON(r,128000)));
   if(p==='/internal/history-media'&&r.method==='POST'){
@@ -143,8 +146,13 @@ async function internal(r, e, p) {
   if (p === "/internal/checkpoint" && r.method === "POST") {
     const previous=JSON.parse(job.body), progress=progressInput(b.progress,previous.progress);
     if(progress.batches !== (previous.progress?.batches||0)) throw new Error("invalid_progress");
-    const updated=await e.DB.prepare("UPDATE jobs SET body=json_set(body,'$.progress',json(?)),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE 'pending' END,lease=NULL WHERE id=? AND lease=? AND status='running'")
-      .bind(JSON.stringify(progress),job.id,job.lease).run();
+    const inventory=await inventoryCommit(e,job,b);
+    const statements=[];
+    if(inventory)statements.push(inventory);
+    statements.push(e.DB.prepare("UPDATE jobs SET body=json_set(body,'$.progress',json(?)),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE 'pending' END,lease=NULL WHERE id=? AND lease=? AND status='running'")
+      .bind(JSON.stringify(progress),job.id,job.lease));
+    const results=await e.DB.batch(statements);
+    const updated=results.at(-1);
     if(updated.meta.changes!==1) return failure("job_conflict",409);
     return json({ok:true});
   }
@@ -173,12 +181,13 @@ async function internal(r, e, p) {
     if(progress.batches!==(previous.progress?.batches||0)+1 || progress.processed-(previous.progress?.processed||0)>previous.maxPhotos || b.more!==(progress.processed<progress.total)) throw new Error("invalid_progress");
     if(progress.phase!==(b.more?"processing":"complete")) throw new Error("invalid_progress");
     if(previous.analysisLimit && (!Number.isInteger(b.progress.analyzed)||progress.analyzed>previous.analysisLimit||progress.analyzed-(previous.progress?.analyzed||0)>progress.processed-(previous.progress?.processed||0)))throw new Error('invalid_progress');
+    const inventory=await inventoryCommit(e,job,b);
     const drafts = b.drafts.map(validateDraft),
       seen = new Set();
     if (new Set(drafts.map((d) => d.id)).size !== drafts.length)
       throw new Error("duplicate_draft");
     const photos = new Map(b.photos.map((p) => [p.id, p]));
-    const stmts = [];
+    const stmts = inventory?[inventory]:[];
     for (const d of drafts) {
       if(!d.id.startsWith(`${job.id}-${b.batchId}-`)) throw new Error("invalid_batch");
       const existing = await e.DB.prepare("SELECT id FROM drafts WHERE id=?")
