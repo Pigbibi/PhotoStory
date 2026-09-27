@@ -2,6 +2,7 @@
 import json
 import os
 import urllib.request
+from cloud_inventory import USER_AGENT
 
 
 def main():
@@ -14,7 +15,7 @@ def main():
     for _ in range(20):
         body=json.dumps({'cursor':cursor}).encode()
         request=urllib.request.Request(base+'/internal/travel-backfill',data=body,
-            headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'},method='POST')
+            headers={'Authorization':'Bearer '+token,'Content-Type':'application/json','User-Agent':USER_AGENT},method='POST')
         with urllib.request.urlopen(request,timeout=150) as response:
             result=json.load(response)
         if not isinstance(result,dict) or not all(type(result.get(k)) is int for k in ('updated','skipped')) or type(result.get('done')) is not bool:
