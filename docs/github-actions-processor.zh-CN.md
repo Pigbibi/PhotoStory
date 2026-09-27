@@ -16,6 +16,8 @@ CodexGateway 服务及登录继续留在 VPS，仍为其他仓库服务；PhotoS
    现有服务默认只接收 2 MB 请求；照片多图请求需要将服务端
    `CODEX_GATEWAY_SERVICE_MAX_REQUEST_BYTES` 设为至少 `16000000`。
    PhotoStory 客户端自身限制为 15 MB；超限会失败，不会改用其他模型。
+   PhotoStory 明确使用已经在此 VPS 登录下验证的 `gpt-6-sol`；如以后需要
+   更换，可设置仓库变量 `CODEX_GATEWAY_SERVICE_MODEL`，不改变其他仓库的路由。
 3. 将现有 CodexGateway HTTPS 入口和 PhotoStory 网站地址分别设为仓库变量
    `CODEX_GATEWAY_SERVICE_URL`、`PHOTOSTORY_URL`。将现有 Worker `BATCH_TOKEN`
    的对应值经受限输入设为仓库 Secret `PHOTOSTORY_BATCH_TOKEN`。不要把任何

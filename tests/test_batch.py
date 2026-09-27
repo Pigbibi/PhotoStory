@@ -98,6 +98,7 @@ class ScreeningTests(unittest.TestCase):
         with patch.dict(b.os.environ, {
             "PATH": "/usr/bin", "HOME": "/restricted-home", "CODEX_GATEWAY_BACKEND": "service",
             "CODEX_GATEWAY_SERVICE_URL": "https://gateway.example",
+            "CODEX_GATEWAY_SERVICE_MODEL": "gpt-6-sol",
             "ACTIONS_ID_TOKEN_REQUEST_URL": "https://github.example/oidc",
             "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "transport-token",
             "PHOTOSTORY_BATCH_TOKEN": "private-machine-token",
@@ -105,6 +106,7 @@ class ScreeningTests(unittest.TestCase):
         }, clear=True):
             env = b.gateway_environment()
         self.assertEqual(env['CODEX_GATEWAY_BACKEND'], 'service')
+        self.assertEqual(env['CODEX_GATEWAY_SERVICE_MODEL'], 'gpt-6-sol')
         self.assertEqual(env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'], 'transport-token')
         self.assertNotIn('PHOTOSTORY_BATCH_TOKEN', env)
         self.assertNotIn('GH_TOKEN', env)

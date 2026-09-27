@@ -27,6 +27,7 @@ jobs:
       CODEX_GATEWAY_BACKEND: service
       CODEX_GATEWAY_SERVICE_URL: ${{ vars.CODEX_GATEWAY_SERVICE_URL }}
       CODEX_GATEWAY_SERVICE_AUDIENCE: ${{ vars.CODEX_GATEWAY_SERVICE_AUDIENCE || 'codex-gateway' }}
+      CODEX_GATEWAY_SERVICE_MODEL: ${{ vars.CODEX_GATEWAY_SERVICE_MODEL || 'gpt-6-sol' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

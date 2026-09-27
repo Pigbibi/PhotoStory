@@ -85,6 +85,7 @@ def main():
         "prompt": regular_bytes(args.prompt_file, 128_000).decode("utf-8"),
         "output_schema": attachment(args.output_schema, 64_000),
         "images": images,
+        "model": os.environ.get("CODEX_GATEWAY_SERVICE_MODEL", "gpt-6-sol"),
         "timeout_seconds": 600,
         "sandbox": "read-only",
         "ask_for_approval": "never",
