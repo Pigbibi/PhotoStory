@@ -28,6 +28,8 @@ Cloudflare R2 bucket, and processor.
 - When automatic publishing is enabled, it favors another approved post from
   the most recently published trip, using capture days and coarse area. Missing
   travel hints fall back to approval order; the publishing cadence is unchanged.
+  Existing approved drafts can receive these private hints through the bounded
+  `travel_backfill` option in the processor workflow, without rescanning photos.
 - Stores publication records and offers owner-confirmed historical matching to
   avoid reusing the same source photo.
 

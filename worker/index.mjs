@@ -2,6 +2,7 @@ import * as history from './history.mjs';
 import * as publishing from './publishing.mjs';
 import {storeImage,readImage,migrateImages} from './storage.mjs';
 import {automatic} from './automatic-publishing.mjs';
+import {backfillTravel} from './travel.mjs';
 import * as instagram from './instagram.mjs';
 import {original,reviewedDraft,sourceRecord,recoverSource} from './originals.mjs';
 import {strictApproval,ownerPreferenceCounters} from './auto-review.mjs';
@@ -83,6 +84,9 @@ async function internal(r, e, p) {
   }
   if(p==='/internal/instagram-check'&&r.method==='GET')return json(await instagram.publishingHealth(e));
   if(p==='/internal/storage/migrate'&&r.method==='POST')return json(await migrateImages(e));
+  if(p==='/internal/travel-backfill'&&r.method==='POST'){
+    const b=await readJSON(r,4096);return json(await backfillTravel(e,b.cursor??null));
+  }
   if(p==='/internal/autopublish'&&r.method==='POST'){
     const result=await automatic(e,await readJSON(r,2600000));
     return result instanceof Response?result:json(result);
