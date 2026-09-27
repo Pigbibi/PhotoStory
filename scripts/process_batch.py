@@ -678,6 +678,13 @@ def run():
             code = error.code if isinstance(error, urllib.error.HTTPError) else None
             print('Inventory diagnostic:', inventory_operation, type(error).__name__,
                   code if isinstance(code, int) and 400 <= code <= 599 else '')
+            if inventory_operation == 'scan' and isinstance(error, urllib.error.HTTPError):
+                try:
+                    graph_code = json.loads(error.read(4096)).get('error', {}).get('code')
+                    if isinstance(graph_code, str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,63}', graph_code):
+                        print('Graph error code:', graph_code)
+                except (OSError, ValueError, AttributeError, TypeError):
+                    pass
         reason = failure_reason(error)
         safe_stage = failure_stage(stage)
         print("Stopped; reason:", reason, "stage:", safe_stage)
