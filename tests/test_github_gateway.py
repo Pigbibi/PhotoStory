@@ -49,6 +49,7 @@ class GatewayTests(unittest.TestCase):
             self.assertEqual(json.loads((work / 'result.json').read_text()), {'photos': []})
             payload = json.loads(requests[1].data)
             self.assertEqual(payload['provider_chain'], 'codex')
+            self.assertEqual(payload['model'], 'gpt-6-sol')
             self.assertEqual(payload['sandbox'], 'read-only')
             self.assertFalse(payload['search'])
             self.assertEqual(len(payload['images']), 1)

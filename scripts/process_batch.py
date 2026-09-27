@@ -358,7 +358,7 @@ def gateway_environment():
     keys = ("PATH", "HOME", "LANG", "LC_ALL", "TZ", "CODEX_HOME")
     backend = "service" if os.environ.get("CODEX_GATEWAY_BACKEND") == "service" else "local"
     if backend == "service":
-        keys += ("CODEX_GATEWAY_SERVICE_URL", "CODEX_GATEWAY_SERVICE_AUDIENCE",
+        keys += ("CODEX_GATEWAY_SERVICE_URL", "CODEX_GATEWAY_SERVICE_AUDIENCE", "CODEX_GATEWAY_SERVICE_MODEL",
                  "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
     env = {key: os.environ[key] for key in keys if key in os.environ}
     env.update(CODEX_GATEWAY_AUTO_INSTALL_CODEX="false",
