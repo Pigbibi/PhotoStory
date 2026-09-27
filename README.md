@@ -8,8 +8,8 @@ scenery into editable drafts, and keeps review and publishing under the owner's
 control.
 
 The repository contains no photos, accounts, tokens, database exports, or hosted
-AI service. You deploy your own Worker, D1 database, OneDrive connection, and
-optional VPS processor.
+AI service. You deploy your own Worker, D1 database, OneDrive connection,
+Cloudflare R2 bucket, and processor.
 
 ![Interface design concept](docs/design-concept.png)
 
@@ -54,28 +54,28 @@ the feature with more than one administrator.
 ## Architecture
 
 ```text
-Browser → Cloudflare Worker + D1 (+ optional private R2)
+Browser → Cloudflare Worker + D1 + private R2
                          ↕ machine-authenticated API
-                 trusted VPS processor → isolated AI runtime
-                         ↕
-                      OneDrive and Instagram
+              GitHub Actions processor → VPS CodexGateway
+                         ↕                  ↕
+                      OneDrive             Codex
 ```
 
 The Worker owns authentication, OAuth, settings, drafts, approval state, and
-publication state. The VPS performs bounded scans and model calls. The AI runtime
+publication state. GitHub Actions performs bounded scans, restores private SQLite
+state from R2, and calls the existing VPS CodexGateway with GitHub OIDC. The AI runtime
 does not receive OneDrive refresh tokens, Worker secrets, or publishing authority.
 The processor receives EXIF-free previews; it never deletes OneDrive originals.
-An alternative GitHub Actions processor restores its private SQLite state from
-Cloudflare R2 and calls the existing VPS-hosted CodexGateway over GitHub OIDC.
-The Gateway and its Codex login remain on the VPS; see the
+The Gateway and its Codex login remain on the VPS and can serve other repositories.
+A self-hosted VPS processor remains an alternative; see the
 [processor migration guide](docs/github-actions-processor.zh-CN.md).
 
 ## Quick start
 
 Requirements: Node.js and npm, Python 3 with Pillow, a Cloudflare account, a
 GitHub OAuth App, and a Microsoft Entra app that supports personal Microsoft
-accounts. The processor also needs an authenticated Codex CLI or a compatible
-local AIGateway CLI on a trusted Linux host.
+accounts. The Actions processor needs a private R2 bucket and an existing
+CodexGateway service with an authenticated Codex CLI on a trusted Linux host.
 
 ```sh
 npm ci
@@ -115,10 +115,10 @@ history, source file, frontend variable, issue, screenshot, or chat.
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Worker Secrets | Owner sign-in |
 | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | Worker Secrets | OneDrive consent |
 | `TOKEN_ENCRYPTION_KEY` | Worker Secret | 32-byte base64 AES-GCM key for Microsoft tokens |
-| `BATCH_TOKEN` | Worker Secret | Authenticates the VPS processor |
-| `PHOTOSTORY_BATCH_TOKEN` | private VPS environment | Same machine token |
-| `PHOTOSTORY_URL` | private VPS environment | Your Worker origin |
-| `CODEX_GATEWAY_COMMAND` | private VPS environment | Your AI CLI adapter |
+| `BATCH_TOKEN` | Worker Secret | Authenticates the processor |
+| `PHOTOSTORY_BATCH_TOKEN` | GitHub Actions Secret | Same machine token |
+| `PHOTOSTORY_URL` | GitHub Actions variable | Your Worker origin |
+| `CODEX_GATEWAY_SERVICE_URL` | GitHub Actions variable | HTTPS CodexGateway endpoint |
 
 Register these redirects with your own applications:
 
@@ -129,20 +129,21 @@ https://YOUR-SITE/auth/microsoft/callback
 
 GitHub login requests no repository scope. Microsoft consent requests read access
 and offline access; the processor applies the selected folder and date range.
-The full setup is in [AI and VPS setup](docs/ai-setup.zh-CN.md).
+The Actions setup is in the [processor migration guide](docs/github-actions-processor.zh-CN.md).
+For a self-hosted processor, see [AI and VPS setup](docs/ai-setup.zh-CN.md).
 
 ## Run the workflow
 
 1. Sign in with an allowed GitHub account and connect OneDrive.
 2. Select a folder and bounded capture-date range in the website.
-3. Run the processor on the trusted VPS. Each invocation handles one bounded
-   metadata or AI step.
+3. Run `Process PhotoStory` in GitHub Actions or enable its schedule. Each
+   invocation handles one bounded metadata or AI step.
 4. Inspect every draft. You may edit text, order, photos, and framing; an edit
    invalidates prior approval.
 5. Approve a draft. In manual mode, prepare its final JPEGs and explicitly publish
    it to the connected account. Exporting a ZIP never publishes.
 
-The optional timer advances pending work only while it is online. It does not
+The scheduled workflow advances pending work only while it runs. It does not
 retry failed or uncertain external operations automatically. See
 [lifecycle and retention](docs/lifecycle.zh-CN.md).
 

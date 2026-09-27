@@ -80,8 +80,7 @@ export default function LifecycleSettings({api,notify,folder,onStatus,settingsDa
     </div>
     <label className="check"><input type="checkbox" checked={form.cleanupEnabled} onChange={e=>set('cleanupEnabled',e.target.checked)}/>{t("定期清理过期回收站与临时文件")}</label>
     <p>{t("待审核和已批准的草稿长期保留。回收站保留 30 天；移出草稿的预览也至少保留 30 天，只清理没有草稿引用的图片。OneDrive 原图始终不删除。")}</p>
-    <p className="muted">{t("网站每日 04:00 清理过期回收站；VPS 每日 04:20 检查超过 24 小时的临时残留，运行中的任务会跳过。实际执行需后台在线，可能延后。关闭这里不影响正常调用结束后的即时临时清理。")}</p>
-    <p className="muted">{t("回收站上次清理：")}{state.cleanup.lastAt?when(state.cleanup.lastAt):t('尚未执行')}<br/>{t("下次检查：")}{state.settings.cleanupEnabled?when(state.cleanup.nextAt):t('已关闭')}<br/>{t("VPS 临时清理：")}{state.temporaryCleanup?when(state.temporaryCleanup.at)+' · '+({ok:t('完成'),busy:t('任务忙碌，已跳过'),error:t('未完成，请检查后台'),disabled:t('已关闭')}[state.temporaryCleanup.status]):t('等待首次报告')}</p>
+    <p className="muted">{t("回收站上次清理：")}{state.cleanup.lastAt?when(state.cleanup.lastAt):t('尚未执行')}<br/>{t("下次检查：")}{state.settings.cleanupEnabled?when(state.cleanup.nextAt):t('已关闭')}</p>
     <button className="button primary" disabled={busy} onClick={save}>{busy?t('正在保存…'):t('保存制作与保留规则')}</button>
   </section>;
 }
