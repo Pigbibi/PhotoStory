@@ -33,7 +33,7 @@ def failure_reason(error):
                'group_contract', 'https_required', 'image_too_large', 'invalid_graph_origin',
                'page_limit', 'photo_limit', 'redirect_blocked', 'response_too_large',
                'screen_contract', 'translation_contract', 'setup_required', 'thumbnail_missing', 'thumbnail_origin',
-               'history_not_complete', 'history_match_contract'}
+               'history_not_complete', 'history_match_contract', 'gateway_timeout'}
     # Inventory validation raises ValueError for a few fixed, non-sensitive
     # conditions (for example a missing configured folder). Preserve only this
     # explicit vocabulary; arbitrary provider text remains hidden.
@@ -70,6 +70,37 @@ def graph(url, token):
     if parsed.scheme != "https" or parsed.hostname != "graph.microsoft.com" or parsed.port not in (None, 443):
         raise Stop("invalid_graph_origin")
     return json.loads(request(url, token=token))
+
+
+def log_graph_failure(error):
+    from github_gateway import safe_failure_diagnostic, REQUEST_ID
+
+    diagnostic = safe_failure_diagnostic(error)
+    known_codes = {'invalidRequest', 'accessDenied', 'itemNotFound', 'notAllowed',
+                   'notSupported', 'serviceNotAvailable', 'activityLimitReached',
+                   'resourceModified', 'invalidRange', 'malformed', 'unknownError',
+                   'quotaLimitReached', 'unauthenticated', 'generalException', 'resyncRequired'}
+    try:
+        body = json.loads(error.read(4096)).get('error', {})
+        if isinstance(body, dict):
+            diagnostic['graph_code'] = body.get('code') if body.get('code') in known_codes else 'unknown'
+            inner = body.get('innerError') or body.get('innererror')
+            request_id = inner.get('request-id') if isinstance(inner, dict) else None
+            if isinstance(request_id, str) and REQUEST_ID.fullmatch(request_id):
+                diagnostic.setdefault('request_id', request_id)
+    except (OSError, ValueError, AttributeError, TypeError):
+        pass
+    try:
+        parsed = urllib.parse.urlsplit(error.url)
+        if parsed.scheme == 'https' and parsed.hostname == 'graph.microsoft.com':
+            endpoint = parsed.path.rstrip('/').rsplit('/', 1)[-1]
+            diagnostic['endpoint_kind'] = endpoint if endpoint in {'children', 'delta', 'thumbnails'} else 'item_or_other'
+            keys = set(urllib.parse.parse_qs(parsed.query, keep_blank_values=True))
+            diagnostic['query_keys'] = sorted(keys & {'$top', '$skip', '$skiptoken', '$select', '$expand', '$orderby', '$filter', '$count'})
+            diagnostic['paged_request'] = bool(keys & {'$skip', '$skiptoken'})
+    except (ValueError, TypeError, AttributeError):
+        pass
+    print('Graph diagnostic:', json.dumps(diagnostic, sort_keys=True))
 
 
 def photo_time(item):
@@ -401,10 +432,34 @@ def gateway(prompt, records, paths, schema, cwd):
     for path in paths:
         args += ["--image", str(path)]
     env = gateway_environment()
-    result = subprocess.run(args, cwd=cwd, env=env, capture_output=True, timeout=660)
+    try:
+        result = subprocess.run(args, cwd=cwd, env=env, capture_output=True, timeout=660)
+    except subprocess.TimeoutExpired:
+        print('Gateway diagnostic: {"category": "timeout"}')
+        raise Stop('gateway_timeout') from None
     if result.returncode or not output.is_file() or output.stat().st_size > 100_000:
+        from github_gateway import validated_failure_diagnostic
+        category = ('gateway_failed' if result.returncode else
+                    'output_missing' if not output.is_file() else 'gateway_result_invalid')
+        diagnostic = {'category': category}
+        raw = getattr(result, 'stdout', b'')
+        text = raw[:8192].decode('utf-8', errors='replace') if isinstance(raw, bytes) else str(raw)[:8192]
+        for line in text.splitlines():
+            if line.startswith('Gateway diagnostic: '):
+                try:
+                    safe = validated_failure_diagnostic(json.loads(line.partition(': ')[2]))
+                    if safe:
+                        diagnostic = safe
+                        break
+                except (ValueError, TypeError):
+                    pass
+        print('Gateway diagnostic:', json.dumps(diagnostic, sort_keys=True))
         raise Stop("gateway_failed")
-    return json.loads(output.read_text())
+    try:
+        return json.loads(output.read_text())
+    except (UnicodeError, json.JSONDecodeError):
+        print('Gateway diagnostic: {"category": "invalid_json"}')
+        raise Stop('gateway_failed') from None
 
 
 def accepted_screening(result, expected):
@@ -706,12 +761,7 @@ def run():
             print('Inventory diagnostic:', inventory_operation, type(error).__name__,
                   code if isinstance(code, int) and 400 <= code <= 599 else '')
             if inventory_operation == 'scan' and isinstance(error, urllib.error.HTTPError):
-                try:
-                    graph_code = json.loads(error.read(4096)).get('error', {}).get('code')
-                    if isinstance(graph_code, str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,63}', graph_code):
-                        print('Graph error code:', graph_code)
-                except (OSError, ValueError, AttributeError, TypeError):
-                    pass
+                log_graph_failure(error)
         reason = failure_reason(error)
         safe_stage = failure_stage(stage)
         print("Stopped; reason:", reason, "stage:", safe_stage)

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from process_batch import Stop, gateway
+from process_batch import Stop, gateway, failure_reason
 
 
 SCHEMA = {
@@ -32,6 +32,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
+    except Exception as error:
+        print("Gateway smoke diagnostic: reason=" + failure_reason(error))
         print("CodexGateway synthetic image verification failed.")
         raise SystemExit(1) from None
