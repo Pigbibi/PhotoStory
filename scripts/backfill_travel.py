@@ -3,6 +3,7 @@ import json
 import os
 import urllib.request
 from cloud_inventory import USER_AGENT
+from github_gateway import safe_failure_diagnostic
 
 
 def main():
@@ -31,4 +32,8 @@ def main():
 
 
 if __name__=='__main__':
-    main()
+    try:
+        main()
+    except Exception as error:
+        print('Backfill diagnostic:', json.dumps(safe_failure_diagnostic(error), sort_keys=True))
+        raise SystemExit(1) from None
