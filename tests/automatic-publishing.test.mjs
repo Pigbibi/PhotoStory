@@ -88,6 +88,7 @@ test('automatic queue finishes the current trip before an older approved other t
  assert.equal((await automatic(env,{action:'candidate'})).draft.id,'thai');
 });
 test('adaptive claim uses the current queue size and still blocks recent attempts',async t=>{
+ const now=Date.now();t.mock.method(Date,'now',()=>now);
  const {env,DB,d,s}=await fixture(t);
  const hour=new Date(Date.now()+8*3600000).getUTCHours();
  await put(env,'automation',{...s,adaptivePublishing:true,autoPublishHour:hour});

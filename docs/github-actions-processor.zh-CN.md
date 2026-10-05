@@ -44,6 +44,9 @@ CodexGateway 服务及登录继续留在 VPS，仍为其他仓库服务；PhotoS
 3. 只有手动运行及恢复验证通过后，将仓库变量
    `PHOTOSTORY_PROCESSOR_ENABLED=true`。定时任务在每小时第 11、41 分钟
    尝试启动；GitHub schedule 可能延迟或漏跑，须关注工作流失败与长期无运行。
+   自动发布开始后，同一次运行会连续推进一篇帖子的已记录步骤，最多 20 分钟，
+   不依赖下一次定时运行接续。结果不明或队列被待核对发布阻塞时，工作流会失败，
+   不会自动重放请求。新帖仍须满足原有审批、发布间隔和北京时间小时设置。
 4. 观察至少一次实际定时运行及任务进度回读，再清理 PhotoStory 专属的
    `photostory-batch` / `photostory-ai` / cleanup timer 与安装目录。先保留
    `/var/lib/photostory` 的受限原始副本作为回退依据，不删除共享

@@ -17,6 +17,8 @@ class PipelineTests(unittest.TestCase):
         def request(url,**kwargs):
             data=kwargs['body'];endpoint=url.rsplit('/',1)[-1]
             if endpoint=='maintenance':return b'{"ok":true}'
+            if endpoint=='autopublish':return b'null'
+            if endpoint=='health':return b'{"automation":{"publishMode":"manual"},"publication":null}'
             if endpoint=='claim':
                 if remote['status']!='pending':return b'null'
                 remote['status']='running';result={'id':'budget','lease':'lease'}
@@ -42,6 +44,8 @@ class PipelineTests(unittest.TestCase):
         def request(url,**kwargs):
             body=kwargs['body']; endpoint=url.rsplit('/',1)[-1]
             if endpoint=='maintenance':return b'{"ok":true}'
+            if endpoint=='autopublish':return b'null'
+            if endpoint=='health':return b'{"automation":{"publishMode":"manual"},"publication":null}'
             if endpoint=='claim':
                 if remote['status']!='pending': return b'null'
                 remote['status']='running'; result={'id':remote['id'],'lease':'lease'}

@@ -233,10 +233,16 @@ are never automatically reclaimed. A browser is not required.
 
 Deploy the Worker and all Python files under `scripts/` together, including
 `inventory.py`, `preselect.py`, the review modules and the publishing processor. Use the existing
-Pillow environment and a one-minute processor timer. The gateway's bounded JPEG
-input limit is 1.8 MB per image, matching the publisher. During publication the
-processor advances one recorded Meta operation per tick before scanning more
-photos. Keep the timer online; this is best-effort processing, not an exact-time
+Pillow environment and the GitHub Actions processor or a VPS timer. The gateway's
+bounded JPEG input limit is 1.8 MB per image, matching the publisher. Each run
+selects at most one post and advances its recorded Meta operations after preparation
+within the same run, for at most 20 minutes and 128 calls. Unfinished containers
+still respect the server's one-minute polling delay. Publication takes priority
+over scanning; it no longer waits for another scheduled invocation that might
+arrive after the one-hour delivery URLs expire. An uncertain response, transport
+failure or run limit stops processing and fails the run without replaying the
+operation. An existing publication requiring inspection also fails the run instead
+of silently reporting no work. Keep the timer online; this is best-effort processing, not an exact-time
 posting scheduler. Scheduled photo discovery is a separate setting.
 
 The fixed weekly mode permits **one new automatic attempt per rolling seven days**.
