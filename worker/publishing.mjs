@@ -29,11 +29,15 @@ export function jpegDimensions(data){
 }
 const row=(e,id)=>e.DB.prepare('SELECT * FROM publications WHERE draft_id=?').bind(id).first();
 function recoverable(p){
- if(!p||p.status!=='uncertain'||p.expires<=Date.now())return false;
+ if(!p||p.status!=='uncertain')return false;
  const b=JSON.parse(p.body);
- return !b.automatic&&!b.recoveries?.length&&Number.isSafeInteger(b.touched)&&b.touched<Date.now()-120000&&
-  Array.isArray(b.children)&&b.children.length===0&&!b.waiting&&!b.parent&&!b.ready&&!b.mediaId&&
-  (!b.failure||['preflight','create_image'].includes(b.failure.stage));
+ if(b.recoveries?.length||!Number.isSafeInteger(b.touched)||b.touched>=Date.now()-120000||
+  !Array.isArray(b.children)||b.children.length||b.waiting||b.parent||b.ready||b.mediaId)return false;
+ // Automatic recovery is narrower: expiry was checked before any Meta call.
+ // Existing rendered files are expired, so the processor must rebuild them.
+ if(b.automatic)return Number.isSafeInteger(p.expires)&&p.expires>0&&p.expires<=Date.now()&&
+  b.failure?.stage==='preflight'&&Number.isSafeInteger(b.failure.at)&&b.failure.at>=p.expires;
+ return p.expires>Date.now()&&(!b.failure||['preflight','create_image'].includes(b.failure.stage));
 }
 function publicState(p){
  if(!p)return null;const b=JSON.parse(p.body);
@@ -155,15 +159,20 @@ export async function recover(e,id,publicationId,version,username){
  if(!recoverable(p)||p.id!==publicationId||p.version!==version)fail('publication_conflict');
  const d=await reviewedDraft(e,id,version),a=await publishingAccount(e),b=JSON.parse(p.body);
  if(a.username!==username||b.username!==username||a.userId!==b.userId||a.origin!==b.origin)fail('instagram_not_connected');
- for(const photo of d.photos){
-  const image=await privateImage(e,id,p.id,photo.id);
-  if(!image.ok)fail('publication_incomplete');
-  await image.arrayBuffer();
+ if(b.automatic){
+  await automaticGuard(e,b);
+ }else{
+  for(const photo of d.photos){
+   const image=await privateImage(e,id,p.id,photo.id);
+   if(!image.ok)fail('publication_incomplete');
+   await image.arrayBuffer();
+  }
  }
  if(!(await publishingHealth(e)).ok)fail('instagram_not_connected');
- b.recoveries=[{at:Date.now(),failedAt:b.touched,failure:b.failure||{category:'unknown',stage:'create_image'}}];
+ b.recoveries=[{at:Date.now(),createdAt:p.created,failedAt:b.touched,failure:b.failure||{category:'unknown',stage:'create_image'}}];
  delete b.failure;b.touched=Date.now();
- const result=await e.DB.prepare("UPDATE publications SET status='publishing',body=?,expires=? WHERE id=? AND status='uncertain' AND body=? AND version=? AND expires>? AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved')")
-  .bind(JSON.stringify(b),Date.now()+HOUR,p.id,p.body,version,Date.now(),id,version).run();
+ if(b.automatic){b.recoveryPending=true;delete b.originalReview;}
+ const result=await e.DB.prepare("UPDATE publications SET status=?,body=?,expires=? WHERE id=? AND status='uncertain' AND body=? AND version=? AND (?=1 OR expires>?) AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved') AND (?=0 OR EXISTS(SELECT 1 FROM state WHERE key='automation' AND json_extract(value,'$.publishMode')='automatic' AND json_extract(value,'$.reviewMode')='strict_auto' AND json_extract(value,'$.autoPublishSince')=? AND json_extract(value,'$.autoPublishUserId')=?))")
+  .bind(b.automatic?'prepared':'publishing',JSON.stringify(b),Date.now()+HOUR,p.id,p.body,version,b.automatic?1:0,Date.now(),id,version,b.automatic?1:0,b.autoPublishSince??null,b.userId).run();
  if(result.meta.changes!==1)fail('publication_conflict');return view(e,id);
 }

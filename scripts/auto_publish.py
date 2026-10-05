@@ -1,12 +1,46 @@
-"""One bounded automatic publication step. Manual is the server-side default."""
+"""Finish one automatic publication in a bounded run. Manual is the default."""
 import base64
 import hashlib
 import io
 import json
 import tempfile
+import time
 from pathlib import Path
 from PIL import Image, ImageOps, ImageCms
 from auto_review import PROMPT, SCHEMA, FIELDS
+
+MAX_PUBLICATION_SECONDS = 20 * 60
+MAX_PUBLICATION_STEPS = 128
+
+
+class AutomaticPublishingStopped(Exception):
+    """A fixed, non-sensitive failure; never replay the interrupted operation."""
+
+
+def finish_publication(action, publication):
+    # Delivery URLs last one hour. GitHub schedules can be hours apart, so all
+    # recorded operations for this post must advance within the same run.
+    deadline = time.monotonic() + MAX_PUBLICATION_SECONDS
+    try:
+        for _ in range(MAX_PUBLICATION_STEPS):
+            if publication['status'] == 'published':
+                print('Automatic publication completed.')
+                return True
+            if publication['status'] != 'publishing':
+                break
+            delay = publication.get('retryAfterMs', 0) / 1000
+            if not 0 <= delay <= 60 or time.monotonic() + delay >= deadline:
+                break
+            if delay:
+                time.sleep(delay)
+            if time.monotonic() >= deadline:
+                break
+            # Each call still claims one durable Meta operation server-side.
+            # An uncertain result or transport error stops here, without replay.
+            publication = action('advance')
+    except Exception:
+        pass
+    raise AutomaticPublishingStopped('automatic_publication_stopped') from None
 
 
 def render(raw, aspect, frame):
@@ -40,14 +74,16 @@ def render(raw, aspect, frame):
 def tick(call, download, gateway):
     candidate = call('/internal/autopublish', {'action': 'candidate'})
     if not candidate:
+        health = call('/internal/health', None)
+        if isinstance(health, dict) and health.get('automation', {}).get('publishMode') == 'automatic' and health.get('publication'):
+            raise AutomaticPublishingStopped('automatic_publication_blocked')
         return
     draft, publication = candidate['draft'], candidate['publication']
     auth = {'draftId': draft['id'], 'version': draft['version'], 'publicationId': publication['id']}
     def action(name, **body):
         return call('/internal/autopublish', {**auth, 'action': name, **body})
     if publication['status'] == 'publishing':
-        action('advance')  # One durable Meta operation per timer tick.
-        return True
+        return finish_publication(action, publication)
     if publication['status'] != 'prepared':
         return
     # No automatic replay of a crashed/failed preparation or ambiguous begin.
@@ -81,8 +117,8 @@ def tick(call, download, gateway):
                 action('reject')
                 return
             beginning = True
-            action('begin', review=review, images=evidence)
-            return True
+            publication = action('begin', review=review, images=evidence)
+        return finish_publication(action, publication)
     except Exception:
         if not beginning:
             try:
@@ -90,4 +126,4 @@ def tick(call, download, gateway):
             except Exception:
                 pass
         # Raw network/provider exceptions may contain signed URLs or credentials.
-        print('Automatic preparation stopped; inspect the private draft.')
+        raise AutomaticPublishingStopped('automatic_publication_stopped') from None

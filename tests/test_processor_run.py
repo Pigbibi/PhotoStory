@@ -5,6 +5,7 @@ from unittest.mock import patch,MagicMock
 from PIL import Image
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import process_batch as b
+from auto_publish import AutomaticPublishingStopped
 from cross_review import SCHEMA as CROSS_SCHEMA
 
 def cross_checks(prompt):
@@ -14,6 +15,18 @@ def cross_checks(prompt):
                             'photos':[{k:p[k] for k in ('id','alt')} for p in d['photos']]}} for d in drafts]}
 
 class ProcessorRunTests(unittest.TestCase):
+ def test_publication_blockage_fails_the_run_without_claiming_a_scan(self):
+  with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'PHOTOSTORY_URL':'https://example.invalid','PHOTOSTORY_BATCH_TOKEN':'test-token','CODEX_GATEWAY_COMMAND':'test-gateway','PHOTOSTORY_STATE_DIR':tmp}),patch.object(b,'request',return_value=b'{}') as request,patch('auto_publish.tick',side_effect=AutomaticPublishingStopped('automatic_publication_blocked')),io.StringIO() as output,patch('sys.stdout',output):
+   with self.assertRaises(b.Stop):b.run()
+   self.assertIn('Automatic publication stopped or blocked',output.getvalue())
+  self.assertEqual([c.args[0] for c in request.call_args_list],['https://example.invalid/internal/maintenance'])
+
+ def test_publication_transport_error_cannot_report_a_successful_empty_run(self):
+  with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'PHOTOSTORY_URL':'https://example.invalid','PHOTOSTORY_BATCH_TOKEN':'test-token','CODEX_GATEWAY_COMMAND':'test-gateway','PHOTOSTORY_STATE_DIR':tmp}),patch.object(b,'request',return_value=b'{}') as request,patch('auto_publish.tick',side_effect=OSError('SYNTHETIC_PRIVATE')),io.StringIO() as output,patch('sys.stdout',output):
+   with self.assertRaises(b.Stop) as error:b.run()
+   self.assertNotIn('SYNTHETIC_PRIVATE',str(error.exception)+output.getvalue())
+  self.assertEqual(len(request.call_args_list),1)
+
  def test_screened_pixels_reach_grouping_and_saved_crop(self):
   data=io.BytesIO();Image.new('RGB',(800,600),'blue').save(data,'JPEG')
   photo={'id':'p','captured':'2026-08-18T10:00:00+08:00','taken':1000,'area':[22.1,113.5]}

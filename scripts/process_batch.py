@@ -573,12 +573,16 @@ def run():
         try: report=json.loads((Path(directory)/'cleanup-status.json').read_text())
         except (OSError,ValueError): pass
     call('/internal/maintenance',{'temporaryCleanup':report})
-    from auto_publish import tick
+    from auto_publish import tick, AutomaticPublishingStopped
     try:
         if tick(call, lambda path, body: request(base+path, token=token, body=body, max_bytes=25*1024*1024), gateway):
-            return  # Continue publishing on the next tick before slow scanning.
+            return  # Finish one post before slow scanning; never select another.
+    except AutomaticPublishingStopped:
+        print('Automatic publication stopped or blocked; inspect the private publication. No retry in this run.')
+        raise Stop('automatic_publication_stopped') from None
     except Exception:
         print('Automatic publishing unavailable; no retry in this run.')
+        raise Stop('automatic_publication_unavailable') from None
     job = call("/internal/claim", {})
     if not job:
         print("No pending job.")
