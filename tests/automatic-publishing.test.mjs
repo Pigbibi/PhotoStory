@@ -141,6 +141,51 @@ test('global ambiguity blocks even new eligible drafts',async t=>{
  await DB.prepare("INSERT INTO publications VALUES('other','other',1,'uncertain','{}',0,0)").bind().run();
  assert.equal(await automatic(env,{action:'candidate'}),null);
 });
+test('owner can recover an expired automatic preflight once without replaying a Meta operation',async t=>{
+ const {env,DB,api}=await fixture(t);const c=await automatic(env,{action:'candidate'});
+ const auth={draftId:'d',version:1,publicationId:c.publication.id};
+ await automatic(env,{...auth,action:'upload',photoId:'p',data:Buffer.from(jpeg()).toString('base64')});
+ const digest=(await DB.prepare('SELECT digest FROM publication_images').first()).digest;
+ await automatic(env,{...auth,action:'begin',review,images:[{id:'p',digest}]});
+ await DB.prepare('UPDATE publications SET expires=? WHERE id=?').bind(Date.now()-140000,auth.publicationId).run();
+ let checks=0;t.mock.method(globalThis,'fetch',async(url,o)=>{checks++;assert.ok(!o.method||o.method==='GET');return Response.json({id:'456',username:'landscapes'});});
+ assert.equal((await automatic(env,{...auth,action:'advance'})).status,'uncertain');
+ assert.equal(checks,0);
+ await DB.prepare("UPDATE publications SET body=json_set(body,'$.touched',?) WHERE id=?").bind(Date.now()-130000,auth.publicationId).run();
+ await pub.cleanup(env);
+ const machine=await api('/api/publish/d/'+auth.publicationId+'/recover',{version:1,username:'landscapes'},true);
+ assert.equal(machine.status,401);
+ const recovered=await pub.recover(env,'d',auth.publicationId,1,'landscapes');
+ assert.equal(recovered.status,'prepared');assert.equal(checks,1);
+ const saved=JSON.parse((await DB.prepare('SELECT body FROM publications').first()).body);
+ assert.equal(saved.recoveries[0].failure.stage,'preflight');assert.equal(saved.originalReview,undefined);
+ await DB.prepare('UPDATE publications SET expires=? WHERE id=?').bind(Date.now()-86400000,auth.publicationId).run();
+ const reclaimed=await automatic(env,{action:'candidate'});
+ assert.equal(reclaimed.publication.id,auth.publicationId);
+ assert.ok(reclaimed.publication.expires>Date.now());
+ const resumed=await DB.prepare('SELECT created FROM publications').first();
+ assert.ok(resumed.created>=saved.recoveries[0].createdAt);
+ assert.equal(await automatic(env,{action:'candidate'}),null);
+ await DB.prepare("UPDATE publications SET status='uncertain',expires=?,body=json_set(body,'$.touched',?,'$.failure',json(?)) WHERE id=?")
+  .bind(Date.now()-140000,Date.now()-130000,JSON.stringify(saved.recoveries[0].failure),auth.publicationId).run();
+ await assert.rejects(pub.recover(env,'d',auth.publicationId,1,'landscapes'),/publication_conflict/);
+ assert.equal(checks,1);
+});
+test('automatic recovery refuses any container operation, partial result or stale owner settings',async t=>{
+ const {env,DB,s}=await fixture(t);const c=await automatic(env,{action:'candidate'});
+ const base=JSON.parse((await DB.prepare('SELECT body FROM publications').first()).body);
+ const failure={at:Date.now()-130000,stage:'preflight',category:'unknown'};
+ const stopped={...base,originalReview:{images:[],review},touched:failure.at,failure};
+ let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;throw new Error('must not call Meta');});
+ for(const change of [{failure:{...failure,stage:'create_image'}},{children:['101']},{waiting:'101'},{parent:'101'},{ready:true},{mediaId:'900'},{failure:{...failure,at:Date.now()-150000}}]){
+  await DB.prepare("UPDATE publications SET status='uncertain',body=?,expires=? WHERE id=?").bind(JSON.stringify({...stopped,...change}),Date.now()-140000,c.publication.id).run();
+  await assert.rejects(pub.recover(env,'d',c.publication.id,1,'landscapes'),/publication_conflict/);
+ }
+ await DB.prepare("UPDATE publications SET body=? WHERE id=?").bind(JSON.stringify(stopped),c.publication.id).run();
+ await put(env,'automation',{...s,publishMode:'manual'});
+ await assert.rejects(pub.recover(env,'d',c.publication.id,1,'landscapes'),/publication_conflict/);
+ assert.equal(calls,0);
+});
 test('rejected original review returns the draft to human review and is not reclaimed',async t=>{
  const {env,DB}=await fixture(t);const c=await automatic(env,{action:'candidate'});
  await automatic(env,{action:'reject',draftId:'d',version:1,publicationId:c.publication.id});

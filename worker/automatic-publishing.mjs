@@ -54,6 +54,17 @@ export async function automatic(e,b){
    if(!claimedEligible(d,s)||JSON.parse(activeRow.body).autoPublishSince!==s.autoPublishSince)return null;
    return {draft:d,publication:await publishing.view(e,d.id)};
   }
+  // Only an explicit owner recovery can reclaim a prepared automatic post.
+  // Consume that permission once; a crashed preparation stays blocked.
+  const recovery=await e.DB.prepare("SELECT * FROM publications WHERE status='prepared' AND json_extract(body,'$.automatic')=1 AND json_extract(body,'$.recoveryPending')=1 LIMIT 1").first();
+  if(recovery){
+   const d=await reviewedDraft(e,recovery.draft_id,recovery.version),body=JSON.parse(recovery.body);
+   if(!claimedEligible(d,s)||body.autoPublishSince!==s.autoPublishSince||body.userId!==s.autoPublishUserId)return null;
+   const now=Date.now();delete body.recoveryPending;body.touched=now;
+   const claimed=await e.DB.prepare("UPDATE publications SET body=?,created=?,expires=? WHERE id=? AND status='prepared' AND body=? AND NOT EXISTS(SELECT 1 FROM publications WHERE status IN ('publishing','working','uncertain')) AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved') AND EXISTS(SELECT 1 FROM state WHERE key='automation' AND json_extract(value,'$.publishMode')='automatic' AND json_extract(value,'$.reviewMode')='strict_auto' AND json_extract(value,'$.autoPublishSince')=? AND json_extract(value,'$.autoPublishUserId')=?)")
+    .bind(JSON.stringify(body),now,now+3600000,recovery.id,recovery.body,d.id,d.version,s.autoPublishSince,s.autoPublishUserId).run();
+   return claimed.meta.changes===1?{draft:d,publication:await publishing.view(e,d.id)}:null;
+  }
   const rows=await e.DB.prepare("SELECT body FROM drafts WHERE json_extract(body,'$.status')='approved' AND json_extract(body,'$.approvalSource') IN ('strict_ai_v1','owner_scheduled_v1') AND (json_extract(body,'$.autoApprovedAt')>? OR json_extract(body,'$.ownerApprovedAt')>?) AND NOT EXISTS(SELECT 1 FROM publications WHERE publications.draft_id=drafts.id) ORDER BY COALESCE(json_extract(body,'$.autoApprovedAt'),json_extract(body,'$.ownerApprovedAt')) LIMIT 100").bind(s.autoPublishSince,s.autoPublishSince).all();
   const waiting=rows.results.map(r=>JSON.parse(r.body)).filter(d=>claimedEligible(d,s));
   const interval=s.adaptivePublishing?adaptiveInterval(waiting.length):publishing.AUTO_PUBLISH_INTERVAL;
