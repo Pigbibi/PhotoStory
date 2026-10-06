@@ -143,15 +143,6 @@ header {
 }
 [dir="rtl"] .brand { direction: ltr; }
 .brand-icon { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px; }
-.brand span {
-  font-family: var(--font-ui);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--muted);
-  padding-inline-start: 10px;
-  border-inline-start: 1px solid var(--line);
-}
 nav {
   grid-area: nav;
   display: flex;
@@ -220,10 +211,6 @@ main {
   padding: clamp(28px, 4vw, 56px) var(--gutter) 72px;
 }
 .intro {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 340px);
-  align-items: end;
-  gap: 12px 48px;
   margin-bottom: clamp(28px, 3.6vw, 48px);
 }
 .intro h1 {
@@ -233,14 +220,6 @@ main {
   font-weight: 700;
   line-height: 1.02;
   letter-spacing: -0.035em;
-}
-.intro > p {
-  margin: 0;
-  padding-top: 12px;
-  border-top: 2px solid var(--ink);
-  color: var(--ink-2);
-  font-size: 15px;
-  line-height: 1.6;
 }
 /* In the working views the headline steps back so the photographs lead. */
 main[data-view="review"] .intro h1,
@@ -432,7 +411,6 @@ details > :last-child { margin-bottom: 16px; display: inline-block; }
   letter-spacing: -0.03em;
 }
 .welcome p { color: var(--ink-2); font-size: 16px; line-height: 1.65; }
-.welcome-sentence { display: block; color: var(--ink); font-weight: 600; }
 .welcome .button { width: auto; margin-inline-end: 8px; }
 .welcome .muted, .setup-hint { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
 
@@ -694,7 +672,7 @@ footer {
   color: var(--muted);
   font-size: 13px;
 }
-footer span:last-child { margin-inline-start: auto; }
+footer > :last-child { margin-inline-start: auto; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1180px) {
@@ -733,8 +711,6 @@ footer span:last-child { margin-inline-start: auto; }
 }
 @media (max-width: 860px) {
   header { position: static; }
-  .intro { grid-template-columns: 1fr; }
-  .intro > p { max-width: 52ch; }
   .workspace { display: block; }
   .canvas, .editor { margin-bottom: 32px; }
   .mat { min-height: 0; }
@@ -754,7 +730,6 @@ footer span:last-child { margin-inline-start: auto; }
 @media (max-width: 520px) {
   :root { --gutter: 16px; }
   .brand { font-size: 18px; }
-  .brand span { display: none; }
   header { grid-template-columns: 1fr auto; grid-template-areas: "brand lang" "nav nav" "id id"; padding-bottom: 6px; }
   nav { flex-wrap: wrap; overflow: visible; gap: 0; margin-inline: -10px; }
   nav button { min-height: 40px; }
@@ -769,7 +744,7 @@ footer span:last-child { margin-inline-start: auto; }
   .photo-tools button { flex: 1 1 auto; }
   .history-action { width: 100%; margin-inline-end: 0; }
   table { font-size: 13px; }
-  footer span:last-child { margin-inline-start: 0; }
+  footer > :last-child { margin-inline-start: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

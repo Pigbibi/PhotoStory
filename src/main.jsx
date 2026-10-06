@@ -144,7 +144,7 @@ function App() {
       <header>
         <a href="/" className="brand">
           <img className="brand-icon" src="/favicon.svg" alt="" width="32" height="32" />
-          Fieldnotes<span>PhotoStory</span>
+          PhotoStory
         </a>
         <nav aria-label={t("主导航")}>
           {[
@@ -191,30 +191,22 @@ function App() {
             >
               {t("{user} · 退出",{user:session.user.login})}
             </button>
-          ) : (
-            <span>{t("私人照片编辑台")}</span>
-          )}
+          ) : null}
         </div>
       </header>
       <main data-view={view}>
-        <section className="intro">
-          <h1>
-            {view === "history" ? t("Publication history") : view === "settings"
-              ? t("让故事，从连接开始。")
-              :view==='trash'?t('不着急，留三十天再决定。')
-              : view === "queue"
-                ? t("准备好，留给下一次分享。")
-                : t("把旅途，整理成故事。")}
-          </h1>
-          <p>
-            {view === "settings"
-              ? t("GitHub 登录 · OneDrive 只读 · Codex 选片")
-              :view==='trash'?t('恢复后重新审核 · 到期仅清理本站预览 · OneDrive 原图保留')
-              : view === "queue"
-                ? t("已批准草稿 · 预览后发布到 Instagram")
-                : t("按时间与地点整理 · 风景选片 · 文案")}
-          </p>
-        </section>
+        {(session?.user || demo || view === "settings") && (
+          <section className="intro">
+            <h1>
+              {view === "history" ? t("Publication history") : view === "settings"
+                ? t("连接设置")
+                :view==='trash'?t('回收站')
+                : view === "queue"
+                  ? t("发布队列")
+                  : t("待审核")}
+            </h1>
+          </section>
+        )}
         {session?.user && session.publishingIssue && !demo && <div className="notice" role="alert">
           <p>{t(session.publishingIssue.failure?.category==='authorization'?'Instagram authorization needs attention':'Instagram publication needs attention')}</p>
           {session.publishingIssue.failure && <p>{t('Publication failure details',{time:new Date(session.publishingIssue.failure.at).toLocaleString(),stage:session.publishingIssue.failure.stage,code:session.publishingIssue.failure.code??session.publishingIssue.failure.httpStatus??'-'})}</p>}
@@ -235,8 +227,7 @@ function App() {
               alt={t("AI 生成的海岸示意图，不是用户照片")}
             />
             <div>
-              <h2>{t("好照片，值得被看见。")}</h2>
-              <p>{t("让 AI 帮你整理主题、挑选风景、写好文案。")} {" "}<span className="welcome-sentence">{t("每一篇，经过你的确认。")}</span></p>
+              <h2>PhotoStory</h2>
               <a className="button primary" href="/auth/github/start">{t("使用 GitHub 登录")}</a>
               <button className="button secondary" onClick={startDemo}>{t("先体验审核流程")}</button>
               <p className="muted">{t("示意图片由 AI 生成。真实照片仅登录后可见。")}</p>
@@ -323,7 +314,6 @@ function App() {
           target="_blank"
           rel="noreferrer"
         >{t("开源 · MIT")}</a>
-        <span>{t("人工审核优先")}</span>
       </footer>
     </>
   );
@@ -441,7 +431,6 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
         </label>
         {draft.status==='approved' && draft.approvalSource==='strict_ai_v1' && <p className="muted">{t("由严格 AI 自动审核批准")}</p>}
         {draft.status==='approved' && draft.approvalSource==='owner_scheduled_v1' && <p className="muted">{t(publishingSchedule?.publishMode==='automatic'?"已由你批准，正等待排期发布。":"已批准，保留在发布队列中。")}</p>}
-        <p className="muted">{t("主题可编辑 · 发布内容")}</p>
         <hr />
         <label>{t("文案")}<textarea dir="auto"
             value={form.caption}
@@ -583,7 +572,7 @@ function Settings({ session, notify }) {
   return (
     <div className="settings">
       <section>
-        <h2>{t("01 / GitHub 登录")}</h2>
+        <h2>{t("GitHub 登录")}</h2>
         <p>
           {session?.user
             ? t("当前账号：{user}",{user:session.user.login})
@@ -607,7 +596,7 @@ function Settings({ session, notify }) {
         </details>
       </section>
       <section>
-        <h2>{t("02 / OneDrive 照片来源")}</h2>
+        <h2>{t("OneDrive 照片来源")}</h2>
         <p>
           {session?.onedriveConnected
             ? t("已授权连接。按指定文件夹和时间读取照片。")
@@ -683,7 +672,7 @@ function Settings({ session, notify }) {
         <p className="muted">{t("预览图会发送到你配置的 Codex 服务进行辨识。不确定或不适合公开的照片不进入草稿。")}</p>
       </section>
       <section>
-        <h2>{t("03 / Codex 处理器")}</h2>
+        <h2>{t("Codex 处理器")}</h2>
         <p>{t("AI 文案语言：{language}。更改网站语言不会改写草稿。",{language:session?.captionLanguage||"en"})}</p>
         <p>{t("选择适合你的部署方式。两种模式都只用 Codex，不自动切换付费 API。")}</p>
         <details>

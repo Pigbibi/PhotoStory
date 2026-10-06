@@ -12,7 +12,7 @@ export default function History({api}){
   <button className="button secondary history-action" disabled={busy||!data} onClick={async()=>{setBusy(true);setFailed(false);try{setData(await api('/api/history/sync','POST',{}));}catch{setFailed(true);}finally{setBusy(false);}}}>{t('Read Instagram history page')}</button>
   {data&&<>
    {data.instagram&&<p>{t('Instagram history totals',{posts:data.instagram.posts,photos:data.instagram.photos})} · {t(data.instagram.complete?'Inventory complete':'More pages remaining')}</p>}
-   <button className="button secondary history-action" disabled={running} onClick={runMatching}>{t('Run history-only verification')}</button>
+   <button className="button secondary history-action" disabled={running} onClick={runMatching}>{t('Check history again')}</button>
    {matching&&<><p>{t('Historical match status',{confirmed:matching.confirmedCount,proposals:matching.proposalCount})}</p><p className="muted">{t('Historical matches require confirmation before exclusion.')}</p>{matching.pendingCount>0&&<button className="button secondary history-action" disabled={confirming} onClick={confirmMatches}>{t('Confirm all visible matches')}</button>}</>}
    <p>{t('History totals',{posts:data.posts,photos:data.photos,unique:data.uniquePhotos})}</p>
    <p className="notice">{t('History coverage warning')}</p>
