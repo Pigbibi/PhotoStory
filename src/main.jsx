@@ -217,7 +217,7 @@ function App() {
         </section>
         {session?.user && session.publishingIssue && !demo && <div className="notice" role="alert">
           <p>{t(session.publishingIssue.failure?.category==='authorization'?'Instagram authorization needs attention':'Instagram publication needs attention')}</p>
-          {session.publishingIssue.failure && <p>{t('Publication failure details',{time:new Date(session.publishingIssue.failure.at).toLocaleString(),stage:session.publishingIssue.failure.stage,code:session.publishingIssue.failure.code??session.publishingIssue.failure.httpStatus??'—'})}</p>}
+          {session.publishingIssue.failure && <p>{t('Publication failure details',{time:new Date(session.publishingIssue.failure.at).toLocaleString(),stage:session.publishingIssue.failure.stage,code:session.publishingIssue.failure.code??session.publishingIssue.failure.httpStatus??'-'})}</p>}
           <button onClick={()=>{setView('queue');setSelected(session.publishingIssue.draftId);}}>{t('Publishing Queue')}</button>
         </div>}
         {message && (
@@ -345,7 +345,8 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
   };
   const content=({publication,...value})=>value;
   const dirty = JSON.stringify(content(form)) !== JSON.stringify(content(draft)),
-    photo = form.photos[index] || form.photos[0];
+    photo = form.photos[index] || form.photos[0],
+    mainFrame = frameStyle(form.aspect,photo.frame);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setFrame = patch => set("photos",form.photos.map(p=>p.id===photo.id?{...p,frame:{...photoFrame(p.frame),...patch}}:p));
   const move = (delta) => {
@@ -361,7 +362,7 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
       <section className="canvas" aria-label={t("照片预览")}>
         <img
           className="main-photo"
-          style={frameStyle(form.aspect,photo.frame)}
+          style={{...mainFrame,"--photo-ratio":mainFrame.aspectRatio}}
           src={demo ? "/demo-coast.png" : "/api/photos/" + photo.id}
           alt={photo.alt}
         />
