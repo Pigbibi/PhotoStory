@@ -196,7 +196,7 @@ function App() {
           )}
         </div>
       </header>
-      <main>
+      <main data-view={view}>
         <section className="intro">
           <h1>
             {view === "history" ? t("Publication history") : view === "settings"
@@ -360,12 +360,15 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
   return (
     <>
       <section className="canvas" aria-label={t("照片预览")}>
-        <img
-          className="main-photo"
-          style={{...mainFrame,"--photo-ratio":mainFrame.aspectRatio}}
-          src={demo ? "/demo-coast.png" : "/api/photos/" + photo.id}
-          alt={photo.alt}
-        />
+        <div className="mat">
+          <img
+            key={photo.id}
+            className="main-photo"
+            style={{...mainFrame,"--photo-ratio":mainFrame.aspectRatio}}
+            src={demo ? "/demo-coast.png" : "/api/photos/" + photo.id}
+            alt={photo.alt}
+          />
+        </div>
         <div className="filmstrip">
           {form.photos.map((p, i) => (
             <button
