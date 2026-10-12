@@ -302,5 +302,7 @@
   "文案或标签含有画面未能证实的细节，请核对并修改。": "La légende ou les hashtags peuvent contenir des détails non confirmés par les photos. Vérifiez-les et corrigez-les.",
   "地点或站名与画面证据可能不符，请逐字核对标牌。": "Le lieu ou le nom de la station pourrait ne pas correspondre à la photo. Vérifiez chaque lettre du panneau.",
   "跨草稿和文案核对未完成，请人工检查后再批准。": "La comparaison des brouillons et la vérification de la légende sont incomplètes. Vérifiez-les avant d’approuver.",
-  "文案修改后尚未重新核对，请人工检查地点和事实。": "La légende modifiée n’a pas été revérifiée. Vérifiez les lieux et les faits."
+  "文案修改后尚未重新核对，请人工检查地点和事实。": "La légende modifiée n’a pas été revérifiée. Vérifiez les lieux et les faits.",
+  "Review concern · photo {count}": "Point à vérifier · photo {count}",
+  "Recorded review concern: {flags}. Check this photo before approval.": "Point à vérifier consigné : {flags}. Vérifiez cette photo avant approbation."
 }

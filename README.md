@@ -11,7 +11,12 @@ The repository contains no photos, accounts, tokens, database exports, or hosted
 AI service. You deploy your own Worker, D1 database, OneDrive connection,
 Cloudflare R2 bucket, and processor.
 
-![Interface design concept](docs/design-concept.png)
+![Current cyanotype review interface](docs/current-interface.jpg)
+
+Current interface with the built-in AI-generated demo image; no user photos or
+connected accounts. Recorded photo-review flags, when present, highlight their
+matching thumbnail in orange; the warning opens that photo and follows its ID
+when reordered. No flag is inferred from the image or caption by the frontend.
 
 ## What it does
 

@@ -302,5 +302,7 @@
   "文案或标签含有画面未能证实的细节，请核对并修改。": "Bildtext oder Hashtags könnten Details enthalten, die die Fotos nicht belegen. Prüfe und korrigiere sie.",
   "地点或站名与画面证据可能不符，请逐字核对标牌。": "Der Orts- oder Stationsname könnte nicht zum Bild passen. Prüfe das Schild Buchstabe für Buchstabe.",
   "跨草稿和文案核对未完成，请人工检查后再批准。": "Der Abgleich der Entwürfe und des Bildtexts wurde nicht abgeschlossen. Prüfe beides vor der Genehmigung.",
-  "文案修改后尚未重新核对，请人工检查地点和事实。": "Der bearbeitete Bildtext wurde nicht erneut geprüft. Prüfe Ortsnamen und Fakten selbst."
+  "文案修改后尚未重新核对，请人工检查地点和事实。": "Der bearbeitete Bildtext wurde nicht erneut geprüft. Prüfe Ortsnamen und Fakten selbst.",
+  "Review concern · photo {count}": "Prüfhinweis · Foto {count}",
+  "Recorded review concern: {flags}. Check this photo before approval.": "Erfasster Prüfhinweis: {flags}. Prüfe dieses Foto vor der Freigabe."
 }
