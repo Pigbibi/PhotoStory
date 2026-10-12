@@ -337,6 +337,17 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
   const dirty = JSON.stringify(content(form)) !== JSON.stringify(content(draft)),
     photo = form.photos[index] || form.photos[0],
     mainFrame = frameStyle(form.aspect,photo.frame);
+  // Review receipts name photo IDs; positions change when the owner reorders.
+  // Display recorded concerns only. Do not infer risk from an alt or caption.
+  const reviewConcerns = new Map();
+  const reviewScreens = draft.strictReviewEvidence?.screens;
+  for (const screen of Array.isArray(reviewScreens) ? reviewScreens : []) {
+    const flags = Array.isArray(screen?.flags)
+      ? screen.flags.filter(flag => typeof flag === 'string' && flag.trim()) : [];
+    if (flags.length && form.photos.some(p => p.id === screen.id)) {
+      reviewConcerns.set(screen.id, flags);
+    }
+  }
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setFrame = patch => set("photos",form.photos.map(p=>p.id===photo.id?{...p,frame:{...photoFrame(p.frame),...patch}}:p));
   const move = (delta) => {
@@ -363,9 +374,11 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
           {form.photos.map((p, i) => (
             <button
               key={p.id}
-              className={i === index ? "selected" : ""}
+              className={[i === index ? "selected" : "", reviewConcerns.has(p.id) ? "has-review-concern" : ""].filter(Boolean).join(' ')}
               onClick={() => setIndex(i)}
               aria-label={t("查看第 {count} 张照片",{count:i+1})}
+              aria-pressed={i === index}
+              aria-describedby={reviewConcerns.has(p.id) ? `photo-review-${i}` : undefined}
             >
               <img
                 src={demo ? "/demo-coast.png" : "/api/photos/" + p.id}
@@ -431,6 +444,10 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
         </label>
         {draft.status==='approved' && draft.approvalSource==='strict_ai_v1' && <p className="muted">{t("由严格 AI 自动审核批准")}</p>}
         {draft.status==='approved' && draft.approvalSource==='owner_scheduled_v1' && <p className="muted">{t(publishingSchedule?.publishMode==='automatic'?"已由你批准，正等待排期发布。":"已批准，保留在发布队列中。")}</p>}
+        {form.photos.map((p, i) => reviewConcerns.has(p.id) ? <div key={p.id} className="review-warning photo-review-concern">
+          <button type="button" className="text-button" onClick={() => setIndex(i)}>{t("Review concern · photo {count}", {count:i+1})}</button>
+          <p id={`photo-review-${i}`}>{t("Recorded review concern: {flags}. Check this photo before approval.", {flags:reviewConcerns.get(p.id).join(', ')})}</p>
+        </div> : null)}
         <hr />
         <label>{t("文案")}<textarea dir="auto"
             value={form.caption}

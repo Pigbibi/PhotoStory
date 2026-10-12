@@ -508,6 +508,10 @@ details > :last-child { margin-bottom: 16px; display: inline-block; }
 .filmstrip button:hover img { opacity: 1; }
 .filmstrip .selected img { opacity: 1; outline-color: var(--accent); }
 .filmstrip .selected span { color: var(--ink); font-weight: 650; }
+.filmstrip .has-review-concern img { opacity: 1; outline-color: var(--warn-line); }
+.filmstrip .has-review-concern span { color: var(--warn-ink); }
+.photo-review-concern p { margin: 4px 0 0; }
+.photo-review-concern .text-button { color: inherit; }
 .framing {
   margin: 20px 0 0;
   padding: 18px 0 0;

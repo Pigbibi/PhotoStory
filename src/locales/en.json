@@ -302,5 +302,7 @@
   "文案或标签含有画面未能证实的细节，请核对并修改。": "The caption or hashtags may contain details the photos do not support. Check and edit them.",
   "地点或站名与画面证据可能不符，请逐字核对标牌。": "A place or station name may conflict with the photos. Check the sign letter by letter.",
   "跨草稿和文案核对未完成，请人工检查后再批准。": "The cross-post and caption check did not finish. Review both manually before approving.",
-  "文案修改后尚未重新核对，请人工检查地点和事实。": "The edited caption has not been checked again. Review its place names and factual details."
+  "文案修改后尚未重新核对，请人工检查地点和事实。": "The edited caption has not been checked again. Review its place names and factual details.",
+  "Review concern · photo {count}": "Review concern · photo {count}",
+  "Recorded review concern: {flags}. Check this photo before approval.": "Recorded review concern: {flags}. Check this photo before approval."
 }

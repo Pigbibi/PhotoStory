@@ -302,5 +302,7 @@
   "文案或标签含有画面未能证实的细节，请核对并修改。": "El texto o las etiquetas pueden contener detalles que las fotos no confirman. Revísalos y corrígelos.",
   "地点或站名与画面证据可能不符，请逐字核对标牌。": "El lugar o el nombre de la estación podría no coincidir con la imagen. Revisa el letrero letra por letra.",
   "跨草稿和文案核对未完成，请人工检查后再批准。": "No se completó la revisión entre borradores ni del texto. Compruébalos antes de aprobar.",
-  "文案修改后尚未重新核对，请人工检查地点和事实。": "El texto editado no se ha revisado de nuevo. Comprueba los lugares y los datos."
+  "文案修改后尚未重新核对，请人工检查地点和事实。": "El texto editado no se ha revisado de nuevo. Comprueba los lugares y los datos.",
+  "Review concern · photo {count}": "Aviso de revisión · foto {count}",
+  "Recorded review concern: {flags}. Check this photo before approval.": "Aviso de revisión registrado: {flags}. Revisa esta foto antes de aprobarla."
 }
