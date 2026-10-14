@@ -404,17 +404,14 @@ def owner_feedback_guidance(value):
 
 
 def gateway_environment():
-    # An allowlist prevents unrelated host secrets and loader hooks reaching AI.
-    # HOME/CODEX_HOME must still belong to a dedicated, restricted VPS runtime.
-    keys = ("PATH", "HOME", "LANG", "LC_ALL", "TZ", "CODEX_HOME")
-    backend = "service" if os.environ.get("CODEX_GATEWAY_BACKEND") == "service" else "local"
-    if backend == "service":
-        keys += ("CODEX_GATEWAY_SERVICE_URL", "CODEX_GATEWAY_SERVICE_AUDIENCE", "CODEX_GATEWAY_SERVICE_MODEL",
-                 "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+    # Only the authenticated remote transport is supported; no local CLI fallback.
+    if os.environ.get("CODEX_GATEWAY_BACKEND") != "service":
+        raise Stop("gateway_not_configured")
+    keys = ("PATH", "LANG", "LC_ALL", "TZ", "CODEX_GATEWAY_SERVICE_URL",
+            "CODEX_GATEWAY_SERVICE_AUDIENCE", "CODEX_GATEWAY_SERVICE_MODEL",
+            "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
     env = {key: os.environ[key] for key in keys if key in os.environ}
-    env.update(CODEX_GATEWAY_AUTO_INSTALL_CODEX="false",
-               CODEX_GATEWAY_PROVIDER_CHAIN="codex", CODEX_GATEWAY_SEARCH="false",
-               CODEX_GATEWAY_BACKEND=backend)
+    env["CODEX_GATEWAY_BACKEND"] = "service"
     return env
 
 

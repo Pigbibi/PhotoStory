@@ -84,7 +84,7 @@ class FailureDiagnosticsTests(unittest.TestCase):
                         (work / 'result.json').write_text(content)
                     return subprocess.CompletedProcess([], 0, stdout=b'', stderr=b'')
                 output = io.StringIO()
-                with patch.dict(os.environ, {'CODEX_GATEWAY_COMMAND': str(command)}, clear=True), \
+                with patch.dict(os.environ, {'CODEX_GATEWAY_COMMAND': str(command), 'CODEX_GATEWAY_BACKEND': 'service'}, clear=True), \
                         patch.object(batch.subprocess, 'run', side_effect=result), redirect_stdout(output), \
                         self.assertRaisesRegex(batch.Stop, 'gateway_failed'):
                     batch.gateway('synthetic', [], [], {}, work)
@@ -98,7 +98,7 @@ class FailureDiagnosticsTests(unittest.TestCase):
             command.write_text('synthetic')
             output = io.StringIO()
             options = {'side_effect': result} if timeout else {'return_value': result}
-            with patch.dict(os.environ, {'CODEX_GATEWAY_COMMAND': str(command)}, clear=True), \
+            with patch.dict(os.environ, {'CODEX_GATEWAY_COMMAND': str(command), 'CODEX_GATEWAY_BACKEND': 'service'}, clear=True), \
                     patch.object(batch.subprocess, 'run', **options), redirect_stdout(output), \
                     self.assertRaisesRegex(batch.Stop, 'gateway_timeout' if timeout else 'gateway_failed'):
                 batch.gateway('synthetic', [], [], {}, work)

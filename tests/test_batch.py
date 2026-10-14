@@ -93,11 +93,8 @@ class ScreeningTests(unittest.TestCase):
             "GH_TOKEN": "dummy", "LD_PRELOAD": "/untrusted.so", "PYTHONPATH": "/untrusted",
             "CODEX_GATEWAY_BACKEND": "ssh", "CODEX_GATEWAY_FAKE_RESULT": "fake",
         }, clear=True):
-            env = b.gateway_environment()
-        self.assertEqual(env["HOME"], "/restricted-home")
-        self.assertEqual(env["CODEX_GATEWAY_BACKEND"], "local")
-        for key in ("AWS_SECRET_ACCESS_KEY", "PHOTOSTORY_BATCH_TOKEN", "GH_TOKEN", "LD_PRELOAD", "PYTHONPATH", "CODEX_GATEWAY_FAKE_RESULT"):
-            self.assertNotIn(key, env)
+            with self.assertRaises(b.Stop):
+                b.gateway_environment()
     def test_service_gateway_receives_only_oidc_transport_not_processor_credentials(self):
         from unittest.mock import patch
         with patch.dict(b.os.environ, {
