@@ -14,7 +14,6 @@ on:
     - cron: '11,41 * * * *'
 permissions:
   contents: read
-  id-token: write
 concurrency:
   group: photostory-processor
   cancel-in-progress: false
@@ -27,11 +26,6 @@ jobs:
       PHOTOSTORY_URL: ${{ vars.PHOTOSTORY_URL }}
       PHOTOSTORY_BATCH_TOKEN: ${{ secrets.PHOTOSTORY_BATCH_TOKEN }}
       PHOTOSTORY_STATE_BACKEND: cloudflare
-      CODEX_GATEWAY_COMMAND: ${{ github.workspace }}/scripts/github_gateway.py
-      CODEX_GATEWAY_BACKEND: service
-      CODEX_GATEWAY_SERVICE_URL: ${{ vars.CODEX_GATEWAY_SERVICE_URL }}
-      CODEX_GATEWAY_SERVICE_AUDIENCE: ${{ vars.CODEX_GATEWAY_SERVICE_AUDIENCE || 'codex-gateway' }}
-      CODEX_GATEWAY_SERVICE_MODEL: ${{ vars.CODEX_GATEWAY_SERVICE_MODEL || 'gpt-6-sol' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

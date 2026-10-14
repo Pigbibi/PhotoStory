@@ -1,7 +1,7 @@
 # Processor deployment status
 
-The local model subprocess, shared authentication reader and privileged AI-unit launcher have been removed. No local CLI fallback is supported. The batch template now uses the remote service transport and refuses missing service configuration.
+The local model subprocess, shared authentication reader, privileged AI-unit launcher and legacy remote HTTP gateway have been removed. The workflow no longer requests model OIDC permissions or reads retired gateway variable names. AI admission stops until a new task backend has been qualified.
 
-This change is not a deployment. Existing installations may depend on the removed unit; this PR must stay draft until the owner qualifies an authenticated remote transport and plans the service transition. The GitHub-hosted processor remains the existing service caller; its CI does not prove the service is connected.
+This is not a deployment. Existing installations may depend on these paths, so this PR stays draft. The owner must choose and qualify an authenticated task connection and plan the transition. No replacement connection is enabled by this PR.
 
-Do not delete or reset inventories, publication records, pending jobs or authentication files during migration. Finish or inspect in-flight jobs before switching versions. No server was accessed and no unit, timer, secret or stored variable was changed by this PR.
+Preserve inventories, publication records, pending jobs and authentication files. Inspect in-flight work before switching versions. No server was accessed and no service, timer, actual secret or stored variable was changed.

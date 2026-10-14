@@ -8,7 +8,7 @@ import process_batch
 
 class RetiredExecutionTests(unittest.TestCase):
     def test_local_or_missing_backend_never_spawns_a_process(self):
-        for backend in ("", "local", "ssh"):
+        for backend in ("", "local", "ssh", "service"):
             with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
                 work = Path(tmp)
                 command = work / "retired"

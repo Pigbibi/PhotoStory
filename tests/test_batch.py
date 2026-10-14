@@ -95,23 +95,6 @@ class ScreeningTests(unittest.TestCase):
         }, clear=True):
             with self.assertRaises(b.Stop):
                 b.gateway_environment()
-    def test_service_gateway_receives_only_oidc_transport_not_processor_credentials(self):
-        from unittest.mock import patch
-        with patch.dict(b.os.environ, {
-            "PATH": "/usr/bin", "HOME": "/restricted-home", "CODEX_GATEWAY_BACKEND": "service",
-            "CODEX_GATEWAY_SERVICE_URL": "https://gateway.example",
-            "CODEX_GATEWAY_SERVICE_MODEL": "gpt-6-sol",
-            "ACTIONS_ID_TOKEN_REQUEST_URL": "https://github.example/oidc",
-            "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "transport-token",
-            "PHOTOSTORY_BATCH_TOKEN": "private-machine-token",
-            "GH_TOKEN": "private-gh-token",
-        }, clear=True):
-            env = b.gateway_environment()
-        self.assertEqual(env['CODEX_GATEWAY_BACKEND'], 'service')
-        self.assertEqual(env['CODEX_GATEWAY_SERVICE_MODEL'], 'gpt-6-sol')
-        self.assertEqual(env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'], 'transport-token')
-        self.assertNotIn('PHOTOSTORY_BATCH_TOKEN', env)
-        self.assertNotIn('GH_TOKEN', env)
     def test_graph_pagination_cannot_exfiltrate_token(self):
         with self.assertRaises(b.Stop): b.graph('https://evil.invalid/next','secret')
 

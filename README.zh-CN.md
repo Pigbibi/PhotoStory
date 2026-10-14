@@ -1,3 +1,5 @@
+> 旧模型 CLI 和远程网关已退役；任务服务连接验证完成前，AI 步骤会停止，保留现有任务和数据。
+
 # PhotoStory
 
 [English](README.md)
@@ -113,7 +115,6 @@ npm run deploy
 | `BATCH_TOKEN` | Worker Secret | 验证处理器 |
 | `PHOTOSTORY_BATCH_TOKEN` | GitHub Actions Secret | 与 Worker 相同的机器凭据 |
 | `PHOTOSTORY_URL` | GitHub Actions 变量 | 你的站点地址 |
-| `CODEX_GATEWAY_SERVICE_URL` | GitHub Actions 变量 | CodexGateway HTTPS 入口 |
 
 在你的 OAuth 应用中登记：
 

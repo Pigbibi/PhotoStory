@@ -1,3 +1,5 @@
+> Legacy model gateway transport is retired. AI admission stops until an authenticated task backend is qualified; existing jobs and inventories are preserved.
+
 # PhotoStory
 
 [简体中文](README.zh-CN.md)
@@ -128,7 +130,6 @@ history, source file, frontend variable, issue, screenshot, or chat.
 | `BATCH_TOKEN` | Worker Secret | Authenticates the processor |
 | `PHOTOSTORY_BATCH_TOKEN` | GitHub Actions Secret | Same machine token |
 | `PHOTOSTORY_URL` | GitHub Actions variable | Your Worker origin |
-| `CODEX_GATEWAY_SERVICE_URL` | GitHub Actions variable | HTTPS CodexGateway endpoint |
 
 Register these redirects with your own applications:
 
