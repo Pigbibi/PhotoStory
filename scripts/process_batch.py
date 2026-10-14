@@ -404,62 +404,12 @@ def owner_feedback_guidance(value):
 
 
 def gateway_environment():
-    # An allowlist prevents unrelated host secrets and loader hooks reaching AI.
-    # HOME/CODEX_HOME must still belong to a dedicated, restricted VPS runtime.
-    keys = ("PATH", "HOME", "LANG", "LC_ALL", "TZ", "CODEX_HOME")
-    backend = "service" if os.environ.get("CODEX_GATEWAY_BACKEND") == "service" else "local"
-    if backend == "service":
-        keys += ("CODEX_GATEWAY_SERVICE_URL", "CODEX_GATEWAY_SERVICE_AUDIENCE", "CODEX_GATEWAY_SERVICE_MODEL",
-                 "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
-    env = {key: os.environ[key] for key in keys if key in os.environ}
-    env.update(CODEX_GATEWAY_AUTO_INSTALL_CODEX="false",
-               CODEX_GATEWAY_PROVIDER_CHAIN="codex", CODEX_GATEWAY_SEARCH="false",
-               CODEX_GATEWAY_BACKEND=backend)
-    return env
+    raise Stop("gateway_not_configured")
 
 
 def gateway(prompt, records, paths, schema, cwd):
-    command = os.environ.get("CODEX_GATEWAY_COMMAND", "")
-    if not command or not Path(command).is_file():
-        raise Stop("gateway_not_configured")
-    prompt_path, schema_path, output = cwd / "prompt.txt", cwd / "schema.json", cwd / "result.json"
-    prompt_path.write_text(prompt + "\nImage order / metadata:\n" + json.dumps(records, ensure_ascii=False))
-    schema_path.write_text(json.dumps(schema))
-    output.unlink(missing_ok=True)
-    args = [command, "--prompt-file", str(prompt_path), "--output-schema", str(schema_path),
-            "--out", str(output), "--providers", "codex", "--sandbox", "read-only",
-            "--ask-for-approval", "never", "--complexity", "medium", "--timeout-seconds", "600", "--cwd", str(cwd)]
-    for path in paths:
-        args += ["--image", str(path)]
-    env = gateway_environment()
-    try:
-        result = subprocess.run(args, cwd=cwd, env=env, capture_output=True, timeout=660)
-    except subprocess.TimeoutExpired:
-        print('Gateway diagnostic: {"category": "timeout"}')
-        raise Stop('gateway_timeout') from None
-    if result.returncode or not output.is_file() or output.stat().st_size > 100_000:
-        from github_gateway import validated_failure_diagnostic
-        category = ('gateway_failed' if result.returncode else
-                    'output_missing' if not output.is_file() else 'gateway_result_invalid')
-        diagnostic = {'category': category}
-        raw = getattr(result, 'stdout', b'')
-        text = raw[:8192].decode('utf-8', errors='replace') if isinstance(raw, bytes) else str(raw)[:8192]
-        for line in text.splitlines():
-            if line.startswith('Gateway diagnostic: '):
-                try:
-                    safe = validated_failure_diagnostic(json.loads(line.partition(': ')[2]))
-                    if safe:
-                        diagnostic = safe
-                        break
-                except (ValueError, TypeError):
-                    pass
-        print('Gateway diagnostic:', json.dumps(diagnostic, sort_keys=True))
-        raise Stop("gateway_failed")
-    try:
-        return json.loads(output.read_text())
-    except (UnicodeError, json.JSONDecodeError):
-        print('Gateway diagnostic: {"category": "invalid_json"}')
-        raise Stop('gateway_failed') from None
+    """No old CLI or HTTP gateway fallback; a new backend needs qualification."""
+    raise Stop("gateway_not_configured")
 
 
 def accepted_screening(result, expected):

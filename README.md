@@ -1,3 +1,5 @@
+> Legacy model gateway transport is retired. AI admission stops until an authenticated task backend is qualified; existing jobs and inventories are preserved.
+
 # PhotoStory
 
 [简体中文](README.zh-CN.md)
@@ -76,16 +78,13 @@ publication state. GitHub Actions performs bounded scans, restores private SQLit
 state from R2, and calls the existing VPS CodexGateway with GitHub OIDC. The AI runtime
 does not receive OneDrive refresh tokens, Worker secrets, or publishing authority.
 The processor receives EXIF-free previews; it never deletes OneDrive originals.
-The Gateway and its Codex login remain on the VPS and can serve other repositories.
-A self-hosted VPS processor remains an alternative; see the
-[processor migration guide](docs/github-actions-processor.zh-CN.md).
+Legacy model execution is retired; see the [processor migration status](docs/github-actions-processor.zh-CN.md).
 
 ## Quick start
 
 Requirements: Node.js and npm, Python 3 with Pillow, a Cloudflare account, a
 GitHub OAuth App, and a Microsoft Entra app that supports personal Microsoft
-accounts. The Actions processor needs a private R2 bucket and an existing
-CodexGateway service with an authenticated Codex CLI on a trusted Linux host.
+accounts. Private R2 remains required for the inventory. AI processing needs a separately qualified task connection; the retired gateway is unavailable.
 
 ```sh
 npm ci
@@ -128,7 +127,6 @@ history, source file, frontend variable, issue, screenshot, or chat.
 | `BATCH_TOKEN` | Worker Secret | Authenticates the processor |
 | `PHOTOSTORY_BATCH_TOKEN` | GitHub Actions Secret | Same machine token |
 | `PHOTOSTORY_URL` | GitHub Actions variable | Your Worker origin |
-| `CODEX_GATEWAY_SERVICE_URL` | GitHub Actions variable | HTTPS CodexGateway endpoint |
 
 Register these redirects with your own applications:
 

