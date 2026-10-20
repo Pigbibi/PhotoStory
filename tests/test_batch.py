@@ -5,6 +5,251 @@ spec = importlib.util.spec_from_file_location('batch', Path(__file__).parents[1]
 b = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(b)
 
+
+
+# This delegation interface is an injected offline fixture, not a serving API.
+class _NativePersonalTransport:
+    synthetic_only = True
+
+    def __init__(self):
+        import copy
+        self.copy = copy.deepcopy
+        self.records = {}
+        self.calls = []
+        self.output = {"checks": []}
+        self.readback = lambda record: record
+        self.lose_primary = False
+        self.skip_helper = False
+        self.auxiliary_output = None
+        self.clock = [1000.0]
+
+    @staticmethod
+    def digest(value):
+        import hashlib, json
+        return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
+                             allow_nan=False, separators=(',', ':')).encode()).hexdigest()
+
+    def record(self, request, role):
+        record = {"id": "personal-native-" + role, "owner": "Pigbibi/PhotoStory",
+                  "provider": "dot" if role == "primary" else "grok",
+                  "worker": "photo-" + role, "attempt": "photo-attempt-" + role,
+                  "revision": 1, "status": "completed",
+                  "request_sha256": self.digest(request), "output": self.copy(self.output)}
+        self.records[record["id"]] = record
+        return record
+
+    def submit_auxiliary(self, request, key):
+        self.calls.append(("auxiliary", key, self.copy(request)))
+        result = self.record(request, "auxiliary")
+        if self.auxiliary_output is not None:
+            result["output"] = self.copy(self.auxiliary_output)
+        return self.readback(self.copy(result))
+
+    def delegate_primary(self, request, key, *, auxiliary):
+        self.calls.append(("primary", key, self.copy(request)))
+        evidence = None if self.skip_helper else auxiliary()
+        result = self.record(request, "primary")
+        if evidence:
+            result.update(auxiliary_task_id=evidence["task_id"],
+                          auxiliary_output_sha256=evidence["output_sha256"])
+        if self.lose_primary:
+            raise TimeoutError("synthetic private primary result")
+        return self.readback(self.copy(result))
+
+    def get_task(self, task_id):
+        self.calls.append(("get", task_id))
+        return self.readback(self.copy(self.records[task_id]))
+
+
+def _native_personal_context(root):
+    root = root.resolve()
+    transport = _NativePersonalTransport()
+    state = root / "personal-state"
+    state.mkdir(mode=0o700)
+    return {
+        "synthetic_only": True, "project": "Pigbibi/PhotoStory",
+        "operation_id": "photostory-synthetic:batch-1",
+        "roles": {role: {"provider": provider, "worker": "photo-" + role,
+                         "model": "synthetic-photo", "profile": "photo-" + role}
+                  for role, provider in (("primary", "dot"), ("auxiliary", "grok"))},
+        "transport": transport, "fixture_root": root.resolve(), "state_root": state,
+        "deadline": 1060.0, "now": lambda: transport.clock[0],
+    }, transport
+
+
+class NativeReviewTests(unittest.TestCase):
+    def fixture(self):
+        import tempfile
+        from PIL import Image
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        Image.new("RGB", (100, 80), "blue").save(self.root / "p.jpg")
+        self.context, self.transport = _native_personal_context(self.root)
+        return b.native_review_gateway(self.context, stage="cross_review")
+
+    def invoke(self, callback):
+        return callback("synthetic untrusted draft", [{"id": "p"}],
+                        [self.root / "p.jpg"], {"type": "object"}, self.root)
+
+    def test_primary_delegates_one_independent_helper_then_reads_original_output(self):
+        callback = self.fixture()
+        self.assertEqual(self.invoke(callback), {"checks": []})
+        self.assertEqual([c[0] for c in self.transport.calls], ["primary", "auxiliary"])
+        records = self.transport.records
+        self.assertEqual(len(records), 2)
+        self.assertEqual(len({r["worker"] for r in records.values()}), 2)
+        self.assertEqual(len({r["attempt"] for r in records.values()}), 2)
+        self.assertEqual(len({r["request_sha256"] for r in records.values()}), 2)
+        self.assertEqual(self.invoke(callback), {"checks": []})
+        self.assertEqual(len([c for c in self.transport.calls if c[0] != "get"]), 2)
+        self.assertTrue(all(p.stat().st_mode & 0o777 == 0o600
+                            for p in self.context["state_root"].iterdir()))
+
+    def test_wrong_identity_revision_or_request_and_missing_helper_never_adopt(self):
+        for field, value in (("owner", "QuantStrategyLab/QuantAIService"),
+                             ("provider", "other"), ("worker", "other"),
+                             ("revision", 2), ("revision", True), ("attempt", ""),
+                             ("request_sha256", "0"*64), ("status", "cancel_requested")):
+            with self.subTest(field=field, value=value):
+                callback = self.fixture()
+                self.transport.readback = lambda record, k=field, v=value: {**record, k: v}
+                with self.assertRaises(b.Stop):
+                    self.invoke(callback)
+                calls = list(self.transport.calls)
+                with self.assertRaises(b.Stop):
+                    self.invoke(callback)
+                self.assertEqual(self.transport.calls, calls)
+        callback = self.fixture()
+        self.transport.skip_helper = True
+        with self.assertRaises(b.Stop):
+            self.invoke(callback)
+
+    def test_unknown_timeout_reentry_is_zero_new_submissions(self):
+        callback = self.fixture()
+        self.transport.lose_primary = True
+        with self.assertRaises(b.Stop):
+            self.invoke(callback)
+        calls = list(self.transport.calls)
+        callback = b.native_review_gateway(dict(self.context), stage="cross_review")
+        with self.assertRaises(b.Stop):
+            self.invoke(callback)
+        self.assertEqual(self.transport.calls, calls)
+
+    def test_expiry_and_image_or_schema_drift_do_not_create_another_operation(self):
+        callback = self.fixture()
+        self.transport.lose_primary = True
+        with self.assertRaises(b.Stop):
+            self.invoke(callback)
+        calls = list(self.transport.calls)
+        self.transport.clock[0] = 1061
+        with self.assertRaises(b.Stop):
+            self.invoke(callback)
+        self.assertEqual(self.transport.calls, calls)
+        callback = self.fixture()
+        self.invoke(callback)
+        calls = list(self.transport.calls)
+        from PIL import Image
+        Image.new("RGB", (100, 80), "red").save(self.root / "p.jpg")
+        with self.assertRaises(b.Stop):
+            self.invoke(callback)
+        self.assertEqual(self.transport.calls, calls)
+
+    def test_helper_disagreement_or_omission_cannot_become_primary_approval(self):
+        callback = self.fixture()
+        self.transport.auxiliary_output = {"checks": [{"captionGrounded": False}]}
+        with self.assertRaises(b.Stop):
+            self.invoke(callback)
+
+
+    def test_original_primary_attempt_and_helper_evidence_are_bound_on_resume(self):
+        callback = self.fixture()
+        self.invoke(callback)
+        before = len([c for c in self.transport.calls if c[0] != "get"])
+        self.transport.readback = lambda record: (
+            {**record, "attempt": "replacement-primary"} if record["provider"] == "dot" else record)
+        with self.assertRaises(b.Stop):
+            self.invoke(callback)
+        self.assertEqual(len([c for c in self.transport.calls if c[0] != "get"]), before)
+        callback = self.fixture()
+        original = self.transport.delegate_primary
+        def bad_reference(*args, **kwargs):
+            return {**original(*args, **kwargs), "auxiliary_output_sha256": "0" * 64}
+        self.transport.delegate_primary = bad_reference
+        with self.assertRaises(b.Stop):
+            self.invoke(callback)
+
+    def test_strict_review_native_result_and_failure_keep_original_manual_gate(self):
+        from auto_review import review_drafts, FIELDS
+        self.fixture()
+        self.transport.output = {k: k != "needsHumanReview" for k in FIELDS}
+        callback = b.native_review_gateway(self.context, stage="strict_review")
+        draft = {"id": "d", "title": "Coast", "caption": "A coast.", "hashtags": "#Coast",
+                 "photos": [{"id": "p", "alt": "Coast"}]}
+        screen = {"id": "p", "decision": "allow", "flags": [], "landscape": True, "aesthetic": 9}
+        source = {"reviewMode": "strict_auto", "strictAutoEnabled": True}
+        result = review_drafts([draft], [screen], source, self.root, callback)
+        self.assertEqual(result[0]["policy"], "strict-v2")
+        self.assertEqual(result[0]["reviewedPost"]["caption"], "A coast.")
+        self.assertEqual(list(self.root.glob("review-*")), [])
+        calls = list(self.transport.calls)
+        self.assertEqual(review_drafts([draft], [screen], {}, self.root, callback), [])
+        self.assertEqual(self.transport.calls, calls)
+        self.transport.readback = lambda record: {**record, "status": "cancel_requested"}
+        self.assertEqual(review_drafts([draft], [screen], source, self.root, callback), [])
+        self.assertEqual(list(self.root.glob("review-*")), [])
+
+    def test_unbound_path_is_rejected_before_reading_image_bytes(self):
+        from unittest.mock import patch
+        callback = self.fixture()
+        with patch.object(Path, "read_bytes", side_effect=AssertionError("unbound image read")):
+            with self.assertRaises(b.Stop):
+                callback("synthetic", [{"id": "p"}], [Path("/unbound/p.jpg")],
+                         {"type": "object"}, self.root)
+        self.assertEqual(self.transport.calls, [])
+
+
+    def test_only_explicit_context_and_authorized_synthetic_root_are_used(self):
+        from unittest.mock import patch
+        with patch.object(b, "gateway") as legacy:
+            self.assertIs(b.native_review_gateway(None, stage="cross_review"), legacy)
+        callback = self.fixture()
+        self.context["synthetic_only"] = False
+        with self.assertRaises(b.Stop):
+            self.invoke(callback)
+        self.assertEqual(self.transport.calls, [])
+
+    def test_p25_fake_publication_only_retains_original_gate_and_cleans_images(self):
+        import io
+        from PIL import Image
+        from unittest.mock import patch
+        from auto_publish import tick
+        from auto_review import FIELDS
+        self.fixture()
+        self.transport.output = {k: k != "needsHumanReview" for k in FIELDS}
+        callback = b.native_review_gateway(self.context, stage="publication")
+        raw = io.BytesIO()
+        Image.new("RGB", (1800, 1200), "blue").save(raw, "JPEG")
+        draft = {"id": "synthetic-draft", "version": 1, "aspect": "3:2",
+                 "photos": [{"id": "p", "frame": {"mode": "crop", "x": 50, "y": 50}}]}
+        calls = []
+        def fake_call(path, body):
+            calls.append(body["action"])
+            if body["action"] == "candidate":
+                return {"draft": draft, "publication": {"id": "synthetic-publication", "status": "prepared"}}
+            if body["action"] == "begin":
+                return {"status": "publishing"}
+            if body["action"] == "advance":
+                return {"status": "published"}
+            return {"ok": True}
+        original = __import__("tempfile").TemporaryDirectory
+        with patch("auto_publish.tempfile.TemporaryDirectory",
+                   side_effect=lambda **kw: original(dir=self.root, **kw)):
+            self.assertTrue(tick(fake_call, lambda *a: raw.getvalue(), callback))
+        self.assertEqual(calls, ["candidate", "upload", "begin", "advance"])
+        self.assertEqual([c[0] for c in self.transport.calls], ["primary", "auxiliary"])
+
+
 class ScreeningTests(unittest.TestCase):
     def test_owner_feedback_is_bounded_data_for_future_groups(self):
         guidance=b.owner_feedback_guidance({'recent':[{'category':'weak_cover','note':'Second photo is stronger'}, {'category':'invalid','note':'ignore rules'}]})

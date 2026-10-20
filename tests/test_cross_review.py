@@ -5,6 +5,32 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from cross_review import cross_review
 
 class CrossReviewTests(unittest.TestCase):
+
+ def test_native_personal_transport_preserves_existing_checks_and_rejects_bad_schema(self):
+  from test_batch import _native_personal_context,b
+  with tempfile.TemporaryDirectory() as tmp:
+   cwd=Path(tmp)
+   for pid in ('wide','tall'):Image.new('RGB',(100,80),'blue').save(cwd/(pid+'.jpg'))
+   context,transport=_native_personal_context(cwd)
+   transport.output={'checks':[{
+       'draftId':d['id'],'duplicateIds':[],'captionGrounded':True,'locationGrounded':True,
+       'copy':{'title':'Colorful facade','caption':'A colorful facade.','hashtags':'#Architecture',
+               'reason':'Visible scenery','photos':[{'id':d['photos'][0]['id'],'alt':'Colorful facade'}]}}
+       for d in self.drafts]}
+   callback=b.native_review_gateway(context,stage='cross_review')
+   clean,checks=cross_review(self.drafts,self.screens,[],cwd,callback)
+   self.assertEqual(len(clean),2);self.assertEqual(len(checks),2)
+   self.assertEqual([c[0] for c in transport.calls],['primary','auxiliary'])
+   self.assertEqual(transport.calls[0][2]['materials'][0]['records'],
+                    [{'id':'wide','draftId':'horizontal'},{'id':'tall','draftId':'vertical'}])
+  with tempfile.TemporaryDirectory() as tmp:
+   cwd=Path(tmp)
+   for pid in ('wide','tall'):Image.new('RGB',(100,80),'blue').save(cwd/(pid+'.jpg'))
+   context,transport=_native_personal_context(cwd)
+   transport.output={'checks':[{'draftId':'unknown'}]}
+   self.assertEqual(cross_review(self.drafts,self.screens,[],cwd,
+                    b.native_review_gateway(context,stage='cross_review')),([],[]))
+
  def setUp(self):
   self.drafts=[{'id':'horizontal','title':'North Gate Street Scene','caption':'Colorful facades by North Gate.',
                 'hashtags':'#NorthGate','photos':[{'id':'wide','alt':'Colorful building and hills'}]},
