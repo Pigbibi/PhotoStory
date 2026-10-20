@@ -541,7 +541,213 @@ def validated_groups(result, allowed_ids, job_id, dimensions=None):
     return drafts
 
 
-def run():
+
+def native_review_gateway(context, *, stage):
+    """Inject P23/P25's synthetic delegation contract; no production transport exists here."""
+    if context is None:
+        return gateway
+
+    def review(prompt, records, paths, schema, cwd):
+        try:
+            import fcntl
+            import stat
+            from PIL import Image
+
+            def packed(value):
+                return json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False,
+                                  separators=(',', ':')).encode()
+
+            def digest(value):
+                return hashlib.sha256(packed(value)).hexdigest()
+
+            def number(value):
+                return type(value) in (int, float) and math.isfinite(value)
+
+            transport, routes = context['transport'], context['roles']
+            root, state = context['fixture_root'], context['state_root']
+            deadline, now = context['deadline'], context['now']
+            if (stage not in {'cross_review', 'strict_review', 'publication'}
+                    or context.get('synthetic_only') is not True
+                    or type(context.get('cancel', False)) is not bool
+                    or getattr(transport, 'synthetic_only', False) is not True
+                    or context['project'] != 'Pigbibi/PhotoStory'
+                    or not isinstance(context['operation_id'], str) or not context['operation_id']
+                    or len(context['operation_id']) > 200
+                    or not number(deadline) or not number(now())
+                    or set(routes) != {'primary', 'auxiliary'}
+                    or not isinstance(root, Path) or root.resolve() != root
+                    or not isinstance(state, Path) or state.resolve() != state
+                    or stat.S_IMODE(state.stat().st_mode) != 0o700
+                    or not isinstance(prompt, str) or len(prompt.encode()) > 128_000
+                    or not isinstance(records, list) or not 1 <= len(records) == len(paths) <= 24):
+                raise ValueError('synthetic context required')
+            for role, provider in (('primary', 'dot'), ('auxiliary', 'grok')):
+                route = routes[role]
+                if (set(route) != {'provider', 'worker', 'model', 'profile'}
+                        or route['provider'] != provider
+                        or any(not isinstance(v, str) or not v or len(v) > 200 for v in route.values())):
+                    raise ValueError('role binding required')
+            if routes['primary']['worker'] == routes['auxiliary']['worker']:
+                raise ValueError('independent workers required')
+            images = []
+            for record, path in zip(records, paths):
+                if (not isinstance(record, dict) or not isinstance(record.get('id'), str)
+                        or not record['id'] or len(record['id']) > 200
+                        or not isinstance(path, Path) or path.is_symlink()
+                        or not path.resolve().is_relative_to(root)
+                        or path.stat().st_size > 15_000_000):
+                    raise ValueError('only bound generated images allowed')
+                data = path.read_bytes()
+                with Image.open(io.BytesIO(data)) as image:
+                    if image.format != 'JPEG' or image.width * image.height > 50_000_000:
+                        raise ValueError('synthetic JPEG required')
+                    dimensions = [image.width, image.height]
+                images.append({'id': record['id'], 'mime': 'image/jpeg', 'dimensions': dimensions,
+                               'sha256': hashlib.sha256(data).hexdigest(),
+                               'synthetic_base64': base64.b64encode(data).decode()})
+            ids = [r['id'] for r in records]
+            if len(set(ids)) != len(ids):
+                raise ValueError('distinct ordered images required')
+            operation = context['operation_id'] + ':' + stage + ':' + digest(sorted(ids))
+            requests = {role: {
+                'mode': 'agent', 'model': routes[role]['model'], 'profile': routes[role]['profile'],
+                'objective': prompt,
+                'materials': [{'role': role, 'project': context['project'], 'operation_id': operation,
+                               'records': records, 'images': images}],
+                'output_schema': schema, 'timeout_seconds': 60,
+            } for role in ('primary', 'auxiliary')}
+            binding = {'operation': operation, 'routes': routes, 'deadline': deadline,
+                       'requests': {role: digest(value) for role, value in requests.items()}}
+            path = state / (hashlib.sha256(operation.encode()).hexdigest() + '.jsonl')
+            flags = os.O_RDWR | os.O_APPEND | os.O_NOFOLLOW
+            try:
+                fd = os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
+                fresh = True
+            except FileExistsError:
+                fd = os.open(path, flags)
+                fresh = False
+            with os.fdopen(fd, 'r+', encoding='utf-8') as journal:
+                fcntl.flock(journal, fcntl.LOCK_EX)
+                info = os.fstat(journal.fileno())
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                        or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600):
+                    raise ValueError('private operation journal required')
+
+                def append(value):
+                    journal.seek(0, os.SEEK_END)
+                    journal.write(packed(value).decode() + '\n')
+                    journal.flush()
+                    os.fsync(journal.fileno())
+
+                if fresh:
+                    append({'kind': 'binding', 'value': binding})
+                    directory = os.open(state, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
+                journal.seek(0)
+                raw = journal.read(100_001)
+                if len(raw) > 100_000 or not raw.endswith('\n'):
+                    raise ValueError('incomplete operation journal')
+                entries = [json.loads(line) for line in raw.splitlines()]
+                if not entries or entries[0] != {'kind': 'binding', 'value': binding}:
+                    raise ValueError('original material changed')
+                intents, identities = set(), {}
+                for entry in entries[1:]:
+                    role = entry.get('role')
+                    if entry.get('kind') == 'halt':
+                        raise ValueError('original result unknown')
+                    if role not in routes:
+                        raise ValueError('original role unknown')
+                    if entry.get('kind') == 'intent' and set(entry) == {'kind', 'role'} and role not in intents:
+                        intents.add(role)
+                    elif (entry.get('kind') == 'verified' and set(entry) == {'kind', 'role', 'identity'}
+                          and role in intents and role not in identities):
+                        identities[role] = entry['identity']
+                    else:
+                        raise ValueError('original role changed')
+                if intents - identities.keys():
+                    raise ValueError('original submission unknown')
+
+                def require_active():
+                    instant = now()
+                    if not number(instant) or instant >= deadline or context.get('cancel') is True:
+                        raise ValueError('review expired or cancelled')
+
+                try:
+                    require_active()
+                except ValueError:
+                    append({'kind': 'halt'})
+                    raise
+
+                def verify(record, role):
+                    require_active()
+                    if (not isinstance(record, dict) or record.get('owner') != context['project']
+                            or record.get('provider') != routes[role]['provider']
+                            or record.get('worker') != routes[role]['worker']
+                            or type(record.get('revision')) is not int or record['revision'] != 1
+                            or not isinstance(record.get('id'), str) or not 1 <= len(record['id']) <= 200
+                            or not isinstance(record.get('attempt'), str) or not record['attempt']
+                            or record.get('status') != 'completed'
+                            or record.get('request_sha256') != binding['requests'][role]
+                            or not isinstance(record.get('output'), dict)):
+                        raise ValueError('native role result not verified')
+                    identity = [record['id'], record['worker'], record['attempt'], record['revision'],
+                                record['request_sha256'], digest(record['output'])]
+                    if role in identities and identities[role] != identity:
+                        raise ValueError('original attempt or output changed')
+                    if role not in identities:
+                        append({'kind': 'verified', 'role': role, 'identity': identity})
+                        identities[role] = identity
+                    return record
+
+                auxiliary_record = None
+
+                def auxiliary():
+                    nonlocal auxiliary_record
+                    require_active()
+                    if auxiliary_record is None:
+                        append({'kind': 'intent', 'role': 'auxiliary'})
+                        require_active()
+                        auxiliary_record = verify(transport.submit_auxiliary(
+                            requests['auxiliary'], operation + ':auxiliary'), 'auxiliary')
+                    return {'task_id': auxiliary_record['id'],
+                            'output_sha256': digest(auxiliary_record['output']),
+                            'output': json.loads(packed(auxiliary_record['output']))}
+
+                try:
+                    if identities:
+                        require_active()
+                        auxiliary_record = verify(transport.get_task(identities['auxiliary'][0]), 'auxiliary')
+                        require_active()
+                        primary = verify(transport.get_task(identities['primary'][0]), 'primary')
+                    else:
+                        append({'kind': 'intent', 'role': 'primary'})
+                        require_active()
+                        primary = transport.delegate_primary(requests['primary'], operation + ':primary',
+                                                             auxiliary=auxiliary)
+                        if auxiliary_record is None:
+                            raise ValueError('Dot must obtain independent Grok evidence')
+                        primary = verify(primary, 'primary')
+                    if (primary['id'] == auxiliary_record['id']
+                            or primary.get('auxiliary_task_id') != auxiliary_record['id']
+                            or primary.get('auxiliary_output_sha256') != digest(auxiliary_record['output'])
+                            or digest(primary['output']) != digest(auxiliary_record['output'])):
+                        raise ValueError('unresolved auxiliary disagreement')
+                    # The original P23/strict-v2 validators remain the adoption gate.
+                    require_active()
+                    return primary['output']
+                except Exception:
+                    append({'kind': 'halt'})
+                    raise
+        except Exception:
+            raise Stop('native_review_unavailable') from None
+
+    return review
+
+
+def run(*, native_context=None):
     from PIL import Image
     from inventory import Inventory
     from auto_review import review_drafts
@@ -575,7 +781,7 @@ def run():
     call('/internal/maintenance',{'temporaryCleanup':report})
     from auto_publish import tick, AutomaticPublishingStopped
     try:
-        if tick(call, lambda path, body: request(base+path, token=token, body=body, max_bytes=25*1024*1024), gateway):
+        if tick(call, lambda path, body: request(base+path, token=token, body=body, max_bytes=25*1024*1024), native_review_gateway(native_context, stage='publication')):
             return  # Finish one post before slow scanning; never select another.
     except AutomaticPublishingStopped:
         print('Automatic publication stopped or blocked; inspect the private publication. No retry in this run.')
@@ -733,7 +939,7 @@ def run():
                     grouped=gateway(themed_prompt,themed,[cwd/(p['id']+'.jpg') for p in themed],GROUP_SCHEMA,cwd)
                     drafts.extend(validated_groups(grouped,{p['id'] for p in themed},job['id']+'-'+batch_id+'-'+direction+'-'+str(theme_index),dimensions)[:remaining])
             from cross_review import cross_review
-            drafts,cross_reviews=cross_review(drafts,allowed,source.get('referenceDrafts',[]),cwd,gateway,source.get('locationHint',''))
+            drafts,cross_reviews=cross_review(drafts,allowed,source.get('referenceDrafts',[]),cwd,native_review_gateway(native_context, stage='cross_review'),source.get('locationHint',''))
             # A private coarse travel hint orders approved posts later. It is
             # never used as a place name in the copy or published image.
             screened_by_id={p['id']:p for p in allowed}
@@ -749,7 +955,7 @@ def run():
                 outcomes[p['id']]='grouped' if p['id'] in used_ids else 'theme_unmatched'
             from translate_labels import translate_labels
             drafts=translate_labels(drafts,gateway,cwd)
-            auto_reviews=review_drafts(drafts,allowed,source,cwd,gateway)
+            auto_reviews=review_drafts(drafts,allowed,source,cwd,native_review_gateway(native_context, stage='strict_review'))
             used = {p["id"] for d in drafts for p in d["photos"]}
             photos = [{"id":pid, "safety":"allow", "flags":[], "jpeg":base64.b64encode(assets[pid]).decode(),"source":next(p.get("source") for p in candidates if p["id"]==pid)} for pid in used]
             inventory.save_screening(digests,profiles,outcomes)
