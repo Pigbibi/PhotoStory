@@ -568,6 +568,7 @@ def native_review_gateway(context, *, stage):
             deadline, now = context['deadline'], context['now']
             if (stage not in {'cross_review', 'strict_review', 'publication'}
                     or context.get('synthetic_only') is not True
+                    or type(context.get('cancel', False)) is not bool
                     or getattr(transport, 'synthetic_only', False) is not True
                     or context['project'] != 'Pigbibi/PhotoStory'
                     or not isinstance(context['operation_id'], str) or not context['operation_id']
@@ -668,11 +669,20 @@ def native_review_gateway(context, *, stage):
                         raise ValueError('original role changed')
                 if intents - identities.keys():
                     raise ValueError('original submission unknown')
-                if now() >= deadline or context.get('cancel') is True:
+
+                def require_active():
+                    instant = now()
+                    if not number(instant) or instant >= deadline or context.get('cancel') is True:
+                        raise ValueError('review expired or cancelled')
+
+                try:
+                    require_active()
+                except ValueError:
                     append({'kind': 'halt'})
-                    raise ValueError('review expired or cancelled')
+                    raise
 
                 def verify(record, role):
+                    require_active()
                     if (not isinstance(record, dict) or record.get('owner') != context['project']
                             or record.get('provider') != routes[role]['provider']
                             or record.get('worker') != routes[role]['worker']
@@ -681,7 +691,7 @@ def native_review_gateway(context, *, stage):
                             or not isinstance(record.get('attempt'), str) or not record['attempt']
                             or record.get('status') != 'completed'
                             or record.get('request_sha256') != binding['requests'][role]
-                            or not isinstance(record.get('output'), dict) or now() >= deadline):
+                            or not isinstance(record.get('output'), dict)):
                         raise ValueError('native role result not verified')
                     identity = [record['id'], record['worker'], record['attempt'], record['revision'],
                                 record['request_sha256'], digest(record['output'])]
@@ -696,8 +706,10 @@ def native_review_gateway(context, *, stage):
 
                 def auxiliary():
                     nonlocal auxiliary_record
+                    require_active()
                     if auxiliary_record is None:
                         append({'kind': 'intent', 'role': 'auxiliary'})
+                        require_active()
                         auxiliary_record = verify(transport.submit_auxiliary(
                             requests['auxiliary'], operation + ':auxiliary'), 'auxiliary')
                     return {'task_id': auxiliary_record['id'],
@@ -706,10 +718,13 @@ def native_review_gateway(context, *, stage):
 
                 try:
                     if identities:
+                        require_active()
                         auxiliary_record = verify(transport.get_task(identities['auxiliary'][0]), 'auxiliary')
+                        require_active()
                         primary = verify(transport.get_task(identities['primary'][0]), 'primary')
                     else:
                         append({'kind': 'intent', 'role': 'primary'})
+                        require_active()
                         primary = transport.delegate_primary(requests['primary'], operation + ':primary',
                                                              auxiliary=auxiliary)
                         if auxiliary_record is None:
@@ -721,6 +736,7 @@ def native_review_gateway(context, *, stage):
                             or digest(primary['output']) != digest(auxiliary_record['output'])):
                         raise ValueError('unresolved auxiliary disagreement')
                     # The original P23/strict-v2 validators remain the adoption gate.
+                    require_active()
                     return primary['output']
                 except Exception:
                     append({'kind': 'halt'})

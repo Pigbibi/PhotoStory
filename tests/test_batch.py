@@ -78,6 +78,30 @@ def _native_personal_context(root):
 
 
 class NativeReviewTests(unittest.TestCase):
+
+    def test_delegated_callbacks_recheck_expiry_and_cancel_before_helper_dispatch(self):
+        for change in ("expiry", "cancel"):
+            with self.subTest(change=change):
+                callback = self.fixture()
+                original = self.transport.delegate_primary
+                def late_primary(*args, _change=change, _original=original, **kwargs):
+                    if _change == "expiry":
+                        self.transport.clock[0] = self.context["deadline"] + 1
+                    else:
+                        self.context["cancel"] = True
+                    return _original(*args, **kwargs)
+                self.transport.delegate_primary = late_primary
+                with self.assertRaises(b.Stop):
+                    self.invoke(callback)
+                self.assertEqual([c[0] for c in self.transport.calls], ["primary"])
+                calls = list(self.transport.calls)
+                self.context["cancel"] = False
+                self.transport.clock[0] = 1000
+                with self.assertRaises(b.Stop):
+                    self.invoke(callback)
+                self.assertEqual(self.transport.calls, calls)
+
+
     def fixture(self):
         import tempfile
         from PIL import Image
