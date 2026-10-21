@@ -523,6 +523,7 @@ def _pending_batch_state(inventory, source, context):
         if (binding['project'] != context['project'] or binding['resource'] != context['client'].resource
                 or binding['deadline'] != context['deadline']
                 or binding['route'] not in context['routes'].values()
+                or any(binding.get(k)!=context.get(k) for k in ('adoption_age_seconds','task_limit'))
                 or value['halt'] or value['cancel'] or value['intent'] is not True
                 or not isinstance(value['task_id'],str) or not value['task_id']
                 or type(value['revision']) is not int or value['revision'] < 1
@@ -619,12 +620,17 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
         except (OSError,ValueError): pass
     call('/internal/maintenance',{'temporaryCleanup':report})
     from auto_publish import tick, AutomaticPublishingStopped
-    def publication_review(identity, checkpoint=None):
+    def publication_review(identity, checkpoint=None, expires_at=None):
         from native_tasks import (operation_context,publication_checkpoint,
                                   restore_publication_checkpoint,preflight_publication)
         if not directory or not Path(directory).is_absolute():
             raise Stop('setup_required')
+        if (type(expires_at) not in (int,float) or not math.isfinite(expires_at)
+                or expires_at <= native_context['now']()):
+            raise Stop('native_cancel_or_expiry')
         context = _native_business_context(native_context, 'publication', identity)
+        context = {**context, 'deadline':min(context['deadline'],expires_at)}
+        if 'task_limit' in context: context['task_limit'] = 1
         context = operation_context(context,context['operation_id'],state_root=Path(directory))
         context = restore_publication_checkpoint(context,checkpoint)
         context['persist'] = lambda: call('/internal/autopublish', {**identity,'action':'native_checkpoint',
@@ -858,12 +864,13 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
 def workflow_binding(fixture_root, state_root, *, now=None):
     """Read only an explicit ordinary workflow variable; never discover credentials.
 
-    Adoption age is required and bounded, separate from each task's fixed60s TTL.
-    The original operation ledger restores its earlier deadline on resume.
+    Adoption age starts at each original task.created, not batch startup. The
+    finite existing call graph bounds the parent; its ledger restores the same
+    earlier deadline on resume. Publication also retains its original expiry.
     """
     import time
     from github_gateway import _strict_json
-    from native_tasks import STAGES
+    from native_tasks import STAGES, MAX_BATCH_TASKS
     try:
         raw = os.environ.get('PHOTOSTORY_NATIVE_BINDING', '')
         if not raw or len(raw.encode()) > 32000:
@@ -886,10 +893,11 @@ def workflow_binding(fixture_root, state_root, *, now=None):
         if len(models) != 1:
             raise ValueError()
         clock = now or time.time
-        return {k:v for k,v in config.items() if k != 'adoption_age_seconds'} | {
+        return dict(config) | {
             'synthetic_only':False, 'operation_id':'photostory-main-processor',
             'fixture_root':fixture_root, 'state_root':state_root,
-            'now':clock, 'deadline':clock()+config['adoption_age_seconds'],
+            'now':clock, 'deadline':clock()+MAX_BATCH_TASKS*config['adoption_age_seconds'],
+            'task_limit':MAX_BATCH_TASKS,
             'persist':lambda:None, 'limits':{'request_bytes':2_000_000,'response_bytes':2_000_000}}
     except (TypeError,ValueError,KeyError):
         raise Stop('native_binding_required') from None

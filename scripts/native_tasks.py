@@ -15,6 +15,9 @@ from jsonschema import Draft202012Validator
 from PIL import Image
 
 STAGES = {'screen', 'group', 'cross_review', 'labels', 'strict_review', 'publication'}
+# Existing batch graph: screen ceil(100/6), <=24 shortlist groups, cross+labels,
+# and <=8 strict reviews. This bounds work; it never creates additional calls.
+MAX_BATCH_TASKS = 17 + 24 + 1 + 1 + 8
 
 
 class NativeStopped(Exception):
@@ -74,6 +77,9 @@ def _context_fields(context):
     for value in (context['deadline'], context['now']()):
         if type(value) not in (int, float) or not math.isfinite(value):
             raise ValueError()
+    for key, maximum in (('adoption_age_seconds',3600),('task_limit',MAX_BATCH_TASKS)):
+        if key in context and (type(context[key]) is not int or not 1 <= context[key] <= maximum):
+            raise ValueError()
     for route in context['routes'].values():
         if (set(route) != {'mode', 'provider', 'model', 'profile', 'worker'}
                 or route['mode'] != 'agent' or route['provider'] not in {'dot', 'grok'}
@@ -108,7 +114,7 @@ def bootstrap_context(binding, *, client_factory=None):
             raise ValueError()
         required={'enabled','synthetic_only','project','operation_id','service_url','audience',
                   'routes','fixture_root','state_root','now','deadline','persist'}
-        if not required<=set(binding) or set(binding)-required-{'cancel','limits'}:raise ValueError()
+        if not required<=set(binding) or set(binding)-required-{'cancel','limits','adoption_age_seconds','task_limit'}:raise ValueError()
         context={k:v for k,v in binding.items() if k not in {'enabled','service_url','audience'}}
         context['routes']=json.loads(packed(binding['routes']))
         if 'limits' in context:context['limits']=json.loads(packed(context['limits']))
@@ -202,6 +208,13 @@ def _record_identity(value, record):
         raise ValueError()
     value['task_id'] = record['id']
     value['revision'], value['task_deadline'] = record['revision'], record['deadline']
+    if 'adoption_age_seconds' in binding:
+        created = record.get('created')
+        if (type(created) not in (int,float) or not math.isfinite(created) or created < 0
+                or created >= record['deadline']
+                or ('task_created' in value and value['task_created'] != created)):
+            raise ValueError()
+        value['task_created'] = created
     if record.get('worker') is not None or record.get('attempt') is not None:
         claim = [record['worker'], record['attempt'], record['revision']]
         if (claim[0] != route['worker'] or not isinstance(claim[1], str) or not claim[1]
@@ -221,6 +234,8 @@ def _completed_receipt(context, value, record, schema, output_limit):
             or not 0 <= created <= completed <= now
             or completed >= min(value['binding']['deadline'], value['task_deadline'])
             or now >= value['binding']['deadline'] or context.get('cancel') is True
+            or ('adoption_age_seconds' in value['binding']
+                and now >= value['task_created']+value['binding']['adoption_age_seconds'])
             or len(packed(record['output'])) > output_limit):
         raise ValueError()
     Draft202012Validator.check_schema(schema)
@@ -271,6 +286,8 @@ def task_call(context, stage):
             binding = {'project': context['project'], 'resource': context['client'].resource,
                        'operation_id': context['operation_id'], 'route': route,
                        'request_sha256': digest(request), 'deadline': context['deadline']}
+            for key in ('adoption_age_seconds','task_limit'):
+                if key in context: binding[key] = context[key]
             path = state_root/'native.sqlite3'
             # Lock a sidecar: locking the SQLite database itself conflicts with
             # SQLite's own file locks on macOS and would block archive/restore.
@@ -293,6 +310,11 @@ def task_call(context, stage):
                     db.execute('PRAGMA synchronous=FULL')
                     db.execute('CREATE TABLE IF NOT EXISTS native_operations (operation TEXT PRIMARY KEY, value TEXT NOT NULL)')
                     row = db.execute('SELECT value FROM native_operations WHERE operation=?', (operation,)).fetchone()
+                    if not row and 'task_limit' in binding:
+                        count = db.execute("SELECT count(*) FROM native_operations WHERE json_extract(value,'$.binding.operation_id')=?",
+                                           (context['operation_id'],)).fetchone()[0]
+                        if count >= binding['task_limit']:
+                            raise NativeStopped('native_task_limit')
                     value = json.loads(row[0]) if row else {'binding': binding, 'intent': False, 'task_id': None, 'revision': None, 'task_deadline': None, 'claim': None, 'output_sha256': None, 'halt': False, 'cancel': False}
                     if value['binding'] != binding:
                         raise NativeStopped('native_binding_changed')
@@ -320,6 +342,7 @@ def task_call(context, stage):
                                 or context['client'] is not client or client.resource != binding['resource']
                                 or context['state_root'] != state_root
                                 or context['deadline'] != binding['deadline']
+                                or any(context.get(k)!=binding.get(k) for k in ('adoption_age_seconds','task_limit'))
                                 or context['routes'][stage] != route):
                             value['halt'] = True
                             save()
@@ -328,6 +351,10 @@ def task_call(context, stage):
                         if (type(now) not in (int, float) or not math.isfinite(now)
                                 or now >= min(binding['deadline'], deadline if deadline is not None else binding['deadline'])
                                 or context.get('cancel') is True):
+                            stop()
+                        if (value.get('accepted_output') is None and 'adoption_age_seconds' in binding
+                                and 'task_created' in value
+                                and now >= value['task_created']+binding['adoption_age_seconds']):
                             stop()
 
                     if value['halt'] or value['cancel'] or (value['intent'] and not value['task_id']):
@@ -339,7 +366,12 @@ def task_call(context, stage):
                                 or type(value.get('accepted_at')) not in (int,float)
                                 or type(value.get('completed_at',value['accepted_at'])) not in (int,float)
                                 or not 0 <= value.get('completed_at',value['accepted_at']) <= value['accepted_at'] < binding['deadline']
+                                or value['accepted_at'] > context['now']()
                                 or not value.get('completed_at',value['accepted_at']) < value['task_deadline']
+                                or ('adoption_age_seconds' in binding and
+                                    (type(value.get('task_created')) not in (int,float)
+                                     or not math.isfinite(value['task_created'])
+                                     or not value['task_created']<=value['accepted_at']<value['task_created']+binding['adoption_age_seconds']))
                                 or len(packed(cached)) > output_limit):
                             raise NativeStopped('native_outcome_unknown')
                         Draft202012Validator(schema).validate(cached)
@@ -411,6 +443,7 @@ def restore_publication_checkpoint(context, checkpoint):
         if (not isinstance(operation,str) or len(operation)!=64 or any(c not in '0123456789abcdef' for c in operation)
                 or binding['project']!=context['project'] or binding['resource']!=context['client'].resource
                 or binding['operation_id']!=context['operation_id'] or binding['route']!=context['routes']['publication']
+                or any(binding.get(k)!=context.get(k) for k in ('adoption_age_seconds','task_limit'))
                 or type(binding['deadline']) not in (int,float) or not math.isfinite(binding['deadline'])):
             raise ValueError()
         path = _private_database(context)
@@ -457,13 +490,18 @@ def preflight_publication(context):
     def active():
         if (context['project'] != binding['project'] or context['operation_id'] != binding['operation_id']
                 or context['client'] is not client or client.resource != binding['resource']
-                or context['routes']['publication'] != binding['route'] or context['deadline'] != binding['deadline']):
+                or context['routes']['publication'] != binding['route'] or context['deadline'] != binding['deadline']
+                or any(binding.get(k)!=context.get(k) for k in ('adoption_age_seconds','task_limit'))):
             value['halt'] = True
             save()
             raise NativeStopped('native_binding_changed')
         now = context['now']()
         if (type(now) not in (int,float) or not math.isfinite(now)
-                or now >= binding['deadline'] or context.get('cancel') is True):
+                or now >= binding['deadline'] or context.get('cancel') is True
+                or value.get('accepted_at',now)>now):
+            stop()
+        if (value.get('accepted_output') is None and 'adoption_age_seconds' in binding
+                and 'task_created' in value and now>=value['task_created']+binding['adoption_age_seconds']):
             stop()
 
     active()

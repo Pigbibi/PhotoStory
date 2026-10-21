@@ -516,7 +516,7 @@ def test_actual_publication_entry_restores_and_stops_before_download_or_job_clai
         path=url.removeprefix('https://photo.invalid');body=kwargs.get('body');calls.append((path,body))
         if path=='/internal/autopublish' and body['action']=='candidate':
             return json.dumps({'draft':{'id':'draft','version':1,'photos':[{'id':'p'}]},
-                'publication':{'id':'publication','status':'prepared'},'nativeCheckpoint':checkpoint}).encode()
+                'publication':{'id':'publication','status':'prepared','expires':ctx['deadline']*1000},'nativeCheckpoint':checkpoint}).encode()
         if path=='/internal/autopublish' and body['action']=='native_checkpoint':
             return b'{}'
         assert path=='/internal/maintenance'
@@ -760,7 +760,7 @@ def test_actual_publication_resumes_timely_terminal_before_media_and_consumes_or
         path=url.removeprefix('https://photo.invalid');body=kwargs.get('body');calls.append((path,body))
         if path=='/internal/maintenance':return b'{}'
         assert path=='/internal/autopublish'
-        if body['action']=='candidate':value={'draft':draft,'publication':{'id':'publication','status':'prepared'},'nativeCheckpoint':checkpoint}
+        if body['action']=='candidate':value={'draft':draft,'publication':{'id':'publication','status':'prepared','expires':ctx['deadline']*1000},'nativeCheckpoint':checkpoint}
         elif body['action']=='native_checkpoint':
             stored.append(body['checkpoint']);value={}
         elif body['action']=='original':
@@ -826,7 +826,7 @@ def test_durable_cancel_with_lost_checkpoint_ack_survives_fresh_context_and_time
 
 class PendingBatchHarness:
     """Actual private Inventory and caller; generated JPEG and fake business I/O."""
-    def __init__(self, root, *, cloud=False):
+    def __init__(self, root, *, cloud=False, source_overrides=None):
         from inventory import Inventory
         self.cloud = cloud
         self.snapshots, self.pointer = {}, None
@@ -837,6 +837,7 @@ class PendingBatchHarness:
         self.directory = self.ctx['state_root']
         self.source = {'pipeline':2, 'folder':'synthetic-folder', 'start':1, 'end':2,
                        'maxPhotos':1, 'draftLimit':1, 'accessToken':'synthetic', 'progress':{}}
+        self.source.update(source_overrides or {})
         policy = hashlib.sha256((batch.SCREEN_PROMPT+batch.GROUP_PROMPT).encode()).hexdigest()
         self.p = {'id':'p', 'captured':'2026-08-18T10:00:00+08:00', 'taken':1000, 'area':None}
         inv = Inventory(self.directory, 'job', self.source, policy)
@@ -1082,8 +1083,9 @@ def test_workflow_binding_is_explicit_and_preserves_sixty_second_execution_contr
     config=workflow_config()
     with patch.dict('os.environ',{'PHOTOSTORY_NATIVE_BINDING':json.dumps(config)},clear=True):
         binding=batch.workflow_binding(tmp_path,tmp_path,now=lambda:100)
-    assert binding['deadline']==3700 and binding['synthetic_only'] is False
-    assert binding['routes']==config['routes'] and 'adoption_age_seconds' not in binding
+    assert binding['deadline']==100+51*3600 and binding['synthetic_only'] is False
+    assert binding['routes']==config['routes'] and binding['adoption_age_seconds']==3600
+    assert binding['task_limit']==51
     assert binding['limits']=={'request_bytes':2_000_000,'response_bytes':2_000_000}
     assert binding['project']=='Pigbibi/PhotoStory' and 'client' not in binding
 
@@ -1188,3 +1190,127 @@ def test_actual_workflow_main_oidc_http_cloud_restore_and_consumer_without_priva
             assert [m for m,_,_ in h.wire.calls]==['POST','GET']
     assert len(tokens)==(1 if lost_response else 2)
     assert sum(m=='POST' and p=='/v1/tasks' for m,p,_ in h.wire.calls)==1
+
+
+def test_per_task_age_rejects_exact_expiry_without_refresh_from_later_read(tmp_path):
+    from native_tasks import NativePending,NativeStopped
+    ctx,wire=context(tmp_path);ctx.update(adoption_age_seconds=3600,task_limit=51,deadline=wire.clock[0]+51*3600)
+    wire.complete=False
+    call=lambda:batch.native_review_gateway(ctx,stage='labels')('generated',[{'id':'p'}],[],SCHEMA,tmp_path)
+    with pytest.raises(NativePending):call()
+    created=wire.clock[0];wire.clock[0]=created+20;wire.complete_task(next(iter(wire.records)))
+    wire.clock[0]=created+3600
+    with pytest.raises(NativeStopped):call()
+    before=len(wire.calls)
+    with pytest.raises(NativeStopped):call()
+    assert len(wire.calls)==before and sum(m=='POST' and p=='/v1/tasks' for m,p,_ in wire.calls)==1
+
+
+def test_task_created_origin_is_frozen_and_cannot_be_rebased_on_resume(tmp_path):
+    from native_tasks import NativePending,NativeStopped
+    ctx,wire=context(tmp_path);ctx.update(adoption_age_seconds=3600,task_limit=51,deadline=wire.clock[0]+51*3600)
+    wire.complete=False;call=lambda:batch.native_review_gateway(ctx,stage='labels')('generated',[{'id':'p'}],[],SCHEMA,tmp_path)
+    with pytest.raises(NativePending):call()
+    task=next(iter(wire.records));wire.clock[0]+=20;wire.complete_task(task);wire.clock[0]+=1800
+    wire.mutate=lambda r:{**r,'created':r['created']+10}
+    with pytest.raises(NativeStopped):call()
+
+
+def test_child_count_is_bounded_and_restore_cannot_renew_parent_deadline(tmp_path):
+    from native_tasks import NativeStopped,operation_context
+    ctx,wire=context(tmp_path);ctx.update(adoption_age_seconds=3600,task_limit=2,deadline=wire.clock[0]+7200)
+    for i in range(2):assert batch.native_review_gateway(ctx,stage='labels')('generated',[{'id':str(i)}],[],SCHEMA,tmp_path)=={'ok':True}
+    with pytest.raises(NativeStopped):batch.native_review_gateway(ctx,stage='labels')('generated',[{'id':'third'}],[],SCHEMA,tmp_path)
+    assert len(wire.records)==2
+    restored=operation_context({**ctx,'deadline':ctx['deadline']+99999},ctx['operation_id'])
+    assert restored['deadline']==ctx['deadline']
+
+
+@pytest.mark.parametrize('publication_expiry',[1,3600])
+def test_publication_callback_cannot_widen_original_expiry(tmp_path,publication_expiry):
+    import auto_publish
+    seen=[];now=100
+    publication={'id':'publication','status':'prepared','expires':(now+publication_expiry)*1000}
+    draft={'id':'draft','version':1,'photos':[]}
+    def call(path,body):return {'draft':draft,'publication':publication} if body['action']=='candidate' else {}
+    def bind(identity,checkpoint,expires_at):
+        seen.append(expires_at)
+        from native_tasks import NativePending
+        raise NativePending('synthetic known wait')
+    with pytest.raises(Exception):auto_publish.tick(call,lambda *_:None,lambda *_:None,bind_review=bind)
+    assert seen==[now+publication_expiry]
+
+
+def test_included_photo_main_advances_all_batch_stages_over_original_cron_with_one_task_each(tmp_path):
+    import github_gateway
+    from urllib.parse import urlsplit
+    from auto_review import FIELDS
+    h=PendingBatchHarness(tmp_path,cloud=True,source_overrides={'reviewMode':'strict_auto','strictAutoEnabled':True})
+    config=workflow_config();h.wire.resource=config['service_url'];h.wire.routes=config['routes']
+    def output(request):
+        stage=request['profile'];records=request['materials'][0]['records']
+        if stage=='screen':return {'photos':[{'id':'p','decision':'allow','flags':[],'landscape':True,'aesthetic':10,
+          'description':'Generated facade','peopleRole':'none','compositionClear':True,'contentKind':'permanent_scenery',
+          'light':'day','scene':'architecture','place':{'city':'','landmark':'','evidence':'','confidence':'none'}}]}
+        copy={'title':'Facade','caption':'A generated facade.','hashtags':'#Architecture','reason':'Visible scenery',
+              'photos':[{'id':'p','alt':'Generated facade','frame':{'mode':'crop','x':50,'y':50}}]}
+        if stage=='group':return {'drafts':[copy]}
+        if stage=='cross_review':return {'checks':[{'draftId':records[0]['draftId'],'duplicateIds':[],
+          'captionGrounded':True,'locationGrounded':True,'copy':{**copy,'photos':[{'id':'p','alt':'Generated facade'}]}}]}
+        if stage=='labels':return {'labels':[{'id':records[0]['id'],'translations':{c:{'title':'Facade','reason':'Scenery'} for c in batch.LANGUAGE_NAMES}}]}
+        return {key:key!='needsHumanReview' for key in FIELDS}
+    h.wire.output=output
+    _,opener=http_client(h.ctx,h.wire);send=opener.open.side_effect
+    class TokenReply(io.BytesIO):status=200;headers={}
+    def dispatch(request,timeout):
+        if urlsplit(request.full_url).hostname.endswith('.actions.githubusercontent.com'):
+            return TokenReply(b'{"value":"synthetic-workload-token"}')
+        return send(request,timeout)
+    opener.open.side_effect=dispatch
+    env={'PHOTOSTORY_NATIVE_BINDING':json.dumps(config),'ACTIONS_ID_TOKEN_REQUEST_URL':'https://pipelines.actions.githubusercontent.com/token',
+         'ACTIONS_ID_TOKEN_REQUEST_TOKEN':'synthetic-request-token'}
+    with patch.object(github_gateway.urllib.request,'build_opener',return_value=opener), \
+         patch.dict(sys.modules,{'ai_service':None,'ai_service.client':None}),patch('time.time',side_effect=lambda:h.wire.clock[0]):
+        h.run(workflow_env=env)
+        for step in range(1,6):
+            task=list(h.wire.records)[-1];record=h.wire.records[task]
+            h.wire.clock[0]=record['created']+20;h.wire.complete_task(task)
+            h.wire.clock[0]=h.started+1800*step
+            h.run(workflow_env=env)
+    assert len(h.completed)==1 and len(h.completed[0]['drafts'])==1
+    assert [r['request']['profile'] for r in h.wire.records.values()]==['screen','group','cross_review','labels','strict_review']
+    assert all(r['deadline']-r['created']==60 for r in h.wire.records.values())
+    assert len(h.wire.records)==5 and len(h.completed[0]['autoReviews'])==1
+
+
+@pytest.mark.parametrize('stop',['expiry','cancel'])
+def test_actual_publication_clamps_original_expiry_and_stops_before_new_task(tmp_path,stop):
+    import auto_publish,sqlite3
+    ctx,wire=context(tmp_path);ctx.update(adoption_age_seconds=3600,task_limit=51,deadline=wire.clock[0]+51*3600)
+    expiry=wire.clock[0]+600;identity={'draftId':'draft','version':1,'publicationId':'publication'}
+    image=photo(tmp_path)
+    def tick(*args,bind_review,**kwargs):
+        gateway=bind_review(identity,None,expiry)
+        assert gateway('generated',[{'id':'p'}],[image],SCHEMA,tmp_path)=={'ok':True}
+        return True
+    env={'PHOTOSTORY_URL':'https://photo.invalid','PHOTOSTORY_BATCH_TOKEN':'synthetic','PHOTOSTORY_STATE_DIR':str(ctx['state_root'])}
+    with patch.dict('os.environ',env,clear=True),patch.object(batch,'request',return_value=b'{}'),patch.object(auto_publish,'tick',side_effect=tick):
+        batch.run(native_context=ctx)
+        with sqlite3.connect(ctx['state_root']/'native.sqlite3') as db:value=json.loads(db.execute('SELECT value FROM native_operations').fetchone()[0])
+        assert value['binding']['deadline']==expiry and value['binding']['task_limit']==1
+        if stop=='expiry':wire.clock[0]=expiry
+        else:ctx['cancel']=True
+        count=len(wire.calls)
+        with pytest.raises(batch.Stop):batch.run(native_context=ctx)
+        assert len(wire.calls)==count
+
+
+def test_new_task_age_policy_does_not_reinterpret_legacy_receipts(tmp_path):
+    from native_tasks import NativeStopped
+    ctx,wire=context(tmp_path)
+    call=lambda:batch.native_review_gateway(ctx,stage='labels')('generated',[{'id':'p'}],[],SCHEMA,tmp_path)
+    assert call()=={'ok':True}
+    ctx.update(adoption_age_seconds=3600,task_limit=51)
+    count=len(wire.calls)
+    with pytest.raises(NativeStopped):call()
+    assert len(wire.calls)==count

@@ -83,7 +83,7 @@ def tick(call, download, gateway, *, work_root=None, bind_review=None):
     draft, publication = candidate['draft'], candidate['publication']
     auth = {'draftId': draft['id'], 'version': draft['version'], 'publicationId': publication['id']}
     if bind_review is not None:
-        gateway = bind_review(auth, candidate.get('nativeCheckpoint'))
+        gateway = bind_review(auth, candidate.get('nativeCheckpoint'), publication.get('expires',0)/1000)
     def action(name, **body):
         return call('/internal/autopublish', {**auth, 'action': name, **body})
     if publication['status'] == 'publishing':
