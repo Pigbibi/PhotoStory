@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import sqlite3
 import stat
+from urllib.parse import urlsplit
 
 from jsonschema import Draft202012Validator
 from PIL import Image
@@ -33,32 +34,106 @@ def digest(value):
     return hashlib.sha256(packed(value)).hexdigest()
 
 
+def _endpoint(value, synthetic, *, base=False):
+    if (not isinstance(value,str) or not 1<=len(value)<=2000
+            or any(c.isspace() or ord(c)<32 or ord(c)==127 for c in value)):
+        raise ValueError()
+    parsed=urlsplit(value)
+    parsed.port  # Validate a supplied port before constructing any client.
+    host=parsed.hostname or ''
+    if (parsed.scheme!='https' or not host or parsed.username or parsed.password
+            or parsed.query or parsed.fragment or (base and parsed.path not in {'','/'})):
+        raise ValueError()
+    if synthetic:
+        if not host.endswith('.invalid'):raise ValueError()
+    else:
+        import ipaddress
+        if (host=='localhost' or host.endswith(('.invalid','.test','.example','.localhost',
+                                               '.example.com','.example.org','.example.net'))
+                or host in {'example.com','example.org','example.net'}
+                or 'configure' in host.lower() or 'placeholder' in host.lower()):
+            raise ValueError()
+        try:address=ipaddress.ip_address(host)
+        except ValueError:pass
+        else:
+            if not address.is_global:raise ValueError()
+    return value.rstrip('/') if base else value
+
+
+def _context_fields(context):
+    root, state = context['fixture_root'], context['state_root']
+    if (type(context.get('synthetic_only')) is not bool or context['project'] != 'Pigbibi/PhotoStory'
+            or type(context.get('cancel', False)) is not bool
+            or not isinstance(context['operation_id'], str) or not 1 <= len(context['operation_id']) <= 200
+            or not callable(context['now']) or not callable(context['persist'])
+            or set(context['routes']) != STAGES
+            or not isinstance(root, Path) or root.resolve() != root or not root.is_dir()
+            or not isinstance(state, Path) or state.resolve() != state or not state.is_dir()
+            or stat.S_IMODE(state.stat().st_mode) != 0o700):
+        raise ValueError()
+    for value in (context['deadline'], context['now']()):
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise ValueError()
+    for route in context['routes'].values():
+        if (set(route) != {'mode', 'provider', 'model', 'profile', 'worker'}
+                or route['mode'] != 'agent' or route['provider'] not in {'dot', 'grok'}
+                or any(not isinstance(v, str) or not 1 <= len(v) <= 200 for v in route.values())):
+            raise ValueError()
+
 def validate_context(context):
     try:
-        client = context['client']
-        root, state = context['fixture_root'], context['state_root']
-        if (context.get('synthetic_only') is not True or context['project'] != 'Pigbibi/PhotoStory'
-                or type(context.get('cancel', False)) is not bool
-                or not isinstance(context['operation_id'], str) or not 1 <= len(context['operation_id']) <= 200
-                or not callable(context['now']) or not callable(context['persist'])
-                or not all(callable(getattr(client, name, None)) for name in ('submit', 'get', 'cancel'))
-                or not isinstance(client.resource, str) or not client.resource.startswith('https://')
-                or not client.resource.endswith('.invalid')
-                or set(context['routes']) != STAGES
-                or not isinstance(root, Path) or root.resolve() != root or not root.is_dir()
-                or not isinstance(state, Path) or state.resolve() != state or not state.is_dir()
-                or stat.S_IMODE(state.stat().st_mode) != 0o700):
+        _context_fields(context)
+        client=context['client']
+        if not all(callable(getattr(client,name,None)) for name in ('submit','get','cancel')):
             raise ValueError()
-        for value in (context['deadline'], context['now']()):
-            if type(value) not in (int, float) or not math.isfinite(value):
-                raise ValueError()
-        for route in context['routes'].values():
-            if (set(route) != {'mode', 'provider', 'model', 'profile', 'worker'}
-                    or route['mode'] != 'agent' or route['provider'] not in {'dot', 'grok'}
-                    or any(not isinstance(v, str) or not 1 <= len(v) <= 200 for v in route.values())):
-                raise ValueError()
+        resource=_endpoint(client.resource,context['synthetic_only'],base=True)
+        if resource!=client.resource:raise ValueError()
+        if context['synthetic_only'] is False:
+            # This explicit configuration detects drift; it grants no service permission.
+            binding=context['native_binding']
+            if (set(binding)!={'service_url','audience','project','routes','deadline'}
+                    or binding['service_url']!=resource or binding['project']!=context['project']
+                    or binding['routes']!=context['routes']
+                    or type(binding['deadline']) not in (int,float) or not math.isfinite(binding['deadline'])
+                    or not context['deadline']<=binding['deadline']):raise ValueError()
+            _endpoint(binding['audience'],False)
     except (KeyError, TypeError, ValueError, OSError, AttributeError):
         raise NativeStopped('native_binding_required') from None
+
+
+def bootstrap_context(binding, *, client_factory=None):
+    """Build only an explicit caller binding; no environment discovery or task I/O."""
+    try:
+        if not isinstance(binding,dict) or binding.get('enabled') is not True:
+            raise ValueError()
+        required={'enabled','synthetic_only','project','operation_id','service_url','audience',
+                  'routes','fixture_root','state_root','now','deadline','persist'}
+        if not required<=set(binding) or set(binding)-required-{'cancel','limits'}:raise ValueError()
+        context={k:v for k,v in binding.items() if k not in {'enabled','service_url','audience'}}
+        context['routes']=json.loads(packed(binding['routes']))
+        if 'limits' in context:context['limits']=json.loads(packed(context['limits']))
+        _context_fields(context)
+        if context['now']()>=context['deadline']:raise ValueError()
+        resource=_endpoint(binding['service_url'],context['synthetic_only'],base=True)
+        audience=_endpoint(binding['audience'],context['synthetic_only'])
+        media_limits(context)
+        if client_factory is not None and not callable(client_factory):raise ValueError()
+    except (KeyError, TypeError, ValueError, OSError, AttributeError):
+        raise NativeStopped('native_binding_required') from None
+    if client_factory is None:
+        try:
+            from ai_service.client import TaskClient, github_token
+        except ImportError:
+            raise NativeStopped('native_sdk_unavailable') from None
+        # The existing approved workload callback is lazy. Bootstrap obtains no token.
+        client_factory=lambda base,aud:TaskClient(base,lambda:github_token(aud),max_response_bytes=2_000_000)
+    try:context['client']=client_factory(resource,audience)
+    except Exception:raise NativeStopped('native_sdk_unavailable') from None
+    context['native_binding']={'service_url':resource,'audience':audience,'project':context['project'],
+                             'routes':json.loads(packed(context['routes'])),'deadline':context['deadline']}
+    validate_context(context)
+    if context['client'].resource!=resource:raise NativeStopped('native_binding_required')
+    return context
 
 
 

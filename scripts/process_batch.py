@@ -504,9 +504,15 @@ def _native_business_context(context, kind, identity):
     return operation_context(context, 'photostory:'+operation)
 
 
-def run(*, native_context=None):
-    from native_tasks import validate_context, NativePending, NativeStopped
+def run(*, native_context=None, native_binding=None, native_client_factory=None):
+    from native_tasks import bootstrap_context, validate_context, NativePending, NativeStopped
     try:
+        if native_binding is not None:
+            if native_context is not None:
+                raise NativeStopped('native_binding_required')
+            native_context=bootstrap_context(native_binding,client_factory=native_client_factory)
+        elif native_client_factory is not None:
+            raise NativeStopped('native_binding_required')
         validate_context(native_context)
     except NativeStopped:
         raise Stop("native_binding_required") from None

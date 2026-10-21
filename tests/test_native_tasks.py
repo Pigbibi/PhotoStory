@@ -577,6 +577,129 @@ def test_resume_reads_timely_terminal_after_execution_ttl_without_extending_busi
     assert sum(m=='POST' and path=='/v1/tasks' for m,path,_ in wire.calls)==1
 
 
+def bootstrap_binding(ctx):
+    return {**{k:v for k,v in ctx.items() if k!='client'}, 'enabled':True,
+            'routes':json.loads(json.dumps(ctx['routes'])),
+            'service_url':ctx['client'].resource,'audience':ctx['client'].resource+'/mcp'}
+
+
+@pytest.mark.parametrize('disabled',[None,{'enabled':False}])
+def test_run_without_enabled_binding_never_bootstraps_or_touches_business(disabled):
+    factory=MagicMock()
+    with patch.object(batch,'request') as request, patch.dict('os.environ',{
+        'CODEX_GATEWAY_SERVICE_URL':'https://legacy.invalid','AI_SERVICE_URL':'https://native.invalid',
+        'AI_SERVICE_AUDIENCE':'https://native.invalid/mcp'},clear=True):
+        with pytest.raises(batch.Stop):batch.run(native_binding=disabled,native_client_factory=factory)
+    factory.assert_not_called();request.assert_not_called()
+
+
+@pytest.mark.parametrize('invalid',['project','provider','missing_stage','worker','mcp_base','query','audience',
+    'expired','infinite','unknown_field','production_placeholder','state_permissions'])
+def test_bootstrap_rejects_incomplete_binding_before_client_or_task(tmp_path,invalid):
+    from native_tasks import bootstrap_context,NativeStopped
+    ctx,wire=context(tmp_path);binding=bootstrap_binding(ctx);factory=MagicMock()
+    if invalid=='project':binding['project']='other/PhotoStory'
+    if invalid=='provider':binding['routes']['screen']['provider']='api'
+    if invalid=='missing_stage':binding['routes'].pop('publication')
+    if invalid=='worker':binding['routes']['screen']['worker']=''
+    if invalid=='mcp_base':binding['service_url']+='/mcp'
+    if invalid=='query':binding['service_url']+='?token=synthetic'
+    if invalid=='audience':binding['audience']=''
+    if invalid=='expired':binding['deadline']=wire.clock[0]
+    if invalid=='infinite':binding['deadline']=float('inf')
+    if invalid=='unknown_field':binding['token']='synthetic'
+    if invalid=='production_placeholder':binding['synthetic_only']=False
+    if invalid=='state_permissions':ctx['state_root'].chmod(0o755)
+    with pytest.raises(NativeStopped):bootstrap_context(binding,client_factory=factory)
+    factory.assert_not_called();assert wire.calls==[]
+
+
+def test_bootstrap_is_explicit_single_route_and_copies_binding_before_original_consumer(tmp_path):
+    from native_tasks import bootstrap_context
+    ctx,wire=context(tmp_path);binding=bootstrap_binding(ctx);seen=[]
+    def factory(base,audience):seen.append((base,audience));return ctx['client']
+    built=bootstrap_context(binding,client_factory=factory)
+    binding['routes']['labels']['provider']='changed-after-bootstrap'
+    assert built['routes']['labels']['provider']=='dot'
+    assert seen==[(wire.resource,wire.resource+'/mcp')] and wire.calls==[]
+    operation=batch._native_business_context(built,'batch',{'job_id':'job','batch_id':'batch'})
+    assert batch.native_review_gateway(operation,stage='labels')('prompt',[{'id':'p'}],[],SCHEMA,tmp_path)=={'ok':True}
+    assert sum(m=='POST' and p=='/v1/tasks' for m,p,_ in wire.calls)==1
+
+
+def test_run_consumes_explicit_bootstrap_before_existing_maintenance_and_claim(tmp_path):
+    ctx,wire=context(tmp_path);binding=bootstrap_binding(ctx);seen=[]
+    def factory(base,audience):seen.append((base,audience));return ctx['client']
+    def request(url,**kwargs):
+        assert seen and url in {'https://photo.invalid/internal/maintenance','https://photo.invalid/internal/claim'}
+        return b'null' if url.endswith('/claim') else b'{}'
+    with patch.dict('os.environ',{'PHOTOSTORY_URL':'https://photo.invalid','PHOTOSTORY_BATCH_TOKEN':'synthetic',
+             'PHOTOSTORY_STATE_BACKEND':'local'},clear=True),patch.object(batch,'request',side_effect=request), \
+         patch('auto_publish.tick',return_value=False) as tick:
+        batch.run(native_binding=binding,native_client_factory=factory)
+    assert len(seen)==1 and tick.call_count==1 and wire.calls==[]
+
+
+def test_bootstrap_rejects_ambiguous_context_and_mismatched_client_before_business(tmp_path):
+    from native_tasks import bootstrap_context,NativeStopped
+    ctx,wire=context(tmp_path);binding=bootstrap_binding(ctx);factory=MagicMock(return_value=ctx['client'])
+    with patch.object(batch,'request') as request:
+        with pytest.raises(batch.Stop):batch.run(native_context=ctx,native_binding=binding,native_client_factory=factory)
+    factory.assert_not_called();request.assert_not_called()
+    other=MagicMock(resource='https://other.invalid')
+    with pytest.raises(NativeStopped):bootstrap_context(binding,client_factory=lambda base,audience:other)
+    assert wire.calls==[]
+
+
+def test_explicit_nonsynthetic_binding_needs_real_shaped_endpoints_and_retains_route_guard(tmp_path):
+    from native_tasks import bootstrap_context,validate_context,NativeStopped
+    ctx,wire=context(tmp_path);binding=bootstrap_binding(ctx)
+    binding.update(synthetic_only=False,service_url='https://tasks.acme.org',audience='https://identity.acme.org/resource')
+    client=MagicMock(resource=binding['service_url']);factory=MagicMock(return_value=client)
+    built=bootstrap_context(binding,client_factory=factory)
+    factory.assert_called_once_with('https://tasks.acme.org','https://identity.acme.org/resource')
+    assert built['deadline']==ctx['deadline'] and wire.calls==[]
+    built['routes']['screen']['worker']='other-worker'
+    with pytest.raises(NativeStopped):validate_context(built)
+    client.submit.assert_not_called();client.get.assert_not_called();client.cancel.assert_not_called()
+
+
+def test_existing_sdk_constructor_defers_workload_token_until_request(tmp_path):
+    from native_tasks import bootstrap_context
+    import types
+    ctx,wire=context(tmp_path);binding=bootstrap_binding(ctx);created=[];tokens=[]
+    def constructor(base,token,*,max_response_bytes):
+        created.append((base,token,max_response_bytes));return ctx['client']
+    sdk=types.ModuleType('ai_service.client');sdk.TaskClient=constructor
+    sdk.github_token=lambda audience:tokens.append(audience) or 'synthetic-token'
+    package=types.ModuleType('ai_service');package.client=sdk
+    with patch.dict(sys.modules,{'ai_service':package,'ai_service.client':sdk}):
+        bootstrap_context(binding)
+        assert len(created)==1 and created[0][0]==wire.resource and created[0][2]==2_000_000
+        assert tokens==[] and wire.calls==[]
+        assert created[0][1]()=='synthetic-token'
+    assert tokens==[wire.resource+'/mcp'] and wire.calls==[]
+
+
+def test_bootstrap_reuses_original_checkpoint_task_and_cannot_refresh_business_deadline(tmp_path):
+    import cloud_inventory
+    from native_tasks import bootstrap_context,NativePending
+    ctx,wire=context(tmp_path);ctx['deadline']+=3600;wire.complete=False;snapshots=[]
+    ctx['persist']=lambda:snapshots.append(cloud_inventory.archive(ctx['state_root']))
+    identity={'job_id':'job','batch_id':'batch'}
+    original=batch._native_business_context(bootstrap_context(bootstrap_binding(ctx),client_factory=lambda *_:ctx['client']),'batch',identity)
+    def call(context):return batch.native_review_gateway(context,stage='labels')('prompt',[{'id':'p'}],[],SCHEMA,tmp_path)
+    with pytest.raises(NativePending):call(original)
+    task=next(iter(wire.records));wire.clock[0]+=20;wire.complete_task(task);wire.clock[0]+=1780
+    restart=tmp_path/'bootstrap-restart';cloud_inventory.restore(restart,snapshots[-1])
+    binding=bootstrap_binding(ctx);binding.update(state_root=restart.resolve(),persist=lambda:None,deadline=ctx['deadline']+1000)
+    resumed=batch._native_business_context(bootstrap_context(binding,client_factory=lambda *_:ctx['client']),'batch',identity)
+    before=len(wire.calls)
+    assert resumed['deadline']==original['deadline'] and call(resumed)=={'ok':True}
+    assert wire.calls[before:]==[('GET','/v1/tasks/'+task,None)]
+    assert sum(m=='POST' and path=='/v1/tasks' for m,path,_ in wire.calls)==1
+
+
 @pytest.mark.parametrize('invalid', ['late','late_report','missing_time','nan_time','future_creation','provider','revision','request','worker'])
 def test_post_ttl_readback_rejects_unproven_completion_or_identity_without_replacement(tmp_path,invalid):
     from native_tasks import NativePending,NativeStopped
