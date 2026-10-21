@@ -70,6 +70,7 @@ def task_call(context, stage):
                 or not (len(paths) == len(records) or (stage == 'labels' and not paths))):
             raise NativeStopped('native_input_invalid')
         try:
+            client, state_root = context['client'], context['state_root']
             ids = [r['id'] for r in records]
             if any(not isinstance(v, str) or not 1 <= len(v) <= 200 for v in ids) or len(set(ids)) != len(ids):
                 raise ValueError()
@@ -98,10 +99,10 @@ def task_call(context, stage):
             binding = {'project': context['project'], 'resource': context['client'].resource,
                        'operation_id': context['operation_id'], 'route': route,
                        'request_sha256': digest(request), 'deadline': context['deadline']}
-            path = context['state_root']/'native.sqlite3'
+            path = state_root/'native.sqlite3'
             # Lock a sidecar: locking the SQLite database itself conflicts with
             # SQLite's own file locks on macOS and would block archive/restore.
-            fd = os.open(context['state_root']/'native.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+            fd = os.open(state_root/'native.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
             with os.fdopen(fd, 'rb') as lock:
                 info = os.fstat(lock.fileno())
                 if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
@@ -127,7 +128,7 @@ def task_call(context, stage):
                     def save():
                         db.execute('INSERT INTO native_operations VALUES (?,?) ON CONFLICT(operation) DO UPDATE SET value=excluded.value', (operation, packed(value).decode()))
                         db.commit()
-                        directory = os.open(context['state_root'], os.O_RDONLY | os.O_DIRECTORY)
+                        directory = os.open(state_root, os.O_RDONLY | os.O_DIRECTORY)
                         try: os.fsync(directory)
                         finally: os.close(directory)
                         context['persist']()  # A failed checkpoint prevents the next POST.
@@ -136,7 +137,7 @@ def task_call(context, stage):
                         if value['task_id'] and not value['cancel']:
                             value['cancel'] = True
                             save()
-                            try: context['client'].cancel(value['task_id'])
+                            try: client.cancel(value['task_id'])
                             except Exception: pass
                         value['halt'] = True
                         save()
@@ -144,14 +145,16 @@ def task_call(context, stage):
 
                     def active(deadline=None):
                         if (context['project'] != binding['project'] or context['operation_id'] != binding['operation_id']
-                                or context['client'].resource != binding['resource']
+                                or context['client'] is not client or client.resource != binding['resource']
+                                or context['state_root'] != state_root
+                                or context['deadline'] != binding['deadline']
                                 or context['routes'][stage] != route):
                             value['halt'] = True
                             save()
                             raise NativeStopped('native_binding_changed')
                         now = context['now']()
                         if (type(now) not in (int, float) or not math.isfinite(now)
-                                or now >= min(context['deadline'], deadline if deadline is not None else context['deadline'])
+                                or now >= min(binding['deadline'], deadline if deadline is not None else binding['deadline'])
                                 or context.get('cancel') is True):
                             stop()
 
@@ -163,11 +166,11 @@ def task_call(context, stage):
                             value['intent'] = True
                             save()
                             active()
-                            record = context['client'].submit(request, 'photostory:'+operation)
+                            record = client.submit(request, 'photostory:'+operation)
                         else:
-                            record = context['client'].get(value['task_id'])
+                            record = client.get(value['task_id'])
                         request_sha = digest(record['request']) if 'request' in record else record.get('request_sha256')
-                        if (record.get('owner') != context['project'] or record.get('provider') != route['provider']
+                        if (record.get('owner') != binding['project'] or record.get('provider') != route['provider']
                                 or not isinstance(record.get('id'), str) or not 1 <= len(record['id']) <= 200
                                 or (value['task_id'] and value['task_id'] != record['id'])
                                 or type(record.get('revision')) is not int or record['revision'] < 1

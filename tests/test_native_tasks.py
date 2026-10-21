@@ -108,6 +108,39 @@ def test_six_existing_stages_each_create_exactly_one_configured_task(tmp_path):
     assert all('helper' not in r['request']['objective'].lower() for r in records)
 
 
+@pytest.mark.parametrize('phase', ['intent_checkpoint', 'response', 'adoption_checkpoint'])
+def test_frozen_deadline_cannot_be_extended_by_context_mutation(tmp_path, phase):
+    from native_tasks import NativeStopped
+    ctx, wire = context(tmp_path)
+    image = photo(tmp_path)
+    original = ctx['deadline']
+
+    def extend():
+        ctx['deadline'] = original + 100
+        wire.clock[0] = original + 1
+
+    checkpoints = [0]
+    def persist():
+        checkpoints[0] += 1
+        if (phase == 'intent_checkpoint' and checkpoints[0] == 1
+                or phase == 'adoption_checkpoint' and checkpoints[0] == 2):
+            extend()
+    ctx['persist'] = persist
+    if phase == 'response':
+        def changed(record):
+            extend()
+            return record
+        wire.mutate = changed
+    with pytest.raises(NativeStopped):
+        batch.native_review_gateway(ctx, stage='screen')('prompt', [{'id':'p'}], [image], SCHEMA, tmp_path)
+    expected = 0 if phase == 'intent_checkpoint' else 1
+    assert sum(m == 'POST' and p == '/v1/tasks' for m, p, _ in wire.calls) == expected
+    count = len(wire.calls)
+    with pytest.raises(NativeStopped):
+        batch.native_review_gateway(ctx, stage='screen')('prompt', [{'id':'p'}], [image], SCHEMA, tmp_path)
+    assert len(wire.calls) == count
+
+
 def test_sqlite_identity_restores_through_existing_cloud_snapshot_without_new_submit(tmp_path):
     import cloud_inventory
     from native_tasks import NativePending
