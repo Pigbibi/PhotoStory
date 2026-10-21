@@ -664,3 +664,30 @@ def test_post_ttl_completion_cannot_bypass_owner_cancel_or_business_deadline(tmp
     for _ in range(2):
         with pytest.raises(NativeStopped):call()
     assert wire.calls[before:]==[('POST','/v1/tasks/'+task+'/cancel',None)]
+
+
+@pytest.mark.parametrize('entry',['task_call','publication_preflight'])
+def test_durable_cancel_with_lost_checkpoint_ack_survives_fresh_context_and_timely_remote_completion(tmp_path,entry):
+    import cloud_inventory
+    from native_tasks import NativePending,NativeStopped,operation_context,preflight_publication
+    ctx,wire=context(tmp_path);ctx['deadline']+=3600;wire.complete=False
+    ctx=batch._native_business_context(ctx,'publication',{'draftId':'draft','version':1,'publicationId':'publication'})
+    image=photo(tmp_path);snapshots=[];lose=[False]
+    def persist():
+        snapshots.append(cloud_inventory.archive(ctx['state_root']))
+        if lose[0]:raise TimeoutError('synthetic checkpoint acknowledgement lost')
+    ctx['persist']=persist
+    def call(context):return batch.native_review_gateway(context,stage='publication')('prompt',[{'id':'p'}],[image],SCHEMA,tmp_path)
+    with pytest.raises(NativePending):call(ctx)
+    before=len(wire.calls);ctx['cancel']=True;lose[0]=True
+    with pytest.raises(NativeStopped):call(ctx)
+    assert len(wire.calls)==before
+    wire.clock[0]+=20;wire.complete_task(next(iter(wire.records)));wire.clock[0]+=1780
+    fresh=tmp_path/'cancel-restart';cloud_inventory.restore(fresh,snapshots[-1])
+    resumed=operation_context({**ctx,'cancel':False,'state_root':fresh.resolve(),'persist':lambda:None},ctx['operation_id'])
+    for _ in range(2):
+        with pytest.raises(NativeStopped):
+            if entry=='task_call':call(resumed)
+            else:preflight_publication(resumed)
+    assert len(wire.calls)==before
+    assert sum(m=='POST' and path=='/v1/tasks' for m,path,_ in wire.calls)==1

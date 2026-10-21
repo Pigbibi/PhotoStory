@@ -141,7 +141,7 @@ def _completed_receipt(context, value, record, schema, output_limit):
     """Separate authoritative completion time from later advisory adoption."""
     _record_identity(value, record)
     now, created, completed = context['now'](), record.get('created'), record.get('updated')
-    if (record.get('status') != 'completed' or not value['claim']
+    if (record.get('status') != 'completed' or not value['claim'] or value['cancel']
             or any(type(t) not in (int,float) or not math.isfinite(t) for t in (now,created,completed))
             or not 0 <= created <= completed <= now
             or completed >= min(value['binding']['deadline'], value['task_deadline'])
@@ -255,7 +255,7 @@ def task_call(context, stage):
                                 or context.get('cancel') is True):
                             stop()
 
-                    if value['halt'] or (value['intent'] and not value['task_id']):
+                    if value['halt'] or value['cancel'] or (value['intent'] and not value['task_id']):
                         raise NativeStopped('native_outcome_unknown')
                     if value.get('accepted_output') is not None:
                         active()  # A timely immutable receipt survives its old remote TTL.
@@ -361,7 +361,7 @@ def preflight_publication(context):
         return
     value, client = checkpoint['value'], context['client']
     binding = value['binding']
-    if value['halt'] or (value['intent'] and not value['task_id']):
+    if value['halt'] or value['cancel'] or (value['intent'] and not value['task_id']):
         raise NativeStopped('native_outcome_unknown')
 
     def save():
