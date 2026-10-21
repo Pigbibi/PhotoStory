@@ -577,13 +577,15 @@ def test_resume_reads_timely_terminal_after_execution_ttl_without_extending_busi
     assert sum(m=='POST' and path=='/v1/tasks' for m,path,_ in wire.calls)==1
 
 
-@pytest.mark.parametrize('invalid', ['late','missing_time','nan_time','future_creation','provider','revision','request','worker'])
+@pytest.mark.parametrize('invalid', ['late','late_report','missing_time','nan_time','future_creation','provider','revision','request','worker'])
 def test_post_ttl_readback_rejects_unproven_completion_or_identity_without_replacement(tmp_path,invalid):
     from native_tasks import NativePending,NativeStopped
     ctx,wire=context(tmp_path);ctx['deadline']+=3600;wire.complete=False
     call=lambda:batch.native_review_gateway(ctx,stage='labels')('prompt',[{'id':'p'}],[],SCHEMA,tmp_path)
     with pytest.raises(NativePending):call()
-    task=next(iter(wire.records));wire.complete_task(task);wire.clock[0]+=1800
+    task=next(iter(wire.records))
+    if invalid=='late_report':wire.clock[0]+=61
+    wire.complete_task(task);wire.clock[0]+=1800
     def mutate(record):
         if invalid=='late':record['updated']=record['deadline']
         elif invalid=='missing_time':record.pop('updated')
