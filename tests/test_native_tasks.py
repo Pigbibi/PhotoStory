@@ -183,6 +183,26 @@ def test_actual_processor_missing_binding_stops_before_business_or_gateway_io():
         with pytest.raises(batch.Stop): batch.run()
 
 
+def test_route_drift_at_checkpoint_stops_before_first_submission(tmp_path):
+    from native_tasks import NativeStopped
+    ctx, wire = context(tmp_path)
+    ctx['persist'] = lambda: ctx['routes']['labels'].update(profile='changed-profile')
+    with pytest.raises(NativeStopped):
+        batch.native_review_gateway(ctx,stage='labels')('prompt',[{'id':'p'}],[],SCHEMA,tmp_path)
+    assert wire.calls == []
+
+
+def test_unclaimed_revision_change_after_restore_is_rejected(tmp_path):
+    from native_tasks import NativePending, NativeStopped
+    ctx, wire = context(tmp_path)
+    wire.dispatch = False
+    call = lambda: batch.native_review_gateway(ctx,stage='labels')('prompt',[{'id':'p'}],[],SCHEMA,tmp_path)
+    with pytest.raises(NativePending): call()
+    wire.mutate = lambda record:{**record,'revision':record['revision']+1}
+    with pytest.raises(NativeStopped): call()
+    assert sum(m=='POST' and p=='/v1/tasks' for m,p,_ in wire.calls) == 1
+
+
 @pytest.mark.parametrize('dispatched', [False, True])
 def test_service_deadline_expiry_is_read_back_without_replacement_or_early_stop_claim(tmp_path, dispatched):
     from native_tasks import NativePending, NativeStopped

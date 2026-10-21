@@ -86,16 +86,18 @@ def task_call(context, stage):
                 images.append({'id': record['id'], 'mime': 'image/jpeg',
                                'sha256': hashlib.sha256(data).hexdigest(),
                                'synthetic_base64': base64.b64encode(data).decode()})
-            route = context['routes'][stage]
+            route = json.loads(packed(context['routes'][stage]))
             request = {'mode': route['mode'], 'model': route['model'], 'profile': route['profile'],
                        'objective': prompt, 'materials': [{'stage': stage, 'records': records, 'images': images}],
                        'output_schema': schema, 'timeout_seconds': 60}
             if len(packed(request)) > 15_000_000:
                 raise ValueError()
             Draft202012Validator.check_schema(schema)
+            request = json.loads(packed(request))
             operation = digest([context['operation_id'], stage, sorted(ids)])
             binding = {'project': context['project'], 'resource': context['client'].resource,
-                       'route': route, 'request_sha256': digest(request), 'deadline': context['deadline']}
+                       'operation_id': context['operation_id'], 'route': route,
+                       'request_sha256': digest(request), 'deadline': context['deadline']}
             path = context['state_root']/'native.sqlite3'
             # Lock a sidecar: locking the SQLite database itself conflicts with
             # SQLite's own file locks on macOS and would block archive/restore.
@@ -118,7 +120,7 @@ def task_call(context, stage):
                     db.execute('PRAGMA synchronous=FULL')
                     db.execute('CREATE TABLE IF NOT EXISTS native_operations (operation TEXT PRIMARY KEY, value TEXT NOT NULL)')
                     row = db.execute('SELECT value FROM native_operations WHERE operation=?', (operation,)).fetchone()
-                    value = json.loads(row[0]) if row else {'binding': binding, 'intent': False, 'task_id': None, 'claim': None, 'output_sha256': None, 'halt': False, 'cancel': False}
+                    value = json.loads(row[0]) if row else {'binding': binding, 'intent': False, 'task_id': None, 'revision': None, 'task_deadline': None, 'claim': None, 'output_sha256': None, 'halt': False, 'cancel': False}
                     if value['binding'] != binding:
                         raise NativeStopped('native_binding_changed')
 
@@ -141,6 +143,12 @@ def task_call(context, stage):
                         raise NativeStopped('native_cancel_or_expiry')
 
                     def active(deadline=None):
+                        if (context['project'] != binding['project'] or context['operation_id'] != binding['operation_id']
+                                or context['client'].resource != binding['resource']
+                                or context['routes'][stage] != route):
+                            value['halt'] = True
+                            save()
+                            raise NativeStopped('native_binding_changed')
                         now = context['now']()
                         if (type(now) not in (int, float) or not math.isfinite(now)
                                 or now >= min(context['deadline'], deadline if deadline is not None else context['deadline'])
@@ -163,10 +171,13 @@ def task_call(context, stage):
                                 or not isinstance(record.get('id'), str) or not 1 <= len(record['id']) <= 200
                                 or (value['task_id'] and value['task_id'] != record['id'])
                                 or type(record.get('revision')) is not int or record['revision'] < 1
+                                or (value['revision'] is not None and record['revision'] != value['revision'])
                                 or request_sha != binding['request_sha256']
-                                or type(record.get('deadline')) not in (int, float) or not math.isfinite(record['deadline'])):
+                                or type(record.get('deadline')) not in (int, float) or not math.isfinite(record['deadline'])
+                                or (value['task_deadline'] is not None and record['deadline'] != value['task_deadline'])):
                             raise ValueError()
                         value['task_id'] = record['id']
+                        value['revision'], value['task_deadline'] = record['revision'], record['deadline']
                         active(record['deadline'])
                         if record.get('worker') is not None or record.get('attempt') is not None:
                             claim = [record['worker'], record['attempt'], record['revision']]
