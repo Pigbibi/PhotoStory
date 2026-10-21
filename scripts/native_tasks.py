@@ -61,6 +61,58 @@ def validate_context(context):
         raise NativeStopped('native_binding_required') from None
 
 
+
+def _private_database(context):
+    root = context['state_root']
+    if not isinstance(root, Path) or root.resolve() != root or stat.S_IMODE(root.stat().st_mode) != 0o700:
+        raise NativeStopped('native_input_or_state_unavailable')
+    path = root/'native.sqlite3'
+    if path.exists() or path.is_symlink():
+        info = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or info.st_nlink != 1 or stat.S_IMODE(info.st_mode) != 0o600):
+            raise NativeStopped('native_input_or_state_unavailable')
+    return path
+
+
+def operation_context(context, operation_id, *, state_root=None, persist=None):
+    """Attach the original business checkpoint and restore its frozen deadline."""
+    result = {**context, 'operation_id':operation_id}
+    if state_root is not None:
+        state_root = Path(state_root)
+        state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        result['state_root'] = state_root.resolve()
+    if persist is not None:
+        result['persist'] = persist
+    path = _private_database(result)
+    if not path.exists():
+        return result
+    with sqlite3.connect(path.as_uri()+'?mode=ro', uri=True) as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_operations'").fetchone():
+            return result
+        rows = db.execute("SELECT value FROM native_operations WHERE json_extract(value,'$.binding.operation_id')=? LIMIT 1001", (operation_id,)).fetchall()
+    if len(rows)>1000:
+        raise NativeStopped('native_input_or_state_unavailable')
+    deadlines = {json.loads(row[0])['binding']['deadline'] for row in rows}
+    if deadlines:
+        if len(deadlines)!=1 or any(type(v) not in (int,float) or not math.isfinite(v) for v in deadlines):
+            raise NativeStopped('native_binding_changed')
+        result['deadline'] = min(result['deadline'], deadlines.pop())
+    return result
+
+
+def media_limits(context):
+    limits = context.get('limits', {})
+    if not isinstance(limits, dict) or set(limits)-{'request_bytes','response_bytes'}:
+        raise NativeStopped('native_size_contract')
+    values = [limits.get(k,2_000_000) for k in ('request_bytes','response_bytes')]
+    if any(type(v) is not int or not 1<=v<=2_000_000 for v in values):
+        raise NativeStopped('native_size_contract')
+    # GET echoes request+output. Reserve bounded output and record metadata;
+    # this never raises the existing service/SDK2MB ceilings.
+    return min(values[0],values[1]-196608), min(131072,values[1])
+
+
 def task_call(context, stage):
     """Use one generic submit/get/cancel task, never helper RPCs or CLI fallback."""
     def call(prompt, records, paths, schema, cwd):
@@ -86,12 +138,13 @@ def task_call(context, stage):
                         raise ValueError()
                 images.append({'id': record['id'], 'mime': 'image/jpeg',
                                'sha256': hashlib.sha256(data).hexdigest(),
-                               'synthetic_base64': base64.b64encode(data).decode()})
+                               'base64': base64.b64encode(data).decode()})
             route = json.loads(packed(context['routes'][stage]))
             request = {'mode': route['mode'], 'model': route['model'], 'profile': route['profile'],
-                       'objective': prompt, 'materials': [{'stage': stage, 'records': records, 'images': images}],
+                       'objective': prompt, 'materials': [{'schema_version':'photostory.task-input.v1', 'stage': stage, 'records': records, 'images': images}],
                        'output_schema': schema, 'timeout_seconds': 60}
-            if len(packed(request)) > 15_000_000:
+            request_limit, output_limit = media_limits(context)
+            if len(packed(request)) > request_limit:
                 raise ValueError()
             Draft202012Validator.check_schema(schema)
             request = json.loads(packed(request))
@@ -134,7 +187,7 @@ def task_call(context, stage):
                         context['persist']()  # A failed checkpoint prevents the next POST.
 
                     def stop():
-                        if value['task_id'] and not value['cancel']:
+                        if value['task_id'] and not value['cancel'] and value.get('accepted_output') is None:
                             value['cancel'] = True
                             save()
                             try: client.cancel(value['task_id'])
@@ -160,6 +213,17 @@ def task_call(context, stage):
 
                     if value['halt'] or (value['intent'] and not value['task_id']):
                         raise NativeStopped('native_outcome_unknown')
+                    if value.get('accepted_output') is not None:
+                        active()  # A timely immutable receipt survives its old remote TTL.
+                        cached = value['accepted_output']
+                        if (not value['claim'] or digest(cached) != value['output_sha256']
+                                or type(value.get('accepted_at')) not in (int,float)
+                                or not value['accepted_at'] < min(binding['deadline'], value['task_deadline'])
+                                or len(packed(cached)) > output_limit):
+                            raise NativeStopped('native_outcome_unknown')
+                        Draft202012Validator(schema).validate(cached)
+                        active()
+                        return json.loads(packed(cached))
                     active(value['task_deadline'])
                     try:
                         if not value['task_id']:
@@ -197,11 +261,15 @@ def task_call(context, stage):
                             raise NativePending('native_pending')
                         if record['status'] != 'completed' or not value['claim']:
                             raise ValueError()
+                        if len(packed(record['output'])) > output_limit:
+                            raise ValueError()
                         Draft202012Validator(schema).validate(record['output'])
                         output_sha = digest(record['output'])
                         if value['output_sha256'] and value['output_sha256'] != output_sha:
                             raise ValueError()
                         value['output_sha256'] = output_sha
+                        value['accepted_output'] = json.loads(packed(record['output']))
+                        value['accepted_at'] = context['now']()
                         save()
                         active(record['deadline'])
                         return json.loads(packed(record['output']))
@@ -218,3 +286,77 @@ def task_call(context, stage):
         except Exception:
             raise NativeStopped('native_input_or_state_unavailable') from None
     return call
+
+
+def publication_checkpoint(context):
+    """Only the small operation ledger travels in the existing publication row."""
+    path = _private_database(context)
+    if not path.exists():
+        return None
+    with sqlite3.connect(path.as_uri()+'?mode=ro', uri=True) as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_operations'").fetchone():
+            return None
+        rows = db.execute("SELECT operation,value FROM native_operations WHERE json_extract(value,'$.binding.operation_id')=? LIMIT 2", (context['operation_id'],)).fetchall()
+    if not rows:
+        return None
+    if len(rows)!=1:
+        raise NativeStopped('native_checkpoint_conflict')
+    result = {'operation':rows[0][0], 'value':json.loads(rows[0][1])}
+    if len(packed(result))>16384:
+        raise NativeStopped('native_checkpoint_conflict')
+    return result
+
+
+def restore_publication_checkpoint(context, checkpoint):
+    if checkpoint is None:
+        return context
+    try:
+        if set(checkpoint)!={'operation','value'} or len(packed(checkpoint))>16384:
+            raise ValueError()
+        operation, value = checkpoint['operation'], checkpoint['value']
+        binding = value['binding']
+        if (not isinstance(operation,str) or len(operation)!=64 or any(c not in '0123456789abcdef' for c in operation)
+                or binding['project']!=context['project'] or binding['resource']!=context['client'].resource
+                or binding['operation_id']!=context['operation_id'] or binding['route']!=context['routes']['publication']
+                or type(binding['deadline']) not in (int,float) or not math.isfinite(binding['deadline'])):
+            raise ValueError()
+        path = _private_database(context)
+        descriptor = os.open(path, os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW, 0o600)
+        os.close(descriptor)
+        with sqlite3.connect(path) as db:
+            db.execute('PRAGMA synchronous=FULL')
+            db.execute('CREATE TABLE IF NOT EXISTS native_operations (operation TEXT PRIMARY KEY, value TEXT NOT NULL)')
+            old = db.execute('SELECT value FROM native_operations WHERE operation=?',(operation,)).fetchone()
+            if old and json.loads(old[0])!=value:
+                raise ValueError()
+            db.execute('INSERT OR IGNORE INTO native_operations VALUES (?,?)',(operation,packed(value).decode()))
+        return operation_context(context, context['operation_id'])
+    except (KeyError,TypeError,ValueError,OSError,sqlite3.Error):
+        raise NativeStopped('native_checkpoint_conflict') from None
+
+
+def preflight_publication(context):
+    """Stop expired/unknown work before downloading another original image."""
+    checkpoint = publication_checkpoint(context)
+    if checkpoint is None:
+        return
+    value = checkpoint['value']
+    if value['halt'] or (value['intent'] and not value['task_id']):
+        raise NativeStopped('native_outcome_unknown')
+    deadline = value['binding']['deadline']
+    if value.get('accepted_output') is None and value['task_deadline'] is not None:
+        deadline = min(deadline,value['task_deadline'])
+    if context.get('cancel') is not True and context['now']()<deadline:
+        return
+    def save():
+        with sqlite3.connect(_private_database(context)) as db:
+            db.execute('UPDATE native_operations SET value=? WHERE operation=?',(packed(value).decode(),checkpoint['operation']))
+        context['persist']()
+    if value['task_id'] and not value['cancel'] and value.get('accepted_output') is None:
+        value['cancel'] = True
+        save()
+        try: context['client'].cancel(value['task_id'])
+        except Exception: pass
+    value['halt'] = True
+    save()
+    raise NativeStopped('native_cancel_or_expiry')

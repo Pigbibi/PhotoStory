@@ -213,3 +213,58 @@ test('weekly automatic cadence blocks candidate and atomic preparation after a r
  await DB.prepare("UPDATE publications SET created=? WHERE id='recent'").bind(Date.now()-8*86400000).run();
  assert.equal((await automatic(env,{action:'candidate'})).draft.id,'d');
 });
+
+async function nativeFixture(t){
+ const v=await fixture(t),candidate=await automatic(v.env,{action:'candidate'});
+ const auth={draftId:candidate.draft.id,version:candidate.draft.version,publicationId:candidate.publication.id};
+ const {hash}=await import('../worker/auth.mjs');
+ const operation='photostory:'+await hash(JSON.stringify(['Pigbibi/PhotoStory','publication',{draftId:auth.draftId,publicationId:auth.publicationId,version:auth.version}]));
+ const checkpoint={operation:await hash(JSON.stringify([operation,'publication',['p']])),value:{
+  binding:{project:'Pigbibi/PhotoStory',resource:'https://personal.invalid',operation_id:operation,
+   route:{mode:'agent',provider:'dot',profile:'publication',model:'synthetic',worker:'photo-publication'},request_sha256:'a'.repeat(64),deadline:Date.now()/1000+600},
+  intent:true,task_id:null,revision:null,task_deadline:null,claim:null,output_sha256:null,halt:false,cancel:false}};
+ return {...v,candidate,auth,checkpoint};
+}
+test('native prepared checkpoint resumes only the same known task without refreshing publication expiry',async t=>{
+ const v=await nativeFixture(t);const {env,DB,auth,checkpoint}=v;
+ const before=await DB.prepare('SELECT created,expires FROM publications WHERE id=?').bind(auth.publicationId).first();
+ await automatic(env,{...auth,action:'native_checkpoint',checkpoint});
+ assert.equal(await automatic(env,{action:'candidate'}),null,'unknown intent never becomes a new/resumed task');
+ Object.assign(checkpoint.value,{task_id:'synthetic-task',revision:1,task_deadline:Date.now()/1000+60});
+ await automatic(env,{...auth,action:'native_checkpoint',checkpoint});
+ for(let i=0;i<2;i++){
+  const resumed=await automatic({...env},{action:'candidate'});
+  assert.equal(resumed.publication.id,auth.publicationId);assert.deepEqual(resumed.nativeCheckpoint,checkpoint);
+ }
+ assert.equal((await DB.prepare('SELECT count(*) AS n FROM publications').first()).n,1);
+ assert.deepEqual(await DB.prepare('SELECT created,expires FROM publications WHERE id=?').bind(auth.publicationId).first(),before);
+});
+test('native checkpoint identity drift, expiry and original owner/uncertain gates fail closed',async t=>{
+ const {env,DB,s,auth,checkpoint}=await nativeFixture(t);
+ Object.assign(checkpoint.value,{task_id:'synthetic-task',revision:1,task_deadline:Date.now()/1000+60});
+ await automatic(env,{...auth,action:'native_checkpoint',checkpoint});
+ for(const mutate of [x=>x.value.task_id='different',x=>x.value.binding.route.worker='different',
+  x=>x.value.binding.request_sha256='b'.repeat(64),x=>x.value.binding.project='QuantStrategyLab/QuantRuntimeSettings']){
+  const wrong=structuredClone(checkpoint);mutate(wrong);
+  await assert.rejects(automatic(env,{...auth,action:'native_checkpoint',checkpoint:wrong}),/publication_conflict/);
+ }
+ await put(env,'automation',{...s,publishMode:'manual'});
+ assert.equal(await automatic(env,{action:'candidate'}),null);
+ await assert.rejects(automatic(env,{...auth,action:'native_checkpoint',checkpoint}),/publication_conflict/);
+ await put(env,'automation',s);
+ await DB.prepare("UPDATE publications SET status='uncertain' WHERE id=?").bind(auth.publicationId).run();
+ assert.equal(await automatic(env,{action:'candidate'}),null);
+ await DB.prepare("UPDATE publications SET status='prepared',expires=1 WHERE id=?").bind(auth.publicationId).run();
+ assert.equal(await automatic(env,{action:'candidate'}),null);
+ await assert.rejects(automatic(env,{...auth,action:'native_checkpoint',checkpoint}),/publication_conflict/);
+});
+test('halted or cancelled native waits do not gain owner recovery or a replacement publication',async t=>{
+ const {env,DB,auth,checkpoint}=await nativeFixture(t);
+ Object.assign(checkpoint.value,{task_id:'synthetic-task',revision:1,task_deadline:Date.now()/1000+60,cancel:true,halt:true});
+ await automatic(env,{...auth,action:'native_checkpoint',checkpoint});
+ assert.equal(await automatic(env,{action:'candidate'}),null);
+ const wrong=structuredClone(checkpoint);wrong.value.cancel=false;wrong.value.halt=false;
+ await assert.rejects(automatic(env,{...auth,action:'native_checkpoint',checkpoint:wrong}),/publication_conflict/);
+ const row=JSON.parse((await DB.prepare('SELECT body FROM publications WHERE id=?').bind(auth.publicationId).first()).body);
+ assert.equal(row.recoveryPending,undefined);assert.equal((await DB.prepare('SELECT count(*) AS n FROM publications').first()).n,1);
+});

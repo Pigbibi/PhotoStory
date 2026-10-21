@@ -156,8 +156,15 @@ async function internal(r, e, p) {
     const inventory=await inventoryCommit(e,job,b);
     const statements=[];
     if(inventory)statements.push(inventory);
-    statements.push(e.DB.prepare("UPDATE jobs SET body=json_set(body,'$.progress',json(?)),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE 'pending' END,lease=NULL WHERE id=? AND lease=? AND status='running'")
-      .bind(JSON.stringify(progress),job.id,job.lease));
+    if(b.nativeCheckpoint!==undefined&&typeof b.nativeCheckpoint!=='boolean')throw new Error('invalid_checkpoint');
+    // Native intent/result snapshots keep the same existing running lease.
+    // The ordinary checkpoint still releases it; neither path extends identity.
+    const retain=b.nativeCheckpoint===true;
+    if(retain&&previous.stopRequested)throw new Error('job_stopped');
+    const update=retain
+      ? "UPDATE jobs SET body=json_set(body,'$.progress',json(?)) WHERE id=? AND lease=? AND status='running' AND COALESCE(json_extract(body,'$.stopRequested'),0)!=1"
+      : "UPDATE jobs SET body=json_set(body,'$.progress',json(?)),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE 'pending' END,lease=NULL WHERE id=? AND lease=? AND status='running'";
+    statements.push(e.DB.prepare(update).bind(JSON.stringify(progress),job.id,job.lease));
     const results=await e.DB.batch(statements);
     const updated=results.at(-1);
     if(updated.meta.changes!==1) return failure("job_conflict",409);

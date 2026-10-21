@@ -498,9 +498,10 @@ def native_review_gateway(context, *, stage):
 
 
 def _native_business_context(context, kind, identity):
-    operation = hashlib.sha256(json.dumps([context['operation_id'], kind, identity],
+    operation = hashlib.sha256(json.dumps([context['project'], kind, identity],
                                          sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-    return {**context, 'operation_id': 'photostory:'+operation}
+    from native_tasks import operation_context
+    return operation_context(context, 'photostory:'+operation)
 
 
 def run(*, native_context=None):
@@ -541,11 +542,22 @@ def run(*, native_context=None):
         except (OSError,ValueError): pass
     call('/internal/maintenance',{'temporaryCleanup':report})
     from auto_publish import tick, AutomaticPublishingStopped
+    def publication_review(identity, checkpoint=None):
+        from native_tasks import (operation_context,publication_checkpoint,
+                                  restore_publication_checkpoint,preflight_publication)
+        if not directory or not Path(directory).is_absolute():
+            raise Stop('setup_required')
+        context = _native_business_context(native_context, 'publication', identity)
+        context = operation_context(context,context['operation_id'],state_root=Path(directory))
+        context = restore_publication_checkpoint(context,checkpoint)
+        context['persist'] = lambda: call('/internal/autopublish', {**identity,'action':'native_checkpoint',
+                                                   'checkpoint':publication_checkpoint(context)})
+        preflight_publication(context)
+        return native_review_gateway(context,stage='publication')
     try:
         if tick(call, lambda path, body: request(base+path, token=token, body=body, max_bytes=25*1024*1024),
                 native_review_gateway(native_context, stage='publication'), work_root=native_context['fixture_root'],
-                bind_review=lambda identity: native_review_gateway(
-                    _native_business_context(native_context, 'publication', identity), stage='publication')):
+                bind_review=publication_review):
             return  # Finish one post before slow scanning; never select another.
     except AutomaticPublishingStopped:
         print('Automatic publication stopped or blocked; inspect the private publication. No retry in this run.')
@@ -637,7 +649,10 @@ def run(*, native_context=None):
             return
         candidates=inventory.next_batch(limit)
         batch_id=inventory.stage_batch(candidates)
+        from native_tasks import operation_context
         native_context = _native_business_context(native_context, 'batch', {'job_id':job['id'], 'batch_id':batch_id})
+        native_context = operation_context(native_context, native_context['operation_id'], state_root=Path(directory),
+            persist=lambda: call('/internal/checkpoint', {**auth, 'progress':inventory.progress(), 'nativeCheckpoint':True}))
         with tempfile.TemporaryDirectory(prefix="photostory-", dir=native_context['fixture_root']) as tmp:
             cwd = Path(tmp)
             from preselect import representatives

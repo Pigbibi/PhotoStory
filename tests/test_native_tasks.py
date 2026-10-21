@@ -324,3 +324,226 @@ def test_actual_processor_five_stages_and_final_publication_consume_six_single_t
             batch.native_review_gateway(ctx,stage='publication'),work_root=tmp_path) is True
     assert any(a['action'] == 'begin' and a['review']['needsHumanReview'] is False for a in actions)
     assert sum(m == 'POST' and p == '/v1/tasks' for m,p,_ in wire.calls) == 6
+
+
+def test_timely_completed_stage_reuses_private_receipt_without_expired_remote_read(tmp_path):
+    ctx, wire = context(tmp_path)
+    ctx['deadline'] += 600
+    call = lambda: batch.native_review_gateway(ctx, stage='labels')('prompt', [{'id':'p'}], [], SCHEMA, tmp_path)
+    assert call() == {'ok':True}
+    before = len(wire.calls)
+    wire.clock[0] += 61
+    assert call() == {'ok':True}
+    assert len(wire.calls) == before
+
+
+@pytest.mark.parametrize('stop', ['deadline', 'cancel'])
+def test_cached_receipt_rechecks_original_stop_after_schema_validation(tmp_path, stop):
+    from native_tasks import Draft202012Validator, NativeStopped
+    ctx, wire = context(tmp_path)
+    call = lambda: batch.native_review_gateway(ctx, stage='labels')('prompt', [{'id':'p'}], [], SCHEMA, tmp_path)
+    assert call() == {'ok':True}
+    before = len(wire.calls)
+    validate = Draft202012Validator.validate
+    def validate_then_stop(validator, instance, *args, **kwargs):
+        validate(validator, instance, *args, **kwargs)
+        if stop == 'deadline':
+            wire.clock[0] = ctx['deadline']
+        else:
+            ctx['cancel'] = True
+    with patch.object(Draft202012Validator, 'validate', validate_then_stop):
+        with pytest.raises(NativeStopped, match='native_cancel_or_expiry'):
+            call()
+    assert len(wire.calls) == before
+
+
+def test_effective_request_limit_rejects_before_intent_or_submit(tmp_path):
+    from native_tasks import NativeStopped
+    ctx, wire = context(tmp_path)
+    ctx['limits'] = {'request_bytes':100, 'response_bytes':2_000_000}
+    with pytest.raises(NativeStopped):
+        batch.native_review_gateway(ctx, stage='labels')('prompt', [{'id':'p'}], [], SCHEMA, tmp_path)
+    assert wire.calls == []
+    assert not (ctx['state_root']/'native.sqlite3').exists()
+
+
+@pytest.mark.parametrize('checkpoint_failure', [None, 'before_commit', 'after_commit'])
+def test_actual_batch_checkpoint_commits_inventory_ref_before_first_native_post(tmp_path, checkpoint_failure):
+    import cloud_inventory
+    import sqlite3
+    ctx, wire = context(tmp_path)
+    wire.complete = False
+    directory = tmp_path/'inventory'
+    stages, pointer, calls = {}, [], []
+    inv = MagicMock()
+    inv.scan.return_value = True
+    inv.next_batch.return_value = [{'id':'p','captured':'2026-08-18T10:00:00+08:00','taken':1000,'area':None}]
+    inv.stage_batch.return_value = 'batch'
+    inv.known_digest.return_value = False
+    inv.progress.return_value = {'phase':'processing','total':1,'processed':0,'analyzed':0,'batches':0}
+    class Cloud:
+        def __init__(self,*args): pass
+        def require_seed(self): pass
+        def load(self,*args): return False
+        def save(self, root, job, lease, *args):
+            assert Path(root) == directory and job == 'job' and lease == 'synthetic-lease'
+            ref = '00000000-0000-4000-8000-'+str(len(stages)+1).zfill(12)
+            stages[ref] = cloud_inventory.archive(root)
+            return ref
+    def request(url, **kwargs):
+        path = url.removeprefix('https://photo.invalid'); body = kwargs.get('body')
+        calls.append((path,body))
+        if path == '/internal/autopublish': value = None
+        elif path == '/internal/claim': value = {'id':'job','lease':'synthetic-lease'}
+        elif path == '/internal/source': value = {'pipeline':2,'progress':{'phase':'processing'},'maxPhotos':20,'draftLimit':1,'accessToken':'synthetic'}
+        elif path == '/internal/checkpoint':
+            assert body['inventoryRef'] in stages
+            if checkpoint_failure == 'before_commit':
+                raise TimeoutError('synthetic checkpoint not committed')
+            pointer[:] = [body['inventoryRef']]
+            if checkpoint_failure == 'after_commit':
+                raise TimeoutError('synthetic checkpoint reply lost')
+            value = {'ok':True}
+        else: value = {}
+        return json.dumps(value).encode()
+    original = wire.submit
+    def submit(request_value,key):
+        assert calls[-1][0] == '/internal/checkpoint' and calls[-1][1]['nativeCheckpoint'] is True
+        restored = tmp_path/'inspect'
+        cloud_inventory.restore(restored, stages[pointer[0]])
+        with sqlite3.connect(restored/'native.sqlite3') as db:
+            value = json.loads(db.execute('SELECT value FROM native_operations').fetchone()[0])
+        assert value['intent'] is True and value['task_id'] is None
+        return original(request_value,key)
+    wire.submit = submit
+    with patch.dict('os.environ', {'PHOTOSTORY_URL':'https://photo.invalid','PHOTOSTORY_BATCH_TOKEN':'synthetic',
+             'PHOTOSTORY_STATE_DIR':str(directory),'PHOTOSTORY_STATE_BACKEND':'cloudflare'},clear=True), \
+         patch('cloud_inventory.CloudInventory',Cloud), patch('inventory.Inventory',return_value=inv), \
+         patch.object(batch,'request',side_effect=request), patch.object(batch,'thumbnail',return_value=photo(tmp_path).read_bytes()), \
+         patch('preselect.representatives',side_effect=lambda previews,*args:[(v,data,{}) for v,data in previews]):
+        if checkpoint_failure:
+            with pytest.raises(batch.Stop):
+                batch.run(native_context=ctx)
+        else:
+            batch.run(native_context=ctx)
+    if checkpoint_failure:
+        assert wire.calls == []
+        # A lost acknowledgement never permits the next task POST. If the
+        # pointer committed, its snapshot retains the uncertain intent.
+        assert bool(pointer) == (checkpoint_failure == 'after_commit')
+        assert any(path == '/internal/fail' for path,_ in calls)
+        return
+    assert sum(m=='POST' and p=='/v1/tasks' for m,p,_ in wire.calls) == 1
+    assert (directory/'native.sqlite3').exists()
+    assert calls[-1][0] == '/internal/checkpoint' and 'nativeCheckpoint' not in calls[-1][1]
+    assert not any(path in {'/internal/fail','/internal/complete'} for path,_ in calls)
+
+
+def test_operation_entry_restores_original_deadline_and_identity(tmp_path):
+    from native_tasks import NativePending, operation_context
+    ctx, wire = context(tmp_path)
+    bound = batch._native_business_context(ctx,'batch',{'job_id':'job','batch_id':'batch'})
+    wire.complete = False
+    with pytest.raises(NativePending):
+        batch.native_review_gateway(bound,stage='labels')('prompt',[{'id':'p'}],[],SCHEMA,tmp_path)
+    resumed = operation_context({**ctx,'deadline':ctx['deadline']+100}, bound['operation_id'])
+    assert resumed['deadline'] == ctx['deadline']
+    assert batch._native_business_context({**ctx,'operation_id':'new-actions-run'},'batch',{'job_id':'job','batch_id':'batch'})['operation_id'] == bound['operation_id']
+
+
+def test_publication_private_ledger_restores_known_task_and_cached_result_without_new_store(tmp_path):
+    from native_tasks import (NativePending,publication_checkpoint,restore_publication_checkpoint,
+                              operation_context,preflight_publication)
+    ctx, wire = context(tmp_path);ctx['deadline'] += 600
+    identity={'draftId':'draft','version':1,'publicationId':'publication'}
+    ctx=batch._native_business_context(ctx,'publication',identity)
+    snapshots=[];ctx['persist']=lambda:snapshots.append(publication_checkpoint(ctx))
+    wire.complete=False
+    image=photo(tmp_path)
+    with pytest.raises(NativePending):
+        batch.native_review_gateway(ctx,stage='publication')('prompt',[{'id':'p'}],[image],SCHEMA,tmp_path)
+    assert snapshots[0]['value']['task_id'] is None
+    assert snapshots[-1]['value']['task_id']
+    fresh=tmp_path/'publication-restart';fresh.mkdir(mode=0o700)
+    resumed=restore_publication_checkpoint({**ctx,'state_root':fresh,'deadline':ctx['deadline']+100},snapshots[-1])
+    assert resumed['deadline']==ctx['deadline']
+    snapshots=[];resumed['persist']=lambda:snapshots.append(publication_checkpoint(resumed))
+    task=next(iter(wire.records));wire.complete_task(task)
+    assert batch.native_review_gateway(resumed,stage='publication')('prompt',[{'id':'p'}],[image],SCHEMA,tmp_path)=={'ok':True}
+    stored=snapshots[-1];assert stored['value']['accepted_output']=={'ok':True}
+    wire.clock[0]+=61
+    count=len(wire.calls);preflight_publication(resumed)
+    assert batch.native_review_gateway(resumed,stage='publication')('prompt',[{'id':'p'}],[image],SCHEMA,tmp_path)=={'ok':True}
+    assert len(wire.calls)==count and sum(m=='POST' and p=='/v1/tasks' for m,p,_ in wire.calls)==1
+    assert len(json.dumps(stored))<16384 and 'base64' not in json.dumps(stored)
+
+
+def test_publication_expiry_stops_before_media_download_and_cancel_is_reserved_once(tmp_path):
+    from native_tasks import NativePending,NativeStopped,publication_checkpoint,preflight_publication
+    ctx,wire=context(tmp_path);ctx['deadline']+=600
+    ctx=batch._native_business_context(ctx,'publication',{'draftId':'draft','version':1,'publicationId':'publication'})
+    snapshots=[];ctx['persist']=lambda:snapshots.append(publication_checkpoint(ctx))
+    wire.complete=False
+    with pytest.raises(NativePending):
+        batch.native_review_gateway(ctx,stage='publication')('prompt',[{'id':'p'}],[photo(tmp_path)],SCHEMA,tmp_path)
+    wire.clock[0]+=61
+    for _ in range(2):
+        with pytest.raises(NativeStopped):preflight_publication(ctx)
+    assert sum(path.endswith('/cancel') for _,path,_ in wire.calls)==1
+    assert snapshots[-1]['value']['cancel'] is True and snapshots[-1]['value']['halt'] is True
+    assert next(iter(wire.records.values()))['status']=='cancel_requested'
+
+
+def test_actual_publication_entry_restores_and_stops_before_download_or_job_claim(tmp_path):
+    from native_tasks import NativePending, publication_checkpoint
+    ctx,wire=context(tmp_path);ctx['deadline']+=600
+    identity={'draftId':'draft','version':1,'publicationId':'publication'}
+    original=batch._native_business_context(ctx,'publication',identity)
+    wire.complete=False
+    with pytest.raises(NativePending):
+        batch.native_review_gateway(original,stage='publication')('prompt',[{'id':'p'}],[photo(tmp_path)],SCHEMA,tmp_path)
+    checkpoint=publication_checkpoint(original)
+    wire.clock[0]+=61
+    directory=tmp_path/'restarted';directory.mkdir(mode=0o700)
+    calls=[]
+    def request(url, **kwargs):
+        path=url.removeprefix('https://photo.invalid');body=kwargs.get('body');calls.append((path,body))
+        if path=='/internal/autopublish' and body['action']=='candidate':
+            return json.dumps({'draft':{'id':'draft','version':1,'photos':[{'id':'p'}]},
+                'publication':{'id':'publication','status':'prepared'},'nativeCheckpoint':checkpoint}).encode()
+        if path=='/internal/autopublish' and body['action']=='native_checkpoint':
+            return b'{}'
+        assert path=='/internal/maintenance'
+        return b'{}'
+    with patch.dict('os.environ',{'PHOTOSTORY_URL':'https://photo.invalid','PHOTOSTORY_BATCH_TOKEN':'synthetic',
+              'PHOTOSTORY_STATE_DIR':str(directory),'PHOTOSTORY_STATE_BACKEND':'local'},clear=True), \
+         patch.object(batch,'request',side_effect=request):
+        with pytest.raises(batch.Stop,match='automatic_publication_unavailable'):
+            batch.run(native_context=ctx)
+    assert sum(path.endswith('/cancel') for _,path,_ in wire.calls)==1
+    assert not any(path=='/internal/claim' or body and body.get('action')=='original' for path,body in calls)
+
+
+def test_aggregate_real_jpeg_bytes_stop_at_existing_service_cap_without_resizing(tmp_path):
+    from native_tasks import NativeStopped
+    ctx,wire=context(tmp_path)
+    image=tmp_path/'noise.jpg'
+    Image.effect_noise((1000,1000),128).convert('RGB').save(image,'JPEG',quality=95)
+    before=image.read_bytes()
+    assert len(before)<15_000_000 and len(before)*4>2_000_000
+    with pytest.raises(NativeStopped):
+        batch.native_review_gateway(ctx,stage='screen')('prompt',[{'id':str(i)} for i in range(4)],
+            [image]*4,SCHEMA,tmp_path)
+    assert image.read_bytes()==before and wire.calls==[]
+    assert not (ctx['state_root']/'native.sqlite3').exists()
+
+
+def test_oversize_result_is_not_cached_or_adopted(tmp_path):
+    from native_tasks import NativeStopped
+    ctx,wire=context(tmp_path);wire.output=lambda request:{'text':'x'*131073}
+    with pytest.raises(NativeStopped):
+        batch.native_review_gateway(ctx,stage='labels')('prompt',[{'id':'p'}],[],{'type':'object'},tmp_path)
+    before=len(wire.calls)
+    with pytest.raises(NativeStopped):
+        batch.native_review_gateway(ctx,stage='labels')('prompt',[{'id':'p'}],[],{'type':'object'},tmp_path)
+    assert len(wire.calls)==before
