@@ -141,6 +141,24 @@ def test_frozen_deadline_cannot_be_extended_by_context_mutation(tmp_path, phase)
     assert len(wire.calls) == count
 
 
+def test_known_remote_deadline_stops_before_get_and_cancels_original_once(tmp_path):
+    from native_tasks import NativePending, NativeStopped
+    ctx, wire = context(tmp_path)
+    image = photo(tmp_path)
+    wire.complete = False
+    original = wire.clock[0] + 5
+    wire.mutate = lambda record: {**record, 'deadline':original}
+    with pytest.raises(NativePending):
+        batch.native_review_gateway(ctx, stage='screen')('prompt', [{'id':'p'}], [image], SCHEMA, tmp_path)
+    wire.clock[0] = original + 1
+    before = len(wire.calls)
+    for _ in range(2):
+        with pytest.raises(NativeStopped):
+            batch.native_review_gateway(ctx, stage='screen')('prompt', [{'id':'p'}], [image], SCHEMA, tmp_path)
+    after = wire.calls[before:]
+    assert len(after) == 1 and after[0][1].endswith('/cancel')
+
+
 def test_sqlite_identity_restores_through_existing_cloud_snapshot_without_new_submit(tmp_path):
     import cloud_inventory
     from native_tasks import NativePending

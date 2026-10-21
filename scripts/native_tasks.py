@@ -160,7 +160,7 @@ def task_call(context, stage):
 
                     if value['halt'] or (value['intent'] and not value['task_id']):
                         raise NativeStopped('native_outcome_unknown')
-                    active()
+                    active(value['task_deadline'])
                     try:
                         if not value['task_id']:
                             value['intent'] = True
