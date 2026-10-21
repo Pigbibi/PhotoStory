@@ -23,7 +23,12 @@ class CrossReviewTests(unittest.TestCase):
    self.assertEqual(len(clean),2);self.assertEqual(len(checks),2)
    self.assertEqual(sum(m=='POST' and p=='/v1/tasks' for m,p,_ in wire.calls),1)
    wire.mutate=lambda record:{**record,'output':{'checks':[{'draftId':'unknown'}]}}
+   before=len(wire.calls)
+   self.assertEqual(cross_review(self.drafts,self.screens,[],cwd,callback),(clean,checks))
+   self.assertEqual(len(wire.calls),before) # Accepted receipts are immutable.
+   ctx['operation_id']+=':separate-invalid-output-fixture'
    with self.assertRaises(NativeStopped):cross_review(self.drafts,self.screens,[],cwd,callback)
+   self.assertEqual(sum(m=='POST' and p=='/v1/tasks' for m,p,_ in wire.calls),2)
 
  def setUp(self):
   self.drafts=[{'id':'horizontal','title':'North Gate Street Scene','caption':'Colorful facades by North Gate.',
