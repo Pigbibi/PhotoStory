@@ -221,6 +221,91 @@ class NativeQualificationTests(unittest.TestCase):
                 smoke.execute(root,client,'cancel',task_id=record['id'],environ=self.ENV,now=lambda:130)
             client.cancel.assert_called_once();client.submit.assert_not_called()
 
+    def test_failure_projection_preserves_unknown_without_private_error_data(self):
+        import urllib.error,urllib.request
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        private='PRIVATE_TOKEN_QUERY_BODY_IMAGE'
+        cases=[('connection',urllib.error.URLError(private),None),
+               ('http',urllib.error.HTTPError('https://private.invalid/?'+private,403,private,{},None),403),
+               ('parse',None,200),('task_unknown',RuntimeError(private),None)]
+        for category,error,status in cases:
+            with self.subTest(category=category),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/'state';self.prepare(root);client=Mock()
+                def wire(*args,**kwargs):
+                    if error is not None:raise error
+                    return SimpleNamespace(status=200)
+                client.opener=SimpleNamespace(open=wire);smoke._observe_http(client)
+                def submit(*args):
+                    if category=='task_unknown':raise error
+                    request=urllib.request.Request(smoke.SERVICE+'/v1/tasks',data=private.encode(),
+                        headers={'Authorization':'Bearer '+private},method='POST')
+                    try:client.opener.open(request,timeout=45)
+                    except urllib.error.HTTPError:raise ValueError('native_http_rejected') from None
+                    raise ValueError('invalid_json')
+                client.submit.side_effect=submit
+                with self.assertRaises(smoke.Stopped):smoke.execute(root,client,'submit',environ=self.ENV)
+                receipt=smoke.read_receipt(root);failure=receipt['failure']
+                self.assertEqual(receipt['phase'],'unknown');self.assertIsNone(receipt['task_id'])
+                self.assertEqual(failure['category'],category)
+                self.assertEqual(failure['stage'],'not_observed' if category=='task_unknown' else 'task_submit')
+                self.assertEqual(failure.get('http_status'),status)
+                self.assertEqual(failure['task_outcome'],'unknown')
+                self.assertNotIn(private,json.dumps(receipt));self.assertNotIn(smoke.IMAGE_BASE64,json.dumps(receipt))
+                with self.assertRaises(smoke.Stopped):smoke.execute(root,client,'submit',environ=self.ENV)
+                self.assertEqual(client.submit.call_count,1);client.get.assert_not_called();client.cancel.assert_not_called()
+
+    def test_http_observer_keeps_only_fixed_stage_and_status(self):
+        import urllib.request
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        task=self.record()['id'];response=SimpleNamespace(status=200);wire=Mock(return_value=response)
+        client=SimpleNamespace(opener=SimpleNamespace(open=wire));smoke._observe_http(client)
+        cases=[('GET','https://run.actions.githubusercontent.com/oidc?secret=PRIVATE','oidc'),
+               ('POST',smoke.SERVICE+'/v1/tasks','task_submit'),
+               ('GET',smoke.SERVICE+'/v1/tasks/'+task,'task_read'),
+               ('POST',smoke.SERVICE+'/v1/tasks/'+task+'/cancel','task_cancel'),
+               ('GET','https://private.invalid/PRIVATE','not_observed')]
+        for method,url,stage in cases:
+            with self.subTest(stage=stage):
+                request=urllib.request.Request(url,method=method)
+                self.assertIs(client.opener.open(request,timeout=45),response)
+                wire.assert_called_with(request,timeout=45)
+                self.assertEqual(client._qualification_wire,{'stage':stage,'http_status':200})
+                self.assertNotIn('PRIVATE',json.dumps(client._qualification_wire))
+
+    def test_read_and_cancel_failures_keep_original_identity_and_send_limits(self):
+        from unittest.mock import Mock
+        for action in ('readback','cancel'):
+            with self.subTest(action=action),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/'state';self.prepare(root);client=Mock();record=self.record()
+                client.get.return_value=record
+                if action=='readback':client.get.side_effect=TimeoutError('PRIVATE')
+                else:client.cancel.side_effect=TimeoutError('PRIVATE')
+                with self.assertRaises(TimeoutError):
+                    smoke.execute(root,client,action,task_id=record['id'],environ=self.ENV,now=lambda:130)
+                receipt=smoke.read_receipt(root)
+                self.assertEqual(receipt['task_id'],record['id']);self.assertEqual(receipt['failure']['category'],'connection')
+                self.assertNotIn('PRIVATE',json.dumps(receipt));client.submit.assert_not_called()
+                if action=='cancel':
+                    self.assertTrue(receipt['cancel_sent'])
+                    with self.assertRaises(smoke.Stopped):
+                        smoke.execute(root,client,'cancel',task_id=record['id'],environ=self.ENV)
+                    client.cancel.assert_called_once()
+
+    def test_failure_metadata_rejects_arbitrary_values_and_handles_raw_http(self):
+        import urllib.error
+        from types import SimpleNamespace
+        client=SimpleNamespace(_qualification_wire={'stage':['PRIVATE'],'category':{'PRIVATE':True},
+            'http_status':True,'url':'https://PRIVATE','response':'PRIVATE'})
+        result=smoke.failure_projection(client,RuntimeError('PRIVATE'))
+        self.assertEqual(result,{'category':'task_unknown','stage':'not_observed','code':'unknown_error','task_outcome':'unknown'})
+        error=urllib.error.HTTPError('https://PRIVATE',401,'PRIVATE',{'Set-Cookie':'PRIVATE'},None)
+        result=smoke.failure_projection(client,error)
+        self.assertEqual(result,{'category':'http','stage':'not_observed','code':'native_http_rejected',
+                                 'task_outcome':'unknown','http_status':401})
+        self.assertNotIn('PRIVATE',json.dumps(result))
+
     def test_qualification_job_has_no_business_secret_or_processing_step(self):
         text=(Path(__file__).parents[1]/'.github/workflows/processor.yml').read_text()
         job=text.split('\n  native_qualification:',1)[1]
