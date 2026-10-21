@@ -15,6 +15,10 @@ def cross_checks(prompt):
                             'photos':[{k:p[k] for k in ('id','alt')} for p in d['photos']]}} for d in drafts]}
 
 class ProcessorRunTests(unittest.TestCase):
+ def setUp(self):
+  from native_test_support import install_domain_native_entry
+  install_domain_native_entry(self, b)
+
  def test_publication_blockage_fails_the_run_without_claiming_a_scan(self):
   with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'PHOTOSTORY_URL':'https://example.invalid','PHOTOSTORY_BATCH_TOKEN':'test-token','CODEX_GATEWAY_COMMAND':'test-gateway','PHOTOSTORY_STATE_DIR':tmp}),patch.object(b,'request',return_value=b'{}') as request,patch('auto_publish.tick',side_effect=AutomaticPublishingStopped('automatic_publication_blocked')),io.StringIO() as output,patch('sys.stdout',output):
    with self.assertRaises(b.Stop):b.run()

@@ -61,3 +61,43 @@ test('bad digest or wrong lease never advances the Cloudflare pointer',async t=>
  assert.equal(env.MEDIA_BUCKET.objects.size,1);
  assert.ok([...env.MEDIA_BUCKET.objects.keys()][0].startsWith('inventories/'));
 });
+
+
+test('native snapshot commits the same inventory pointer without releasing the running lease',async t=>{
+ const {env,api,DB}=await setup(t);env.MEDIA_BUCKET=bucket();
+ const bytes=new Uint8Array([80,75,3,4,1]);
+ await upload(env,bytes,{'X-Inventory-Seed':'1'});
+ await api('/api/jobs',{folder:'Photos',range:'all'});
+ const job=await(await api('/internal/claim',{},true)).json();
+ const before=await DB.prepare('SELECT lease,created FROM jobs WHERE id=?').bind(job.id).first();
+ const saved=await(await upload(env,new Uint8Array([80,75,3,4,2]),{'X-Job-Id':job.id,'X-Job-Lease':job.lease})).json();
+ const progress={phase:'scanning',total:0,processed:0,analyzed:0,batches:0};
+ const body={jobId:job.id,lease:job.lease,progress,inventoryRef:saved.ref,nativeCheckpoint:true};
+ assert.equal((await api('/internal/checkpoint',body,true)).status,200);
+ const running=await DB.prepare('SELECT lease,status,created FROM jobs WHERE id=?').bind(job.id).first();
+ assert.equal(running.lease,before.lease);assert.equal(running.created,before.created);assert.equal(running.status,'running');
+ assert.ok((await DB.prepare("SELECT value FROM state WHERE key='inventory-current'").first()).value.includes(saved.ref));
+ assert.equal(await(await api('/internal/claim',{},true)).json(),null);
+ const next=await(await upload(env,new Uint8Array([80,75,3,4,3]),{'X-Job-Id':job.id,'X-Job-Lease':job.lease})).json();
+ assert.equal((await api('/internal/checkpoint',{...body,inventoryRef:next.ref,nativeCheckpoint:false},true)).status,200);
+ const released=await DB.prepare('SELECT lease,status FROM jobs WHERE id=?').bind(job.id).first();
+ assert.equal(released.lease,null);assert.equal(released.status,'pending');
+ const resumed=await(await api('/internal/claim',{},true)).json();assert.equal(resumed.id,job.id);assert.notEqual(resumed.lease,job.lease);
+});
+
+test('native snapshot rejects malformed flags and owner stop without pointer or lease changes',async t=>{
+ const {env,api,DB}=await setup(t);env.MEDIA_BUCKET=bucket();
+ await upload(env,new Uint8Array([80,75,3,4,1]),{'X-Inventory-Seed':'1'});
+ await api('/api/jobs',{folder:'Photos',range:'all'});
+ const job=await(await api('/internal/claim',{},true)).json();
+ const saved=await(await upload(env,new Uint8Array([80,75,3,4,2]),{'X-Job-Id':job.id,'X-Job-Lease':job.lease})).json();
+ const before=(await DB.prepare("SELECT value FROM state WHERE key='inventory-current'").first()).value;
+ const body={jobId:job.id,lease:job.lease,progress:{phase:'scanning',total:0,processed:0,analyzed:0,batches:0},inventoryRef:saved.ref,nativeCheckpoint:'yes'};
+ assert.equal((await api('/internal/checkpoint',body,true)).status,400);
+ await DB.prepare("UPDATE jobs SET body=json_set(body,'$.stopRequested',json('true')) WHERE id=?").bind(job.id).run();
+ assert.equal((await api('/internal/checkpoint',{...body,nativeCheckpoint:true},true)).status,400);
+ assert.equal((await DB.prepare("SELECT value FROM state WHERE key='inventory-current'").first()).value,before);
+ assert.equal((await DB.prepare('SELECT status FROM jobs WHERE id=?').bind(job.id).first()).status,'running');
+ assert.equal((await api('/internal/checkpoint',{...body,nativeCheckpoint:false},true)).status,200);
+ assert.equal((await DB.prepare('SELECT status FROM jobs WHERE id=?').bind(job.id).first()).status,'cancelled');
+});

@@ -93,8 +93,8 @@ export async function inventoryCommit(e, job, body) {
   if (info.jobId !== job.id || info.leaseHash !== job.lease || !digestPattern.test(info.digest))
     throw new Error('inventory_conflict');
   const value = JSON.stringify({key: info.key, digest: info.digest, bytes: info.bytes});
-  return e.DB.prepare("INSERT INTO state(key,value,expires) SELECT 'inventory-current',?,NULL WHERE EXISTS(SELECT 1 FROM jobs WHERE id=? AND lease=? AND status='running') ON CONFLICT(key) DO UPDATE SET value=excluded.value,expires=NULL")
-    .bind(value, job.id, job.lease);
+  return e.DB.prepare("INSERT INTO state(key,value,expires) SELECT 'inventory-current',?,NULL WHERE EXISTS(SELECT 1 FROM jobs WHERE id=? AND lease=? AND status='running' AND (?=0 OR COALESCE(json_extract(body,'$.stopRequested'),0)!=1)) ON CONFLICT(key) DO UPDATE SET value=excluded.value,expires=NULL")
+    .bind(value, job.id, job.lease, body.nativeCheckpoint===true?1:0);
 }
 
 export async function cleanupInventories(e, now = Date.now()) {

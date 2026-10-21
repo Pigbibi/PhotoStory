@@ -1,4 +1,6 @@
 """An additional final-post review; any problem leaves the normal manual draft."""
+from native_tasks import NativePending, NativeStopped
+
 import json
 from pathlib import Path
 FIELDS=['privacySafe','captionGrounded','locationGrounded','coherent','compositionGood','noDuplicateFrames','needsHumanReview']
@@ -93,6 +95,8 @@ def review_drafts(drafts,screened,source,cwd,gateway):
                             'screens':[{**{k:by_id[pid][k] for k in ('id','decision','landscape','flags','aesthetic')},
                                         'light':by_id[pid].get('light','unknown'),'scene':by_id[pid].get('scene','unknown'),
                                         'place':by_id[pid].get('place',{'city':'','landmark':'','evidence':'','confidence':'none'})} for pid in ids], 'review':review})
+        except NativeStopped:
+            raise
         except Exception:
             # Extra-review errors never discard an already safe manual draft and
             # never create approval. Do not log private provider/model output.

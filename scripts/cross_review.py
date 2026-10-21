@@ -1,4 +1,6 @@
 """Compare new posts and produce grounded copy before saving a draft."""
+from native_tasks import NativePending, NativeStopped
+
 import json
 
 STRING={'type':'string'}
@@ -57,6 +59,8 @@ def cross_review(drafts,screens,references,cwd,gateway,place_hint=''):
              'priorPosts':references}
     try:
         result=gateway(PROMPT+'\nPost data:\n'+json.dumps(context,ensure_ascii=False),records,paths,SCHEMA,cwd)
+    except NativeStopped:
+        raise
     except Exception:
         return [],[]
     checks=result.get('checks') if isinstance(result,dict) else None

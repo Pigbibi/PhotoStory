@@ -1,4 +1,6 @@
 """Finish one automatic publication in a bounded run. Manual is the default."""
+from native_tasks import NativePending, NativeStopped
+
 import base64
 import hashlib
 import io
@@ -71,7 +73,7 @@ def render(raw, aspect, frame):
         return out.getvalue()
 
 
-def tick(call, download, gateway):
+def tick(call, download, gateway, *, work_root=None, bind_review=None):
     candidate = call('/internal/autopublish', {'action': 'candidate'})
     if not candidate:
         health = call('/internal/health', None)
@@ -80,6 +82,8 @@ def tick(call, download, gateway):
         return
     draft, publication = candidate['draft'], candidate['publication']
     auth = {'draftId': draft['id'], 'version': draft['version'], 'publicationId': publication['id']}
+    if bind_review is not None:
+        gateway = bind_review(auth, candidate.get('nativeCheckpoint'), publication.get('expires',0)/1000)
     def action(name, **body):
         return call('/internal/autopublish', {**auth, 'action': name, **body})
     if publication['status'] == 'publishing':
@@ -89,7 +93,7 @@ def tick(call, download, gateway):
     # No automatic replay of a crashed/failed preparation or ambiguous begin.
     beginning = False
     try:
-        with tempfile.TemporaryDirectory(prefix='photostory-publish-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='photostory-publish-', dir=work_root) as tmp:
             cwd, paths, evidence = Path(tmp), [], []
             orientations = set()
             for i, photo in enumerate(draft['photos']):
@@ -119,6 +123,8 @@ def tick(call, download, gateway):
             beginning = True
             publication = action('begin', review=review, images=evidence)
         return finish_publication(action, publication)
+    except NativePending:
+        return True
     except Exception:
         if not beginning:
             try:

@@ -11,6 +11,10 @@ def preview(photo,token):
     out=io.BytesIO();Image.new('RGB',(240,160),color).save(out,'JPEG');return out.getvalue()
 
 class PipelineTests(unittest.TestCase):
+    def setUp(self):
+        from native_test_support import install_domain_native_entry
+        install_domain_native_entry(self, b)
+
     def test_scheduled_run_stops_at_remaining_analysis_budget(self):
         remote={'status':'pending','progress':{'phase':'scanning','total':0,'processed':0,'batches':0}}
         seen=[]
