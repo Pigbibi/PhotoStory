@@ -83,6 +83,9 @@ class NativeQualificationTests(unittest.TestCase):
     def test_fixture_is_original_generated_image_and_schema(self):
         import base64,hashlib
         from PIL import Image
+        self.assertEqual(smoke.IDEMPOTENCY,'photostory:native-qualification:20261021:v2')
+        self.assertEqual(smoke.ATTEMPT,'ps-native-qualification-20261021-v2')
+        self.assertEqual(smoke.digest(smoke.request_body()),'0b81c2621197fd1809c162838fa13ee4cb841c3c74adfb29b8f9a8796d8c0c81')
         request=smoke.request_body();image=request['materials'][0]['images'][0]
         raw=base64.b64decode(image['base64'],validate=True)
         with Image.open(io.BytesIO(raw)) as im:

@@ -18,8 +18,8 @@ import urllib.parse
 PROJECT = 'Pigbibi/PhotoStory'
 SERVICE = 'https://personal.43.156.238.238.sslip.io'
 AUDIENCE = SERVICE + '/mcp'
-IDEMPOTENCY = 'photostory:native-qualification:20261021:v1'
-ATTEMPT = 'ps-native-qualification-20261021-v1'
+IDEMPOTENCY = 'photostory:native-qualification:20261021:v2'
+ATTEMPT = 'ps-native-qualification-20261021-v2'
 CLIENT_SHA256 = 'b328f3046b2fa0a3ca034fb91d068d08d8ce89d559f7702ef73a4fd86bc870d4'
 IMAGE_SHA256 = 'f0fdaf16a181bfd1bce6dc42163606453c0cebbf3e436487118e049a3d4a2878'
 # Original Image.new('RGB', (32,32), (64,128,192)).save(...,'JPEG').
