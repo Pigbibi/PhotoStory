@@ -849,6 +849,7 @@ class PendingBatchHarness:
         self.image = photo(root).read_bytes()
         self.calls, self.completed = [], []
         self.fail_checkpoint = self.fail_complete = False
+        self.fail_completion_checkpoint = None
         self.wire.complete = False
         self.wire.output = lambda request: {'photos':[{
             'id':'p','decision':'exclude','flags':[],'landscape':False,'aesthetic':0,
@@ -863,9 +864,21 @@ class PendingBatchHarness:
         if path == '/internal/claim': result = {'id':'job','lease':'synthetic-lease'}
         elif path == '/internal/source': result = self.source
         elif path == '/internal/checkpoint':
+            import sqlite3
+            final_intent = False
+            if self.fail_completion_checkpoint and body.get('nativeCheckpoint') is True:
+                with sqlite3.connect(self.directory/'job.sqlite3') as db:
+                    row = db.execute("SELECT value FROM meta WHERE key='native_pending'").fetchone()
+                with sqlite3.connect(self.directory/'native.sqlite3') as db:
+                    values = [json.loads(r[0]) for r in db.execute('SELECT value FROM native_operations')]
+                final_intent = bool(row and json.loads(row[0]) is None and values
+                                    and all(v.get('accepted_output') is not None for v in values))
+                if final_intent and self.fail_completion_checkpoint == 'before_commit':
+                    raise TimeoutError('synthetic final intent checkpoint rejected')
             self.source['progress'] = json.loads(json.dumps(body['progress']))
             if self.cloud: self.pointer = body['inventoryRef']
-            if self.fail_checkpoint: raise TimeoutError('synthetic checkpoint acknowledgement lost')
+            if self.fail_checkpoint or (final_intent and self.fail_completion_checkpoint == 'after_commit'):
+                raise TimeoutError('synthetic checkpoint acknowledgement lost')
             result = {}
         elif path == '/internal/complete':
             if self.fail_complete: raise TimeoutError('synthetic completion acknowledgement lost')
@@ -985,13 +998,14 @@ def test_actual_inventory_second_pending_checkpoint_keeps_original_task_and_batc
 
 
 @pytest.mark.parametrize('cloud', [False,True])
-def test_actual_inventory_completion_intent_checkpoint_lost_ack_prevents_complete(tmp_path, cloud):
+@pytest.mark.parametrize('failure', ['before_commit','after_commit'])
+def test_actual_inventory_completion_intent_checkpoint_lost_ack_prevents_complete(tmp_path, cloud, failure):
     h = PendingBatchHarness(tmp_path,cloud=cloud); h.run(); h.timely_result()
-    h.fail_checkpoint = True
+    h.fail_completion_checkpoint = failure
     with pytest.raises(batch.Stop): h.run()
     assert not h.completed and not any(p=='/internal/complete' for p,_ in h.calls)
     before = len(h.wire.calls)
-    h.fail_checkpoint = False
+    h.fail_completion_checkpoint = None
     with pytest.raises(batch.Stop): h.run()
     assert h.wire.calls[before:] == []
 
