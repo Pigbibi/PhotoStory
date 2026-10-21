@@ -104,7 +104,7 @@ def load_client(root):
     return module.NativeTaskClient(SERVICE,AUDIENCE)
 
 
-def validate_record(record,task_id,now):
+def validate_record(record,task_id,now,receipt=None):
     try:
         times=[record[k] for k in ('created','updated','deadline')]
         if (not isinstance(record['id'],str) or not TASK_ID.fullmatch(record['id'])
@@ -115,6 +115,8 @@ def validate_record(record,task_id,now):
             or any(type(x) not in (int,float) or not math.isfinite(x) for x in times)
             or not 0<=record['created']<=record['updated']<=now
             or abs(record['deadline']-record['created']-60)>0.000001):raise ValueError()
+        if receipt is not None and any(k in receipt and receipt[k]!=record[k] for k in ('created','deadline')):
+            raise ValueError()
         if record.get('worker') is not None or record.get('attempt') is not None:
             if record.get('worker')!='dot-personal' or record.get('attempt')!=ATTEMPT:raise ValueError()
         if record['status']=='completed':
@@ -153,17 +155,18 @@ def execute(root,client,action,*,task_id='',environ,now=time.time):
             if action=='cancel' and r.get('cancel_sent'):raise Stopped('cancel_already_attempted')
             r.update(task_id=task_id,phase='read_intent');save(root,r)
             record=client.get(task_id)
-            validate_record(record,task_id,now())
+            validate_record(record,task_id,now(),r)
             r.update(task_id=task_id,created=record['created'],deadline=record['deadline'])
             status=record['status']
             if action=='cancel' and status not in {'completed','failed','invalid_output','cancelled','outcome_unknown','cancel_requested'}:
                 r.update(phase='cancel_intent',cancel_sent=True);save(root,r)
                 record=client.cancel(task_id)
-                validate_record(record,task_id,now());status=record['status']
+                validate_record(record,task_id,now(),r);status=record['status']
             r.update(phase='verified' if status=='completed' else 'cancel_requested' if status=='cancel_requested'
-                     else 'stopped' if status in {'cancelled','failed','invalid_output','outcome_unknown'} else 'pending',
+                     else 'unknown' if status=='outcome_unknown'
+                     else 'stopped' if status in {'cancelled','failed','invalid_output'} else 'pending',
                      status=status,worker_stopped=False,
-                     terminal_status_observed=status in {'completed','failed','invalid_output','cancelled','outcome_unknown'})
+                     terminal_status_observed=status in {'completed','failed','invalid_output','cancelled'})
             if status=='completed':r.update(output=record['output'],output_sha256=digest(record['output']))
         save(root,r)
         return r

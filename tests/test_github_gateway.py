@@ -181,6 +181,46 @@ class NativeQualificationTests(unittest.TestCase):
             with self.assertRaises(smoke.Stopped):smoke.execute(root,client,'submit',environ=self.ENV)
             client.submit.assert_not_called();self.assertEqual(smoke.read_receipt(root)['task_id'],self.record()['id'])
 
+    def test_outcome_unknown_is_not_a_terminal_observation(self):
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/'state';self.prepare(root);client=Mock()
+            record=self.record(status='outcome_unknown');client.get.return_value=record
+            result=smoke.execute(root,client,'cancel',task_id=record['id'],environ=self.ENV,now=lambda:130)
+            self.assertEqual(result['phase'],'unknown')
+            self.assertFalse(result['terminal_status_observed']);self.assertFalse(result['worker_stopped'])
+            client.get.assert_called_once();client.cancel.assert_not_called();client.submit.assert_not_called()
+
+    def test_original_task_clock_cannot_be_rebased_by_readback_or_cancel(self):
+        from unittest.mock import Mock
+        for action in ('readback','cancel'):
+            with self.subTest(action=action),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/'state';self.prepare(root);client=Mock();original=self.record()
+                client.submit.return_value=original
+                smoke.execute(root,client,'submit',environ=self.ENV,now=lambda:130)
+                changed={**self.record(status='completed'),'created':3700.,'deadline':3760.,'updated':3720.}
+                client.get.return_value=changed
+                with self.assertRaises(smoke.Stopped):
+                    smoke.execute(root,client,action,task_id=original['id'],environ=self.ENV,now=lambda:3730)
+                saved=smoke.read_receipt(root)
+                self.assertEqual((saved['created'],saved['deadline']),(100.,160.))
+                self.assertNotEqual(saved['phase'],'verified');client.cancel.assert_not_called()
+
+    def test_first_read_clock_is_retained_and_cancel_cannot_change_it(self):
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/'state';self.prepare(root);client=Mock();record=self.record()
+            client.get.return_value=record
+            client.cancel.return_value={**record,'created':110.,'deadline':170.,'updated':120.,'status':'cancelled'}
+            with self.assertRaises(smoke.Stopped):
+                smoke.execute(root,client,'cancel',task_id=record['id'],environ=self.ENV,now=lambda:130)
+            saved=smoke.read_receipt(root)
+            self.assertEqual((saved['created'],saved['deadline']),(100.,160.))
+            self.assertEqual(saved['phase'],'cancel_intent');self.assertTrue(saved['cancel_sent'])
+            with self.assertRaises(smoke.Stopped):
+                smoke.execute(root,client,'cancel',task_id=record['id'],environ=self.ENV,now=lambda:130)
+            client.cancel.assert_called_once();client.submit.assert_not_called()
+
     def test_qualification_job_has_no_business_secret_or_processing_step(self):
         text=(Path(__file__).parents[1]/'.github/workflows/processor.yml').read_text()
         job=text.split('\n  native_qualification:',1)[1]
