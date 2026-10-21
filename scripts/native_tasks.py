@@ -113,6 +113,50 @@ def media_limits(context):
     return min(values[0],values[1]-196608), min(131072,values[1])
 
 
+def _record_identity(value, record):
+    binding, route = value['binding'], value['binding']['route']
+    request_sha = digest(record['request']) if 'request' in record else record.get('request_sha256')
+    if (record.get('owner') != binding['project'] or record.get('provider') != route['provider']
+            or not isinstance(record.get('id'), str) or not 1 <= len(record['id']) <= 200
+            or (value['task_id'] and value['task_id'] != record['id'])
+            or type(record.get('revision')) is not int or record['revision'] < 1
+            or (value['revision'] is not None and record['revision'] != value['revision'])
+            or request_sha != binding['request_sha256']
+            or type(record.get('deadline')) not in (int, float) or not math.isfinite(record['deadline'])
+            or (value['task_deadline'] is not None and record['deadline'] != value['task_deadline'])):
+        raise ValueError()
+    value['task_id'] = record['id']
+    value['revision'], value['task_deadline'] = record['revision'], record['deadline']
+    if record.get('worker') is not None or record.get('attempt') is not None:
+        claim = [record['worker'], record['attempt'], record['revision']]
+        if (claim[0] != route['worker'] or not isinstance(claim[1], str) or not claim[1]
+                or (value['claim'] and value['claim'] != claim)):
+            raise ValueError()
+        value['claim'] = claim
+    elif value['claim']:
+        raise ValueError()
+
+
+def _completed_receipt(context, value, record, schema, output_limit):
+    """Separate authoritative completion time from later advisory adoption."""
+    _record_identity(value, record)
+    now, created, completed = context['now'](), record.get('created'), record.get('updated')
+    if (record.get('status') != 'completed' or not value['claim']
+            or any(type(t) not in (int,float) or not math.isfinite(t) for t in (now,created,completed))
+            or not 0 <= created <= completed <= now
+            or completed >= min(value['binding']['deadline'], value['task_deadline'])
+            or now >= value['binding']['deadline'] or context.get('cancel') is True
+            or len(packed(record['output'])) > output_limit):
+        raise ValueError()
+    Draft202012Validator.check_schema(schema)
+    Draft202012Validator(schema).validate(record['output'])
+    output_sha = digest(record['output'])
+    if value['output_sha256'] and value['output_sha256'] != output_sha:
+        raise ValueError()
+    value.update(output_sha256=output_sha, accepted_output=json.loads(packed(record['output'])),
+                 completed_at=completed, accepted_at=now)
+
+
 def task_call(context, stage):
     """Use one generic submit/get/cancel task, never helper RPCs or CLI fallback."""
     def call(prompt, records, paths, schema, cwd):
@@ -218,13 +262,15 @@ def task_call(context, stage):
                         cached = value['accepted_output']
                         if (not value['claim'] or digest(cached) != value['output_sha256']
                                 or type(value.get('accepted_at')) not in (int,float)
-                                or not value['accepted_at'] < min(binding['deadline'], value['task_deadline'])
+                                or type(value.get('completed_at',value['accepted_at'])) not in (int,float)
+                                or not 0 <= value.get('completed_at',value['accepted_at']) <= value['accepted_at'] < binding['deadline']
+                                or not value.get('completed_at',value['accepted_at']) < value['task_deadline']
                                 or len(packed(cached)) > output_limit):
                             raise NativeStopped('native_outcome_unknown')
                         Draft202012Validator(schema).validate(cached)
                         active()
                         return json.loads(packed(cached))
-                    active(value['task_deadline'])
+                    active()  # An expired execution TTL still permits one known-ID terminal read.
                     try:
                         if not value['task_id']:
                             value['intent'] = True
@@ -233,46 +279,18 @@ def task_call(context, stage):
                             record = client.submit(request, 'photostory:'+operation)
                         else:
                             record = client.get(value['task_id'])
-                        request_sha = digest(record['request']) if 'request' in record else record.get('request_sha256')
-                        if (record.get('owner') != binding['project'] or record.get('provider') != route['provider']
-                                or not isinstance(record.get('id'), str) or not 1 <= len(record['id']) <= 200
-                                or (value['task_id'] and value['task_id'] != record['id'])
-                                or type(record.get('revision')) is not int or record['revision'] < 1
-                                or (value['revision'] is not None and record['revision'] != value['revision'])
-                                or request_sha != binding['request_sha256']
-                                or type(record.get('deadline')) not in (int, float) or not math.isfinite(record['deadline'])
-                                or (value['task_deadline'] is not None and record['deadline'] != value['task_deadline'])):
-                            raise ValueError()
-                        value['task_id'] = record['id']
-                        value['revision'], value['task_deadline'] = record['revision'], record['deadline']
-                        active(record['deadline'])
-                        if record.get('worker') is not None or record.get('attempt') is not None:
-                            claim = [record['worker'], record['attempt'], record['revision']]
-                            if (claim[0] != route['worker'] or not isinstance(claim[1], str) or not claim[1]
-                                    or (value['claim'] and value['claim'] != claim)):
-                                raise ValueError()
-                            value['claim'] = claim
-                        elif value['claim']:
-                            raise ValueError()
+                        _record_identity(value, record)
+                        if record['status'] != 'completed':
+                            active(record['deadline'])
                         if record['status'] in {'queued', 'submitting', 'running'}:
                             if value['output_sha256']:
                                 raise ValueError()
                             save()
                             raise NativePending('native_pending')
-                        if record['status'] != 'completed' or not value['claim']:
-                            raise ValueError()
-                        if len(packed(record['output'])) > output_limit:
-                            raise ValueError()
-                        Draft202012Validator(schema).validate(record['output'])
-                        output_sha = digest(record['output'])
-                        if value['output_sha256'] and value['output_sha256'] != output_sha:
-                            raise ValueError()
-                        value['output_sha256'] = output_sha
-                        value['accepted_output'] = json.loads(packed(record['output']))
-                        value['accepted_at'] = context['now']()
+                        _completed_receipt(context, value, record, schema, output_limit)
                         save()
-                        active(record['deadline'])
-                        return json.loads(packed(record['output']))
+                        active()
+                        return json.loads(packed(value['accepted_output']))
                     except NativePending:
                         raise
                     except NativeStopped:
@@ -336,27 +354,63 @@ def restore_publication_checkpoint(context, checkpoint):
 
 
 def preflight_publication(context):
-    """Stop expired/unknown work before downloading another original image."""
+    """Read one known terminal receipt before another original image download."""
+    validate_context(context)
     checkpoint = publication_checkpoint(context)
     if checkpoint is None:
         return
-    value = checkpoint['value']
+    value, client = checkpoint['value'], context['client']
+    binding = value['binding']
     if value['halt'] or (value['intent'] and not value['task_id']):
         raise NativeStopped('native_outcome_unknown')
-    deadline = value['binding']['deadline']
-    if value.get('accepted_output') is None and value['task_deadline'] is not None:
-        deadline = min(deadline,value['task_deadline'])
-    if context.get('cancel') is not True and context['now']()<deadline:
-        return
+
     def save():
         with sqlite3.connect(_private_database(context)) as db:
             db.execute('UPDATE native_operations SET value=? WHERE operation=?',(packed(value).decode(),checkpoint['operation']))
         context['persist']()
-    if value['task_id'] and not value['cancel'] and value.get('accepted_output') is None:
-        value['cancel'] = True
+
+    def stop():
+        if value['task_id'] and not value['cancel'] and value.get('accepted_output') is None:
+            value['cancel'] = True
+            save()
+            try: client.cancel(value['task_id'])
+            except Exception: pass
+        value['halt'] = True
         save()
-        try: context['client'].cancel(value['task_id'])
-        except Exception: pass
-    value['halt'] = True
-    save()
-    raise NativeStopped('native_cancel_or_expiry')
+        raise NativeStopped('native_cancel_or_expiry')
+
+    def active():
+        if (context['project'] != binding['project'] or context['operation_id'] != binding['operation_id']
+                or context['client'] is not client or client.resource != binding['resource']
+                or context['routes']['publication'] != binding['route'] or context['deadline'] != binding['deadline']):
+            value['halt'] = True
+            save()
+            raise NativeStopped('native_binding_changed')
+        now = context['now']()
+        if (type(now) not in (int,float) or not math.isfinite(now)
+                or now >= binding['deadline'] or context.get('cancel') is True):
+            stop()
+
+    active()
+    if (value.get('accepted_output') is not None or value['task_deadline'] is None
+            or context['now']() < value['task_deadline']):
+        return
+    try:
+        record = client.get(value['task_id'])
+        _record_identity(value, record)
+        if record['status'] == 'completed':
+            # The original request digest binds this schema. Normal task_call
+            # later rechecks the recreated inputs/schema before result adoption.
+            _, output_limit = media_limits(context)
+            _completed_receipt(context,value,record,record['request']['output_schema'],output_limit)
+            active()
+            save()
+            active()
+            return
+    except NativeStopped:
+        raise
+    except Exception:
+        value['halt'] = True
+        save()
+        raise NativeStopped('native_outcome_unavailable') from None
+    stop()  # Still running/unknown past execution TTL: never adopt or resubmit.

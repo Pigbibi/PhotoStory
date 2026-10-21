@@ -40,6 +40,7 @@ class LocalTransport:
         task = 'synthetic-task-'+str(len(self.records)+1)
         record = {'id':task, 'owner':self.project, 'request':json.loads(json.dumps(request)),
                   'provider':route['provider'], 'revision':1, 'deadline':self.clock[0]+60,
+                  'created':self.clock[0], 'updated':self.clock[0],
                   'worker':route['worker'] if self.dispatch else None,
                   'attempt':'synthetic-attempt-'+task if self.dispatch else None,
                   'status':'running' if self.dispatch else 'queued'}
@@ -60,7 +61,7 @@ class LocalTransport:
         return self.response(self.records[task])
 
     def complete_task(self, task):
-        self.records[task].update(status='completed', output={'ok':True})
+        self.records[task].update(status='completed', output=self.output(self.records[task]['request']), updated=self.clock[0])
 
     def acknowledge_cancel(self, task):
         self.records[task]['status'] = 'cancelled'
@@ -139,7 +140,7 @@ def test_frozen_deadline_cannot_be_extended_by_context_mutation(tmp_path, phase)
     assert len(wire.calls) == count
 
 
-def test_known_remote_deadline_stops_before_get_and_cancels_original_once(tmp_path):
+def test_known_expired_running_task_is_read_once_then_cancels_original_once(tmp_path):
     from native_tasks import NativePending, NativeStopped
     ctx, wire = context(tmp_path)
     image = photo(tmp_path)
@@ -154,7 +155,8 @@ def test_known_remote_deadline_stops_before_get_and_cancels_original_once(tmp_pa
         with pytest.raises(NativeStopped):
             batch.native_review_gateway(ctx, stage='screen')('prompt', [{'id':'p'}], [image], SCHEMA, tmp_path)
     after = wire.calls[before:]
-    assert len(after) == 1 and after[0][1].endswith('/cancel')
+    task_id=next(iter(wire.records))
+    assert after == [('GET','/v1/tasks/'+task_id,None),('POST','/v1/tasks/'+task_id+'/cancel',None)]
 
 
 def test_sqlite_identity_restores_through_existing_cloud_snapshot_without_new_submit(tmp_path):
@@ -547,3 +549,116 @@ def test_oversize_result_is_not_cached_or_adopted(tmp_path):
     with pytest.raises(NativeStopped):
         batch.native_review_gateway(ctx,stage='labels')('prompt',[{'id':'p'}],[],{'type':'object'},tmp_path)
     assert len(wire.calls)==before
+
+
+def test_resume_reads_timely_terminal_after_execution_ttl_without_extending_business_deadline(tmp_path):
+    import cloud_inventory
+    from native_tasks import NativePending, operation_context, publication_checkpoint
+    ctx,wire=context(tmp_path);ctx['deadline']+=3600
+    original_deadline=ctx['deadline'];original_start=wire.clock[0]
+    wire.complete=False
+    snapshots=[];ctx['persist']=lambda:snapshots.append(cloud_inventory.archive(ctx['state_root']))
+    def call(context):
+        return batch.native_review_gateway(context,stage='labels')('prompt',[{'id':'p'}],[],SCHEMA,tmp_path)
+    with pytest.raises(NativePending):call(ctx)
+    task=next(iter(wire.records));task_deadline=wire.records[task]['deadline']
+    wire.clock[0]=original_start+20;wire.complete_task(task)
+    wire.clock[0]=original_start+1800
+    fresh=tmp_path/'restart';cloud_inventory.restore(fresh,snapshots[-1])
+    resumed=operation_context({**ctx,'state_root':fresh.resolve(),'persist':lambda:None},ctx['operation_id'])
+    before=len(wire.calls)
+    assert call(resumed)=={'ok':True}
+    assert wire.calls[before:]==[('GET','/v1/tasks/'+task,None)]
+    assert resumed['deadline']==original_deadline and wire.records[task]['deadline']==task_deadline
+    # A durable verified completion is distinct from its later adoption time.
+    receipt=publication_checkpoint(resumed)['value']
+    assert receipt['completed_at']<task_deadline<receipt['accepted_at']<original_deadline
+    assert call(resumed)=={'ok':True} and len(wire.calls)==before+1
+    assert sum(m=='POST' and path=='/v1/tasks' for m,path,_ in wire.calls)==1
+
+
+@pytest.mark.parametrize('invalid', ['late','missing_time','nan_time','future_creation','provider','revision','request','worker'])
+def test_post_ttl_readback_rejects_unproven_completion_or_identity_without_replacement(tmp_path,invalid):
+    from native_tasks import NativePending,NativeStopped
+    ctx,wire=context(tmp_path);ctx['deadline']+=3600;wire.complete=False
+    call=lambda:batch.native_review_gateway(ctx,stage='labels')('prompt',[{'id':'p'}],[],SCHEMA,tmp_path)
+    with pytest.raises(NativePending):call()
+    task=next(iter(wire.records));wire.complete_task(task);wire.clock[0]+=1800
+    def mutate(record):
+        if invalid=='late':record['updated']=record['deadline']
+        elif invalid=='missing_time':record.pop('updated')
+        elif invalid=='nan_time':record['updated']=float('nan')
+        elif invalid=='future_creation':record['created']=record['updated']+1
+        elif invalid=='provider':record['provider']='other'
+        elif invalid=='revision':record['revision']+=1
+        elif invalid=='request':record['request']['objective']='drift'
+        elif invalid=='worker':record['worker']='other'
+        return record
+    wire.mutate=mutate;before=len(wire.calls)
+    with pytest.raises(NativeStopped):call()
+    assert wire.calls[before:]==[('GET','/v1/tasks/'+task,None)]
+    before=len(wire.calls)
+    with pytest.raises(NativeStopped):call()
+    assert len(wire.calls)==before
+    assert sum(m=='POST' and path=='/v1/tasks' for m,path,_ in wire.calls)==1
+
+
+def test_actual_publication_resumes_timely_terminal_before_media_and_consumes_original_review(tmp_path):
+    import auto_publish
+    from auto_review import FIELDS,PROMPT,SCHEMA as REVIEW_SCHEMA
+    from native_tasks import NativePending,publication_checkpoint
+    ctx,wire=context(tmp_path);ctx['deadline']+=3600;wire.complete=False
+    frame={'mode':'crop','x':50,'y':50}
+    draft={'id':'draft','version':1,'aspect':'3:2','approvalSource':'strict_ai_v1',
+           'photos':[{'id':'p','frame':frame}]}
+    identity={'draftId':'draft','version':1,'publicationId':'publication'}
+    original=batch._native_business_context(ctx,'publication',identity)
+    wire.output=lambda request:{key:key!='needsHumanReview' for key in FIELDS}
+    raw=photo(tmp_path,(1800,1200)).read_bytes()
+    rendered=tmp_path/'rendered.jpg';rendered.write_bytes(auto_publish.render(raw,'3:2',frame))
+    prompt=PROMPT+'\nFinal original-resolution post (data):\n'+json.dumps(draft,ensure_ascii=False)
+    with pytest.raises(NativePending):
+        batch.native_review_gateway(original,stage='publication')(prompt,[{'id':'p'}],[rendered],REVIEW_SCHEMA,tmp_path)
+    checkpoint=publication_checkpoint(original)
+    task=next(iter(wire.records));wire.complete_task(task);wire.clock[0]+=1800
+    directory=tmp_path/'new-run';directory.mkdir(mode=0o700)
+    calls=[];stored=[];before=len(wire.calls)
+    def request(url,**kwargs):
+        path=url.removeprefix('https://photo.invalid');body=kwargs.get('body');calls.append((path,body))
+        if path=='/internal/maintenance':return b'{}'
+        assert path=='/internal/autopublish'
+        if body['action']=='candidate':value={'draft':draft,'publication':{'id':'publication','status':'prepared'},'nativeCheckpoint':checkpoint}
+        elif body['action']=='native_checkpoint':
+            stored.append(body['checkpoint']);value={}
+        elif body['action']=='original':
+            assert stored[-1]['value']['accepted_output']==wire.output(None)
+            return raw
+        elif body['action']=='upload':value={}
+        elif body['action']=='begin':
+            assert body['review']==wire.output(None)
+            assert body['images']==[{'id':'p','digest':hashlib.sha256(rendered.read_bytes()).hexdigest()}]
+            value={'id':'publication','status':'publishing'}
+        else:raise AssertionError(body['action'])
+        return json.dumps(value).encode()
+    with patch.dict('os.environ',{'PHOTOSTORY_URL':'https://photo.invalid','PHOTOSTORY_BATCH_TOKEN':'synthetic',
+             'PHOTOSTORY_STATE_DIR':str(directory),'PHOTOSTORY_STATE_BACKEND':'local'},clear=True), \
+         patch.object(batch,'request',side_effect=request),patch.object(auto_publish,'finish_publication',return_value=True) as finish:
+        batch.run(native_context=ctx)
+    assert finish.call_count==1 and any(body and body.get('action')=='begin' for _,body in calls)
+    assert wire.calls[before:]==[('GET','/v1/tasks/'+task,None)]
+    assert sum(m=='POST' and path=='/v1/tasks' for m,path,_ in wire.calls)==1
+
+
+@pytest.mark.parametrize('stop',['cancel','business_deadline'])
+def test_post_ttl_completion_cannot_bypass_owner_cancel_or_business_deadline(tmp_path,stop):
+    from native_tasks import NativePending,NativeStopped
+    ctx,wire=context(tmp_path);wire.complete=False
+    if stop=='cancel':ctx['deadline']+=3600
+    call=lambda:batch.native_review_gateway(ctx,stage='labels')('prompt',[{'id':'p'}],[],SCHEMA,tmp_path)
+    with pytest.raises(NativePending):call()
+    task=next(iter(wire.records));wire.complete_task(task);wire.clock[0]+=1800
+    if stop=='cancel':ctx['cancel']=True
+    before=len(wire.calls)
+    for _ in range(2):
+        with pytest.raises(NativeStopped):call()
+    assert wire.calls[before:]==[('POST','/v1/tasks/'+task+'/cancel',None)]

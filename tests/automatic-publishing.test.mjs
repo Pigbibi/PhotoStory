@@ -289,3 +289,23 @@ test('stale native ledgers cannot reserve two cancellation senders',async t=>{
  assert.equal(await automatic(env,{action:'candidate'}),null);
  assert.equal((await DB.prepare('SELECT count(*) AS n FROM publications').first()).n,1);
 });
+
+test('publication completion time remains before task TTL while later adoption keeps original expiry',async t=>{
+ const now=Date.now();t.mock.method(Date,'now',()=>now);
+ const {env,DB,auth,checkpoint}=await nativeFixture(t);
+ checkpoint.value.binding.deadline=now/1000+3500;
+ Object.assign(checkpoint.value,{task_id:'synthetic-task',revision:1,task_deadline:now/1000+60});
+ await automatic(env,{...auth,action:'native_checkpoint',checkpoint});
+ const before=await DB.prepare('SELECT created,expires FROM publications WHERE id=?').bind(auth.publicationId).first();
+ t.mock.method(Date,'now',()=>now+1800000);
+ Object.assign(checkpoint.value,{claim:['photo-publication','synthetic-attempt',1],output_sha256:'b'.repeat(64),
+  accepted_output:review,completed_at:now/1000+20,accepted_at:now/1000+1800});
+ await automatic(env,{...auth,action:'native_checkpoint',checkpoint});
+ assert.equal((await automatic(env,{action:'candidate'})).publication.id,auth.publicationId);
+ assert.deepEqual(await DB.prepare('SELECT created,expires FROM publications WHERE id=?').bind(auth.publicationId).first(),before);
+ for(const change of [{completed_at:now/1000+60},{completed_at:now/1000+21},
+  {accepted_at:checkpoint.value.binding.deadline},{accepted_at:now/1000+19},{accepted_at:now/1000+1801}]){
+  const wrong=structuredClone(checkpoint);Object.assign(wrong.value,change);
+  await assert.rejects(automatic(env,{...auth,action:'native_checkpoint',checkpoint:wrong}),/publication_conflict/);
+ }
+});

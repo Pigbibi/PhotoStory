@@ -52,7 +52,12 @@ async function nativeCheckpoint(checkpoint,d,p){
  if(!v.halt&&!v.cancel&&!v.task_id&&x.deadline<=Date.now()/1000)fail();
  if(v.claim!==null&&(!Array.isArray(v.claim)||v.claim.length!==3||v.claim[0]!==x.route.worker||typeof v.claim[1]!=='string'||!v.claim[1]||v.claim[2]!==v.revision))fail();
  if(v.output_sha256!==null&&!/^[0-9a-f]{64}$/.test(v.output_sha256))fail();
- if(v.accepted_output!==undefined&&(!v.claim||!Number.isFinite(v.accepted_at)||v.accepted_at>=Math.min(x.deadline,v.task_deadline)))fail();
+ if(v.accepted_output!==undefined){
+  const completed=v.completed_at??v.accepted_at; // Existing timely receipts remain readable.
+  if(!v.claim||!Number.isFinite(completed)||!Number.isFinite(v.accepted_at)||
+   completed<0||completed>v.accepted_at||completed>=Math.min(x.deadline,v.task_deadline)||
+   v.accepted_at>=x.deadline||v.accepted_at>Date.now()/1000)fail();
+ }
  return checkpoint;
 }
 export async function automatic(e,b){
@@ -126,7 +131,7 @@ export async function automatic(e,b){
     if(old.value[key]!==null&&JSON.stringify(old.value[key])!==JSON.stringify(next.value[key]))fail();
    }
    if(['intent','halt','cancel'].some(k=>old.value[k]&&!next.value[k]))fail();
-   if(old.value.accepted_output!==undefined&&(JSON.stringify(old.value.accepted_output)!==JSON.stringify(next.value.accepted_output)||old.value.accepted_at!==next.value.accepted_at))fail();
+   if(old.value.accepted_output!==undefined&&(JSON.stringify(old.value.accepted_output)!==JSON.stringify(next.value.accepted_output)||old.value.accepted_at!==next.value.accepted_at||old.value.completed_at!==next.value.completed_at))fail();
   }
   const updated={...body,nativeReview:next};
   const result=await e.DB.prepare("UPDATE publications SET body=? WHERE id=? AND status='prepared' AND body=? AND expires>? AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved') AND EXISTS(SELECT 1 FROM state WHERE key='automation' AND json_extract(value,'$.publishMode')='automatic' AND json_extract(value,'$.reviewMode')='strict_auto' AND json_extract(value,'$.autoPublishSince')=? AND json_extract(value,'$.autoPublishUserId')=?)")
