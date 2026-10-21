@@ -40,7 +40,7 @@ def _endpoint(value, synthetic, *, base=False):
         raise ValueError()
     parsed=urlsplit(value)
     parsed.port  # Validate a supplied port before constructing any client.
-    host=parsed.hostname or ''
+    host=(parsed.hostname or '').rstrip('.')
     if (parsed.scheme!='https' or not host or parsed.username or parsed.password
             or parsed.query or parsed.fragment or (base and parsed.path not in {'','/'})):
         raise ValueError()

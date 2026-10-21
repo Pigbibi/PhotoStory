@@ -594,7 +594,8 @@ def test_run_without_enabled_binding_never_bootstraps_or_touches_business(disabl
 
 
 @pytest.mark.parametrize('invalid',['project','provider','missing_stage','worker','mcp_base','query','audience',
-    'expired','infinite','unknown_field','production_placeholder','state_permissions'])
+    'expired','infinite','unknown_field','production_placeholder','production_placeholder_dot',
+    'production_localhost_dot','state_permissions'])
 def test_bootstrap_rejects_incomplete_binding_before_client_or_task(tmp_path,invalid):
     from native_tasks import bootstrap_context,NativeStopped
     ctx,wire=context(tmp_path);binding=bootstrap_binding(ctx);factory=MagicMock()
@@ -609,6 +610,9 @@ def test_bootstrap_rejects_incomplete_binding_before_client_or_task(tmp_path,inv
     if invalid=='infinite':binding['deadline']=float('inf')
     if invalid=='unknown_field':binding['token']='synthetic'
     if invalid=='production_placeholder':binding['synthetic_only']=False
+    if invalid in {'production_placeholder_dot','production_localhost_dot'}:
+        binding.update(synthetic_only=False,audience='https://identity.acme.org/resource',
+            service_url='https://personal.invalid.' if invalid=='production_placeholder_dot' else 'https://localhost.')
     if invalid=='state_permissions':ctx['state_root'].chmod(0o755)
     with pytest.raises(NativeStopped):bootstrap_context(binding,client_factory=factory)
     factory.assert_not_called();assert wire.calls==[]
