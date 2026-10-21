@@ -1,4 +1,4 @@
-"""Single-handler PhotoStory tasks: real local runtime, generated pixels, no network."""
+"""Public caller contracts with a fake client; private SDK integration runs privately."""
 import base64
 import hashlib
 import io
@@ -13,34 +13,17 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import process_batch as batch
-from ai_service.client import TaskClient
-from ai_service.runtime import Policy, TaskRuntime
-from ai_service.transport import HttpReply
-
-
-class Trigger:
-    mode = 'agent'
-    callback_driven = True
-    def __init__(self):
-        self.submissions = 0
-        self.cancellations = 0
-    def submit(self, request, **identity):
-        self.submissions += 1
-        return {'synthetic': True}
-    def cancel(self, handle):
-        self.cancellations += 1
-        return None
 
 
 class LocalTransport:
+    """Controlled records for caller assertions, not a service/worker qualification."""
+    resource = 'https://personal.invalid'
     def __init__(self, root, routes):
         import time
         self.clock = [time.time()]
         self.routes = routes
         self.project = 'Pigbibi/PhotoStory'
-        self.runtime = TaskRuntime(root/'service.sqlite', {'dot': Trigger(), 'grok': Trigger()}, {
-            self.project: Policy({'agent:'+s: r['provider'] for s, r in routes.items()},
-                                 {'dot': {'synthetic-photo'}, 'grok': {'synthetic-photo'}})})
+        self.records = {}
         self.calls = []
         self.complete = True
         self.dispatch = True
@@ -48,28 +31,44 @@ class LocalTransport:
         self.output = lambda request: {'ok': True}
         self.mutate = lambda record: record
 
-    def request(self, url, *, method, headers, body):
-        from urllib.parse import urlsplit
-        path = urlsplit(url).path
-        assert headers['Authorization'] == 'Bearer synthetic-photo'
-        self.calls.append((method, path, headers.get('Idempotency-Key')))
-        if method == 'POST' and path == '/v1/tasks':
-            request = json.loads(body)
-            record = self.runtime.submit(self.project, headers['Idempotency-Key'], request)
-            route = self.routes[request['profile']]
-            if self.dispatch:
-                self.runtime.tick()
-                record = self.runtime.claim(self.project, record['id'], route['provider'], route['worker'], 'attempt-'+record['id'])
-            if self.dispatch and self.complete:
-                self.runtime.report(self.project, record['id'], route['provider'], record['worker'], record['attempt'], record['revision'], 'completed', self.output(request))
-            record = self.runtime.get(self.project, record['id'])
-            if self.lose:
-                raise TimeoutError('synthetic response lost after commit')
-        elif path.endswith('/cancel'):
-            record = self.runtime.cancel(self.project, path.split('/')[-2])
-        else:
-            record = self.runtime.get(self.project, path.rsplit('/', 1)[-1])
-        return HttpReply(200, json.dumps(self.mutate(record)).encode())
+    def response(self, record):
+        return self.mutate(json.loads(json.dumps(record)))
+
+    def submit(self, request, key):
+        self.calls.append(('POST', '/v1/tasks', key))
+        route = self.routes[request['profile']]
+        task = 'synthetic-task-'+str(len(self.records)+1)
+        record = {'id':task, 'owner':self.project, 'request':json.loads(json.dumps(request)),
+                  'provider':route['provider'], 'revision':1, 'deadline':self.clock[0]+60,
+                  'worker':route['worker'] if self.dispatch else None,
+                  'attempt':'synthetic-attempt-'+task if self.dispatch else None,
+                  'status':'running' if self.dispatch else 'queued'}
+        if self.dispatch and self.complete:
+            record.update(status='completed', output=self.output(request))
+        self.records[task] = record
+        if self.lose:
+            raise TimeoutError('synthetic response lost after commit')
+        return self.response(record)
+
+    def get(self, task):
+        self.calls.append(('GET', '/v1/tasks/'+task, None))
+        return self.response(self.records[task])
+
+    def cancel(self, task):
+        self.calls.append(('POST', '/v1/tasks/'+task+'/cancel', None))
+        self.records[task]['status'] = 'cancel_requested' if self.records[task]['worker'] else 'cancelled'
+        return self.response(self.records[task])
+
+    def complete_task(self, task):
+        self.records[task].update(status='completed', output={'ok':True})
+
+    def acknowledge_cancel(self, task):
+        self.records[task]['status'] = 'cancelled'
+
+    def expire(self):
+        for record in self.records.values():
+            if self.clock[0] >= record['deadline']:
+                record['status'] = 'cancel_requested' if record['worker'] else 'cancelled'
 
 
 STAGES = ('screen', 'group', 'cross_review', 'labels', 'strict_review', 'publication')
@@ -83,7 +82,7 @@ def context(root):
     state.mkdir(mode=0o700)
     transport = LocalTransport(root, routes)
     return {'synthetic_only': True, 'project': transport.project, 'operation_id': 'photo-synthetic-job-batch',
-            'client': TaskClient('https://personal.invalid', 'synthetic-photo', transport=transport),
+            'client': transport,
             'routes': routes, 'fixture_root': root.resolve(), 'state_root': state.resolve(),
             'now': lambda: transport.clock[0], 'deadline': transport.clock[0]+60,
             'persist': lambda: None}, transport
@@ -101,8 +100,7 @@ def test_six_existing_stages_each_create_exactly_one_configured_task(tmp_path):
     for stage in STAGES:
         assert batch.native_review_gateway(ctx, stage=stage)('untrusted prompt', [{'id': 'p'}], [] if stage == 'labels' else [image], SCHEMA, tmp_path) == {'ok': True}
     assert sum(m == 'POST' and p == '/v1/tasks' for m, p, _ in wire.calls) == 6
-    with wire.runtime.connection() as db:
-        records = [wire.runtime.get(wire.project, row[0]) for row in db.execute('SELECT id FROM tasks')]
+    records = list(wire.records.values())
     assert {r['request']['profile'] for r in records} == set(STAGES)
     assert all(r['provider'] == ctx['routes'][r['request']['profile']]['provider'] for r in records)
     assert all('helper' not in r['request']['objective'].lower() for r in records)
@@ -171,10 +169,8 @@ def test_sqlite_identity_restores_through_existing_cloud_snapshot_without_new_su
         batch.native_review_gateway(ctx, stage='screen')('prompt', [{'id': 'p'}], [image], SCHEMA, tmp_path)
     restored = tmp_path/'restored'
     cloud_inventory.restore(restored, snapshots[-1])
-    with wire.runtime.connection() as db:
-        record = db.execute('SELECT id FROM tasks').fetchone()[0]
-    current = wire.runtime.get(wire.project, record)
-    wire.runtime.report(wire.project, record, current['provider'], current['worker'], current['attempt'], current['revision'], 'completed', {'ok': True})
+    record = next(iter(wire.records))
+    wire.complete_task(record)
     ctx = {**ctx, 'state_root': restored.resolve(), 'persist': lambda: None}
     assert batch.native_review_gateway(ctx, stage='screen')('prompt', [{'id': 'p'}], [image], SCHEMA, tmp_path) == {'ok': True}
     assert sum(m == 'POST' and p == '/v1/tasks' for m, p, _ in wire.calls) == 1
@@ -212,12 +208,11 @@ def test_stop_cancels_original_task_once_and_never_reports_it_stopped_early(tmp_
     for _ in range(2):
         with pytest.raises(NativeStopped): call()
     assert sum(p.endswith('/cancel') for _, p, _ in wire.calls) == 1
-    with wire.runtime.connection() as db:
-        task_id = db.execute('SELECT id FROM tasks').fetchone()[0]
-    record = wire.runtime.get(wire.project, task_id)
+    task_id = next(iter(wire.records))
+    record = wire.records[task_id]
     assert record['status'] == 'cancel_requested'
-    wire.runtime.report(wire.project, task_id, record['provider'], record['worker'], record['attempt'], record['revision'], 'cancelled')
-    assert wire.runtime.get(wire.project, task_id)['status'] == 'cancelled'
+    wire.acknowledge_cancel(task_id)
+    assert wire.records[task_id]['status'] == 'cancelled'
 
 
 @pytest.mark.parametrize('field,value', [('owner','QuantStrategyLab/QuantAIService'), ('provider','wrong'), ('revision',True), ('worker','wrong-worker'), ('output',{'ok':False})])
@@ -263,15 +258,10 @@ def test_service_deadline_expiry_is_read_back_without_replacement_or_early_stop_
     call = lambda: batch.native_review_gateway(ctx,stage='labels')('prompt',[{'id':'p'}],[],SCHEMA,tmp_path)
     with pytest.raises(NativePending): call()
     wire.clock[0] += 61
-    with patch('ai_service.runtime.time.time',return_value=wire.clock[0]):
-        wire.runtime.tick()
-        wire.runtime.tick()
-    with wire.runtime.connection() as db:
-        task_id = db.execute('SELECT id FROM tasks').fetchone()[0]
-    record = wire.runtime.get(wire.project,task_id)
+    wire.expire()
+    task_id = next(iter(wire.records))
+    record = wire.records[task_id]
     assert record['status'] == ('cancel_requested' if dispatched else 'cancelled')
-    assert wire.runtime.providers['dot'].submissions == int(dispatched)
-    assert wire.runtime.providers['dot'].cancellations == int(dispatched)
     with pytest.raises(NativeStopped): call()
     assert sum(m=='POST' and p=='/v1/tasks' for m,p,_ in wire.calls) == 1
 
