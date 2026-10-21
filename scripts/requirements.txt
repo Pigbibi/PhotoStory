@@ -1,1 +1,3 @@
 Pillow>=11.3.0,<13
+jsonschema>=4.26,<5
+personal-ai-service @ git+https://github.com/Pigbibi/PersonalAIService.git@cabcc30f8440162f97b83d93fe8794112505fcc5
