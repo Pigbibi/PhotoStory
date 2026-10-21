@@ -12,6 +12,8 @@ import re
 import stat
 import tempfile
 import time
+import urllib.error
+import urllib.parse
 
 PROJECT = 'Pigbibi/PhotoStory'
 SERVICE = 'https://personal.43.156.238.238.sslip.io'
@@ -101,7 +103,61 @@ def load_client(root):
         or hashlib.sha256(p.read_bytes()).hexdigest()!=CLIENT_SHA256):raise Stopped('reviewed_client_drift')
     spec=importlib.util.spec_from_file_location('photostory_reviewed_qualification_wire',p)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-    return module.NativeTaskClient(SERVICE,AUDIENCE)
+    return _observe_http(module.NativeTaskClient(SERVICE,AUDIENCE))
+
+
+def _observe_http(client):
+    """Observe only this frozen client's stage/status before it masks HTTP errors."""
+    original=client.opener.open
+    client._qualification_wire={}
+    def observed(request,*args,**kwargs):
+        target=urllib.parse.urlsplit(request.full_url);method=request.get_method();stage='not_observed'
+        if (method=='GET' and target.scheme=='https' and target.hostname
+                and target.hostname.endswith('.actions.githubusercontent.com')):stage='oidc'
+        elif target.scheme=='https' and target.netloc==urllib.parse.urlsplit(SERVICE).netloc:
+            path=target.path
+            if method=='POST' and path=='/v1/tasks':stage='task_submit'
+            elif path.startswith('/v1/tasks/'):
+                tail=path[len('/v1/tasks/'):]
+                if method=='GET' and TASK_ID.fullmatch(tail):stage='task_read'
+                elif method=='POST' and tail.endswith('/cancel') and TASK_ID.fullmatch(tail[:-7]):stage='task_cancel'
+        wire={'stage':stage};client._qualification_wire=wire
+        try:response=original(request,*args,**kwargs)
+        except urllib.error.HTTPError as error:
+            wire['category']='http'
+            if type(error.code) is int and 100<=error.code<=599:wire['http_status']=error.code
+            raise
+        except (OSError,urllib.error.URLError):
+            wire['category']='connection';raise
+        status=getattr(response,'status',None)
+        if type(status) is int and 100<=status<=599:wire['http_status']=status
+        return response
+    client.opener.open=observed
+    return client
+
+
+def failure_projection(client,error=None):
+    wire=getattr(client,'_qualification_wire',None)
+    if type(wire) is not dict:wire={}
+    stage=wire.get('stage');category=wire.get('category');code='unknown_error'
+    allowed={'native_http_rejected','native_transport_error','native_timeout','invalid_json','response_too_large',
+             'invalid_oidc_url','invalid_gateway_url','oidc_unavailable','input_too_large','invalid_input',
+             'redirect_blocked','record_or_output_binding_drift'}
+    if isinstance(error,(ValueError,Stopped)) and len(error.args)==1 and type(error.args[0]) is str and error.args[0] in allowed:
+        code=error.args[0]
+    if isinstance(error,json.JSONDecodeError):code='invalid_json'
+    if isinstance(error,urllib.error.HTTPError):
+        category='http';code='native_http_rejected'
+        if type(error.code) is int and 100<=error.code<=599:wire={**wire,'http_status':error.code}
+    elif isinstance(error,(OSError,urllib.error.URLError)) or code in {'native_transport_error','native_timeout'}:category='connection'
+    elif code in {'invalid_json','response_too_large'}:category='parse'
+    elif code in {'native_http_rejected','redirect_blocked'}:category='http'
+    if type(category) is not str or category not in {'connection','http','parse'}:category='task_unknown'
+    result={'category':category,'stage':stage if type(stage) is str and stage in {'oidc','task_submit','task_read','task_cancel'} else 'not_observed',
+            'code':code,'task_outcome':'unknown'}
+    status=wire.get('http_status')
+    if type(status) is int and 100<=status<=599:result['http_status']=status
+    return result
 
 
 def validate_record(record,task_id,now,receipt=None):
@@ -144,29 +200,40 @@ def execute(root,client,action,*,task_id='',environ,now=time.time):
             if r['phase']!='prepared' or r.get('task_id') or task_id:raise Stopped('never_resubmit')
             r['phase']='intent';save(root,r)
             try:
+                client._qualification_wire={}
                 record=client.submit(request_body(),IDEMPOTENCY)
                 validate_record(record,None,now())
-            except Exception:
-                r['phase']='unknown';save(root,r)
+            except Exception as error:
+                r.update(phase='unknown',failure=failure_projection(client,error));save(root,r)
                 raise Stopped('submit_unknown_read_original_key') from None
             r.update(phase='submitted',task_id=record['id'],created=record['created'],deadline=record['deadline'])
         else:
             if r.get('task_id') not in (None,task_id):raise Stopped('known_task_changed')
             if action=='cancel' and r.get('cancel_sent'):raise Stopped('cancel_already_attempted')
             r.update(task_id=task_id,phase='read_intent');save(root,r)
-            record=client.get(task_id)
-            validate_record(record,task_id,now(),r)
+            try:
+                client._qualification_wire={}
+                record=client.get(task_id)
+                validate_record(record,task_id,now(),r)
+            except Exception as error:
+                r['failure']=failure_projection(client,error);save(root,r);raise
             r.update(task_id=task_id,created=record['created'],deadline=record['deadline'])
             status=record['status']
             if action=='cancel' and status not in {'completed','failed','invalid_output','cancelled','outcome_unknown','cancel_requested'}:
                 r.update(phase='cancel_intent',cancel_sent=True);save(root,r)
-                record=client.cancel(task_id)
-                validate_record(record,task_id,now(),r);status=record['status']
+                try:
+                    client._qualification_wire={}
+                    record=client.cancel(task_id)
+                    validate_record(record,task_id,now(),r);status=record['status']
+                except Exception as error:
+                    r['failure']=failure_projection(client,error);save(root,r);raise
             r.update(phase='verified' if status=='completed' else 'cancel_requested' if status=='cancel_requested'
                      else 'unknown' if status=='outcome_unknown'
                      else 'stopped' if status in {'cancelled','failed','invalid_output'} else 'pending',
                      status=status,worker_stopped=False,
                      terminal_status_observed=status in {'completed','failed','invalid_output','cancelled'})
+            r.pop('failure',None)
+            if status=='outcome_unknown':r['failure']=failure_projection(client)
             if status=='completed':r.update(output=record['output'],output_sha256=digest(record['output']))
         save(root,r)
         return r
