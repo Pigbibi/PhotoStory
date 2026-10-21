@@ -504,6 +504,74 @@ def _native_business_context(context, kind, identity):
     return operation_context(context, 'photostory:'+operation)
 
 
+def _pending_batch_state(inventory, source, context):
+    """Bind a known wait to the existing private inventory and native ledger."""
+    import sqlite3
+    from native_tasks import _private_database, digest
+    inflight = inventory.get('inflight')
+    if not isinstance(inflight, dict) or not inflight.get('id'):
+        raise Stop('native_checkpoint_conflict')
+    path = _private_database(context)
+    with sqlite3.connect(path.as_uri()+'?mode=ro', uri=True) as db:
+        rows = db.execute("SELECT operation,value FROM native_operations WHERE json_extract(value,'$.binding.operation_id')=? ORDER BY operation LIMIT 1001",
+                          (context['operation_id'],)).fetchall()
+    if not 0 < len(rows) <= 1000:
+        raise Stop('native_checkpoint_conflict')
+    waiting = False
+    for _, raw in rows:
+        value = json.loads(raw); binding = value['binding']
+        if (binding['project'] != context['project'] or binding['resource'] != context['client'].resource
+                or binding['deadline'] != context['deadline']
+                or binding['route'] not in context['routes'].values()
+                or value['halt'] or value['cancel'] or value['intent'] is not True
+                or not isinstance(value['task_id'],str) or not value['task_id']
+                or type(value['revision']) is not int or value['revision'] < 1
+                or type(value['task_deadline']) not in (int,float) or not math.isfinite(value['task_deadline'])):
+            raise Stop('native_checkpoint_conflict')
+        waiting = waiting or value.get('accepted_output') is None
+    if not waiting:
+        raise Stop('native_checkpoint_conflict')
+    # Logical contents avoid a self-referential raw SQLite hash. Existing table
+    # names only; no schema or Inventory reconciliation rules are changed.
+    state = {}
+    for table in ('meta','folders','pages','photos','cache.analyzed','cache.visual',
+                  'cache.instagram_visual','cache.history_meta'):
+        clause = " WHERE key!='native_pending'" if table == 'meta' else ''
+        state[table] = sorted([list(r) for r in inventory.db.execute('SELECT * FROM '+table+clause)],key=lambda r:json.dumps(r,sort_keys=True))
+    progress = {**inventory.progress(), 'phase':'processing'}
+    return {'batch_id':inflight['id'], 'operation_id':context['operation_id'],
+            'last_batch':source.get('lastBatch'), 'progress':progress,
+            'input_sha256':digest({k:v for k,v in source.items() if k not in {'accessToken','progress','lastBatch','stopRequested'}}),
+            'inventory_sha256':digest(state), 'ledger_sha256':digest(rows),
+            'routes_sha256':digest(context['routes'])}
+
+
+def _resume_pending_batch(inventory, source, context, job_id, directory):
+    from native_tasks import operation_context
+    # Without the original ledger there is no native wait to prove. Leave the
+    # original inflight/lastBatch reconciliation in charge (and unknown closed).
+    if not (Path(directory)/'native.sqlite3').exists():
+        return None
+    marker = inventory.get('native_pending')
+    if marker is None:
+        return None
+    inflight = inventory.get('inflight')
+    if not isinstance(marker,dict) or not isinstance(inflight,dict):
+        raise Stop('native_checkpoint_conflict')
+    if source.get('lastBatch') == inflight.get('id'):
+        # The original server has authoritatively acknowledged completion.
+        with inventory.db: inventory.set('native_pending',None)
+        return None
+    bound = _native_business_context(context,'batch',{'job_id':job_id,'batch_id':inflight['id']})
+    bound = operation_context(bound,bound['operation_id'],state_root=Path(directory))
+    if (_pending_batch_state(inventory,source,bound) != marker
+            or source.get('progress') != marker['progress']):
+        raise Stop('native_checkpoint_conflict')
+    if context.get('cancel') is True or bound['now']() >= bound['deadline']:
+        raise Stop('native_cancel_or_expiry')
+    return inflight
+
+
 def run(*, native_context=None, native_binding=None, native_client_factory=None):
     from native_tasks import bootstrap_context, validate_context, NativePending, NativeStopped
     try:
@@ -592,14 +660,15 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
         snapshot_source, snapshot_policy = source, policy
         inventory_operation = 'open'
         inventory=Inventory(directory,job['id'],source,policy)
-        inventory.reconcile(source.get('lastBatch'))
+        pending_batch = _resume_pending_batch(inventory,source,native_context,job['id'],directory)
+        if pending_batch is None: inventory.reconcile(source.get('lastBatch'))
         if source.get('stopRequested'):
             completion_started=True
             call('/internal/checkpoint',{**auth,'progress':inventory.progress()})
             return
         inventory_operation = 'scan'
-        complete=inventory.scan(lambda url:graph(url,source['accessToken']),lambda item:candidate(item,source))
-        if not complete or source.get('progress',{}).get('phase')=='scanning':
+        complete=True if pending_batch else inventory.scan(lambda url:graph(url,source['accessToken']),lambda item:candidate(item,source))
+        if not pending_batch and (not complete or source.get('progress',{}).get('phase')=='scanning'):
             completion_started=True
             progress=inventory.progress()
             if complete: progress['phase']='processing'
@@ -653,8 +722,8 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
             stage = 'completion'
             call('/internal/checkpoint',{**auth,'progress':progress})
             return
-        candidates=inventory.next_batch(limit)
-        batch_id=inventory.stage_batch(candidates)
+        candidates=pending_batch['photos'] if pending_batch else inventory.next_batch(limit)
+        batch_id=pending_batch['id'] if pending_batch else inventory.stage_batch(candidates)
         from native_tasks import operation_context
         native_context = _native_business_context(native_context, 'batch', {'job_id':job['id'], 'batch_id':batch_id})
         native_context = operation_context(native_context, native_context['operation_id'], state_root=Path(directory),
@@ -746,14 +815,21 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
             photos = [{"id":pid, "safety":"allow", "flags":[], "jpeg":base64.b64encode(assets[pid]).decode(),"source":next(p.get("source") for p in candidates if p["id"]==pid)} for pid in used]
             inventory.save_screening(digests,profiles,outcomes)
             progress=inventory.proposed_progress()
+            if pending_batch:
+                # Commit the end of the wait before a potentially ambiguous
+                # business completion. A lost ACK cannot revive an old wait.
+                with inventory.db: inventory.set('native_pending',None)
+                native_context['persist']()
             completion_started = True
             stage = 'completion'
             result = call("/internal/complete", {**auth, "batchId":batch_id,"more":progress['processed']<progress['total'],"progress":progress,"drafts":drafts, "photos":photos,"autoReviews":auto_reviews,"crossReviews":cross_reviews})
             inventory.reconcile(batch_id)
             print("Completed; draft count:", result["count"])
     except NativePending:
+        marker = _pending_batch_state(inventory,source,native_context)
+        with inventory.db: inventory.set('native_pending',marker)
         completion_started = True
-        call('/internal/checkpoint', {**auth, 'progress': inventory.progress()})
+        call('/internal/checkpoint', {**auth, 'progress': marker['progress']})
         return
     except Exception as error:
         if stage == 'inventory':

@@ -293,6 +293,7 @@ def test_actual_processor_five_stages_and_final_publication_consume_six_single_t
         return {k:k != 'needsHumanReview' for k in FIELDS}
     wire.output = output
     inv = MagicMock()
+    inv.get.return_value = None
     inv.scan.return_value = True
     inv.next_batch.return_value = [p]
     inv.stage_batch.return_value = 'batch'
@@ -377,12 +378,15 @@ def test_actual_batch_checkpoint_commits_inventory_ref_before_first_native_post(
     wire.complete = False
     directory = tmp_path/'inventory'
     stages, pointer, calls = {}, [], []
-    inv = MagicMock()
-    inv.scan.return_value = True
-    inv.next_batch.return_value = [{'id':'p','captured':'2026-08-18T10:00:00+08:00','taken':1000,'area':None}]
-    inv.stage_batch.return_value = 'batch'
-    inv.known_digest.return_value = False
-    inv.progress.return_value = {'phase':'processing','total':1,'processed':0,'analyzed':0,'batches':0}
+    from inventory import Inventory
+    p = {'id':'p','captured':'2026-08-18T10:00:00+08:00','taken':1000,'area':None}
+    source = {'pipeline':2,'progress':{},'maxPhotos':20,'draftLimit':1,'accessToken':'synthetic'}
+    policy = hashlib.sha256((batch.SCREEN_PROMPT+batch.GROUP_PROMPT).encode()).hexdigest()
+    inv = Inventory(directory,'job',source,policy)
+    with inv.db:
+        inv.set('initialized',True)
+        inv.db.execute("INSERT INTO photos(id,body,taken,status) VALUES(?,?,?,?)",('p',json.dumps(p),1000,'pending'))
+    source['progress'] = {**inv.progress(),'phase':'processing'}
     class Cloud:
         def __init__(self,*args): pass
         def require_seed(self): pass
@@ -397,7 +401,7 @@ def test_actual_batch_checkpoint_commits_inventory_ref_before_first_native_post(
         calls.append((path,body))
         if path == '/internal/autopublish': value = None
         elif path == '/internal/claim': value = {'id':'job','lease':'synthetic-lease'}
-        elif path == '/internal/source': value = {'pipeline':2,'progress':{'phase':'processing'},'maxPhotos':20,'draftLimit':1,'accessToken':'synthetic'}
+        elif path == '/internal/source': value = source
         elif path == '/internal/checkpoint':
             assert body['inventoryRef'] in stages
             if checkpoint_failure == 'before_commit':
@@ -818,3 +822,217 @@ def test_durable_cancel_with_lost_checkpoint_ack_survives_fresh_context_and_time
             else:preflight_publication(resumed)
     assert len(wire.calls)==before
     assert sum(m=='POST' and path=='/v1/tasks' for m,path,_ in wire.calls)==1
+
+
+class PendingBatchHarness:
+    """Actual private Inventory and caller; generated JPEG and fake business I/O."""
+    def __init__(self, root, *, cloud=False):
+        from inventory import Inventory
+        self.cloud = cloud
+        self.snapshots, self.pointer = {}, None
+        self.root = root
+        self.ctx, self.wire = context(root)
+        self.started = self.wire.clock[0]
+        self.ctx['deadline'] = self.started + 3600  # Proposed adoption age; not task TTL.
+        self.directory = self.ctx['state_root']
+        self.source = {'pipeline':2, 'folder':'synthetic-folder', 'start':1, 'end':2,
+                       'maxPhotos':1, 'draftLimit':1, 'accessToken':'synthetic', 'progress':{}}
+        policy = hashlib.sha256((batch.SCREEN_PROMPT+batch.GROUP_PROMPT).encode()).hexdigest()
+        self.p = {'id':'p', 'captured':'2026-08-18T10:00:00+08:00', 'taken':1000, 'area':None}
+        inv = Inventory(self.directory, 'job', self.source, policy)
+        with inv.db:
+            inv.set('initialized', True)
+            inv.db.execute("INSERT INTO photos(id,body,taken,status) VALUES(?,?,?,?)",
+                           ('p',json.dumps(self.p),1000,'pending'))
+        self.source['progress'] = {**inv.progress(), 'phase':'processing'}
+        inv.close()
+        self.image = photo(root).read_bytes()
+        self.calls, self.completed = [], []
+        self.fail_checkpoint = self.fail_complete = False
+        self.wire.complete = False
+        self.wire.output = lambda request: {'photos':[{
+            'id':'p','decision':'exclude','flags':[],'landscape':False,'aesthetic':0,
+            'description':'Synthetic exclusion','peopleRole':'none','compositionClear':False,
+            'contentKind':'uncertain','light':'unknown','scene':'unknown',
+            'place':{'city':'','landmark':'','evidence':'','confidence':'none'}}]}
+
+    def request(self, url, **kwargs):
+        body = kwargs.get('body') or {}
+        path = url.removeprefix('https://photo.invalid')
+        self.calls.append((path,json.loads(json.dumps(body))))
+        if path == '/internal/claim': result = {'id':'job','lease':'synthetic-lease'}
+        elif path == '/internal/source': result = self.source
+        elif path == '/internal/checkpoint':
+            self.source['progress'] = json.loads(json.dumps(body['progress']))
+            if self.cloud: self.pointer = body['inventoryRef']
+            if self.fail_checkpoint: raise TimeoutError('synthetic checkpoint acknowledgement lost')
+            result = {}
+        elif path == '/internal/complete':
+            if self.fail_complete: raise TimeoutError('synthetic completion acknowledgement lost')
+            if self.cloud: self.pointer = body['inventoryRef']
+            self.completed.append(body)
+            self.source.update(lastBatch=body['batchId'],progress=body['progress'])
+            result = {'count':0}
+        elif path in {'/internal/maintenance','/internal/fail'}: result = {}
+        else: raise AssertionError('unexpected fake business request: '+path)
+        return json.dumps(result).encode()
+
+    def run(self):
+        import cloud_inventory
+        h = self
+        class Cloud:
+            def __init__(self,*args): pass
+            def require_seed(self): pass
+            def load(self, directory, job, lease):
+                assert job == 'job' and lease == 'synthetic-lease'
+                if h.pointer is None: return False
+                # A fresh ephemeral caller sees only the acknowledged pointer.
+                for path in Path(directory).iterdir():
+                    assert path.is_file() and not path.is_symlink()
+                    path.unlink()
+                cloud_inventory.restore(directory,h.snapshots[h.pointer])
+                return True
+            def save(self, directory, job, lease, source, policy, batch_id=None):
+                assert job == 'job' and lease == 'synthetic-lease'
+                ref = '00000000-0000-4000-8000-'+str(len(h.snapshots)+1).zfill(12)
+                h.snapshots[ref] = cloud_inventory.archive(directory,job,source,policy,batch_id)
+                return ref
+        with patch.dict('os.environ',{'PHOTOSTORY_URL':'https://photo.invalid',
+                 'PHOTOSTORY_BATCH_TOKEN':'synthetic','PHOTOSTORY_STATE_DIR':str(self.directory),
+                 'PHOTOSTORY_STATE_BACKEND':'cloudflare' if self.cloud else 'local'},clear=True), \
+             patch('cloud_inventory.CloudInventory',Cloud), \
+             patch.object(batch,'request',side_effect=self.request), \
+             patch('auto_publish.tick',return_value=False), \
+             patch.object(batch,'thumbnail',return_value=self.image), \
+             patch.object(batch,'graph',side_effect=AssertionError('no real media/scan')), \
+             patch('preselect.representatives',side_effect=lambda previews,*args:[(v,data,{}) for v,data in previews]), \
+             patch.object(batch,'gateway',side_effect=AssertionError('retired gateway')):
+            batch.run(native_context=self.ctx)
+
+    def timely_result(self, resume=1800):
+        task = next(iter(self.wire.records))
+        self.wire.clock[0] = self.started + 20
+        self.wire.complete_task(task)
+        self.wire.clock[0] = self.started + resume
+        return task
+
+
+@pytest.mark.parametrize('cloud', [False,True])
+@pytest.mark.parametrize('resume', [30,1800,3599])
+def test_actual_inventory_known_pending_resumes_same_task_with_finite_adoption_candidate(tmp_path, resume, cloud):
+    h = PendingBatchHarness(tmp_path,cloud=cloud)
+    h.run()
+    assert len(h.wire.records) == 1 and not h.completed
+    task = h.timely_result(resume)
+    h.run()
+    assert len(h.completed) == 1 and h.completed[0]['photos'] == []
+    assert [p for m,p,_ in h.wire.calls if m == 'GET'] == ['/v1/tasks/'+task]
+    assert sum(m=='POST' and p=='/v1/tasks' for m,p,_ in h.wire.calls) == 1
+    # Task TTL remains sixty seconds even with a separate 60 minute adoption candidate.
+    assert h.wire.records[task]['request']['timeout_seconds'] == 60
+
+
+@pytest.mark.parametrize('change', ['missing_marker','input','progress','inventory','ledger','unknown_intent','cancel','expired','route','last_batch','marker'])
+def test_actual_inventory_pending_drift_or_unknown_never_gets_or_resubmits(tmp_path, change):
+    import sqlite3
+    h = PendingBatchHarness(tmp_path); h.run(); h.timely_result()
+    if change == 'route': h.ctx['routes']['screen']['worker'] = 'wrong-worker'
+    elif change == 'last_batch': h.source['lastBatch'] = 'wrong-batch'
+    elif change == 'input': h.source['locationHint'] = 'changed'
+    elif change == 'progress': h.source['progress']['total'] += 1
+    elif change == 'cancel': h.ctx['cancel'] = True
+    elif change == 'expired': h.wire.clock[0] = h.started+3600
+    else:
+        with sqlite3.connect(h.directory/('native.sqlite3' if change in {'ledger','unknown_intent'} else 'job.sqlite3')) as db:
+            if change in {'ledger','unknown_intent'}:
+                key,raw = db.execute('SELECT operation,value FROM native_operations').fetchone()
+                value = json.loads(raw)
+                if change == 'ledger': value['revision'] += 1
+                else: value['task_id'] = None
+                db.execute('UPDATE native_operations SET value=? WHERE operation=?',(json.dumps(value),key))
+            elif change == 'missing_marker': db.execute("DELETE FROM meta WHERE key='native_pending'")
+            elif change == 'marker': db.execute("UPDATE meta SET value='{}' WHERE key='native_pending'")
+            else: db.execute("UPDATE photos SET taken=taken+1")
+    before = len(h.wire.calls)
+    with pytest.raises(batch.Stop): h.run()
+    # A cancel can send one cancellation; never another GET or task creation.
+    assert not any(m=='GET' or p=='/v1/tasks' for m,p,_ in h.wire.calls[before:])
+    assert len(h.wire.records) == 1 and not h.completed
+
+
+@pytest.mark.parametrize('cloud', [False,True])
+def test_actual_inventory_completion_unknown_is_not_pending_retry(tmp_path, cloud):
+    h = PendingBatchHarness(tmp_path,cloud=cloud); h.run(); h.timely_result()
+    h.fail_complete = True
+    with pytest.raises(batch.Stop): h.run()
+    before = len(h.wire.calls)
+    with pytest.raises(batch.Stop): h.run()
+    assert h.wire.calls[before:] == [] and not h.completed
+    assert sum(p=='/internal/complete' for p,_ in h.calls) == 1
+
+
+@pytest.mark.parametrize('cloud', [False,True])
+def test_actual_inventory_second_pending_checkpoint_keeps_original_task_and_batch(tmp_path, cloud):
+    h = PendingBatchHarness(tmp_path,cloud=cloud); h.run()
+    h.wire.clock[0] = h.started+10
+    h.run()  # Still running: acknowledge another wait, with no replacement POST.
+    assert len(h.wire.records) == 1 and not h.completed
+    task = h.timely_result()
+    h.run()
+    assert len(h.completed) == 1
+    assert sum(m=='POST' and p=='/v1/tasks' for m,p,_ in h.wire.calls) == 1
+    assert [p for m,p,_ in h.wire.calls if m=='GET'] == ['/v1/tasks/'+task]*2
+
+
+@pytest.mark.parametrize('cloud', [False,True])
+def test_actual_inventory_completion_intent_checkpoint_lost_ack_prevents_complete(tmp_path, cloud):
+    h = PendingBatchHarness(tmp_path,cloud=cloud); h.run(); h.timely_result()
+    h.fail_checkpoint = True
+    with pytest.raises(batch.Stop): h.run()
+    assert not h.completed and not any(p=='/internal/complete' for p,_ in h.calls)
+    before = len(h.wire.calls)
+    h.fail_checkpoint = False
+    with pytest.raises(batch.Stop): h.run()
+    assert h.wire.calls[before:] == []
+
+
+def test_actual_inventory_owner_stop_preserves_pending_without_result_or_new_submit(tmp_path):
+    h = PendingBatchHarness(tmp_path); h.run(); h.timely_result()
+    h.source['stopRequested'] = True
+    before = len(h.wire.calls)
+    h.run()
+    assert h.wire.calls[before:] == [] and not h.completed
+    assert h.calls[-1][0] == '/internal/checkpoint'
+
+
+@pytest.mark.parametrize('cloud', [False,True])
+def test_actual_inventory_cached_screen_then_pending_group_reuses_both_identities(tmp_path, cloud):
+    h = PendingBatchHarness(tmp_path,cloud=cloud)
+    safe = {'id':'p','decision':'allow','flags':[],'landscape':True,'aesthetic':9,
+            'description':'Coast','peopleRole':'none','compositionClear':True,
+            'contentKind':'permanent_scenery','light':'day','scene':'architecture',
+            'place':{'city':'','landmark':'','evidence':'','confidence':'none'}}
+    h.wire.output = lambda request: {'photos':[safe]} if request['profile']=='screen' else {'drafts':[]}
+    submit = h.wire.submit
+    def controlled_submit(request,key):
+        h.wire.complete = request['profile'] != 'group'
+        return submit(request,key)
+    h.wire.submit = controlled_submit
+    h.run()
+    assert len(h.wire.records) == 2 and not h.completed
+    task = next(k for k,v in h.wire.records.items() if v['request']['profile']=='group')
+    h.wire.clock[0] = h.started+20; h.wire.complete_task(task)
+    h.wire.clock[0] = h.started+1800
+    h.run()
+    assert len(h.completed) == 1 and h.completed[0]['drafts'] == []
+    assert sum(m=='POST' and p=='/v1/tasks' for m,p,_ in h.wire.calls) == 2
+    assert [p for m,p,_ in h.wire.calls if m=='GET'] == ['/v1/tasks/'+task]
+
+
+def test_actual_inventory_restart_cannot_extend_original_adoption_deadline(tmp_path):
+    h = PendingBatchHarness(tmp_path); h.run(); h.timely_result(resume=3600)
+    h.ctx['deadline'] = h.started+7200
+    before = len(h.wire.calls)
+    for _ in range(2):
+        with pytest.raises(batch.Stop): h.run()
+    assert h.wire.calls[before:] == [] and not h.completed
