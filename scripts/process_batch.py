@@ -578,6 +578,9 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
         if native_binding is not None:
             if native_context is not None:
                 raise NativeStopped('native_binding_required')
+            if native_client_factory is None:
+                from github_gateway import NativeTaskClient
+                native_client_factory = NativeTaskClient
             native_context=bootstrap_context(native_binding,client_factory=native_client_factory)
         elif native_client_factory is not None:
             raise NativeStopped('native_binding_required')
@@ -852,9 +855,63 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
         if inventory: inventory.close()
 
 
+def workflow_binding(fixture_root, state_root, *, now=None):
+    """Read only an explicit ordinary workflow variable; never discover credentials.
+
+    Adoption age is required and bounded, separate from each task's fixed60s TTL.
+    The original operation ledger restores its earlier deadline on resume.
+    """
+    import time
+    from github_gateway import _strict_json
+    from native_tasks import STAGES
+    try:
+        raw = os.environ.get('PHOTOSTORY_NATIVE_BINDING', '')
+        if not raw or len(raw.encode()) > 32000:
+            raise ValueError()
+        config = _strict_json(raw)
+        if (set(config) != {'enabled','project','service_url','audience','routes','adoption_age_seconds'}
+                or config['enabled'] is not True or config['project'] != 'Pigbibi/PhotoStory'
+                or type(config['adoption_age_seconds']) is not int
+                or not 1 <= config['adoption_age_seconds'] <= 3600
+                or not isinstance(config['routes'],dict) or set(config['routes']) != STAGES):
+            raise ValueError()
+        models = set()
+        for stage, route in config['routes'].items():
+            if (not isinstance(route,dict) or set(route) != {'mode','provider','model','profile','worker'}
+                    or route['mode'] != 'agent' or route['provider'] != 'dot'
+                    or route['profile'] != stage or route['worker'] != 'dot-personal'
+                    or not isinstance(route['model'],str) or not 1 <= len(route['model']) <= 200):
+                raise ValueError()
+            models.add(route['model'])
+        if len(models) != 1:
+            raise ValueError()
+        clock = now or time.time
+        return {k:v for k,v in config.items() if k != 'adoption_age_seconds'} | {
+            'synthetic_only':False, 'operation_id':'photostory-main-processor',
+            'fixture_root':fixture_root, 'state_root':state_root,
+            'now':clock, 'deadline':clock()+config['adoption_age_seconds'],
+            'persist':lambda:None, 'limits':{'request_bytes':2_000_000,'response_bytes':2_000_000}}
+    except (TypeError,ValueError,KeyError):
+        raise Stop('native_binding_required') from None
+
+
+def main():
+    # Existing cloud snapshot/Inventory restores this private state on each run.
+    # No service URL, provider, freshness window or task is implicitly enabled.
+    os.umask(0o077)
+    directory = os.environ.get('PHOTOSTORY_STATE_DIR', '')
+    if not directory or not Path(directory).is_absolute() or Path(directory).is_symlink():
+        raise Stop('native_binding_required')
+    with tempfile.TemporaryDirectory(prefix='photostory-native-') as tmp:
+        state = Path(directory)
+        binding = workflow_binding(Path(tmp).resolve(),state.resolve())
+        state.mkdir(mode=0o700,parents=True,exist_ok=True)
+        run(native_binding=binding)
+
+
 if __name__ == "__main__":
     try:
-        run()
+        main()
     except Exception:
         print("PhotoStory could not complete this run. No automatic retry; check setup and job status.")
         raise SystemExit(1) from None

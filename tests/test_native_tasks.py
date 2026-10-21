@@ -890,7 +890,7 @@ class PendingBatchHarness:
         else: raise AssertionError('unexpected fake business request: '+path)
         return json.dumps(result).encode()
 
-    def run(self):
+    def run(self, *, workflow_env=None):
         import cloud_inventory
         h = self
         class Cloud:
@@ -912,7 +912,8 @@ class PendingBatchHarness:
                 return ref
         with patch.dict('os.environ',{'PHOTOSTORY_URL':'https://photo.invalid',
                  'PHOTOSTORY_BATCH_TOKEN':'synthetic','PHOTOSTORY_STATE_DIR':str(self.directory),
-                 'PHOTOSTORY_STATE_BACKEND':'cloudflare' if self.cloud else 'local'},clear=True), \
+                 'PHOTOSTORY_STATE_BACKEND':'cloudflare' if self.cloud else 'local',
+                 **(workflow_env or {})},clear=True), \
              patch('cloud_inventory.CloudInventory',Cloud), \
              patch.object(batch,'request',side_effect=self.request), \
              patch('auto_publish.tick',return_value=False), \
@@ -920,7 +921,8 @@ class PendingBatchHarness:
              patch.object(batch,'graph',side_effect=AssertionError('no real media/scan')), \
              patch('preselect.representatives',side_effect=lambda previews,*args:[(v,data,{}) for v,data in previews]), \
              patch.object(batch,'gateway',side_effect=AssertionError('retired gateway')):
-            batch.run(native_context=self.ctx)
+            if workflow_env is None: batch.run(native_context=self.ctx)
+            else: batch.main()
 
     def timely_result(self, resume=1800):
         task = next(iter(self.wire.records))
@@ -1050,3 +1052,139 @@ def test_actual_inventory_restart_cannot_extend_original_adoption_deadline(tmp_p
     for _ in range(2):
         with pytest.raises(batch.Stop): h.run()
     assert h.wire.calls[before:] == [] and not h.completed
+
+
+def workflow_config():
+    return {'enabled':True,'project':'Pigbibi/PhotoStory','service_url':'https://personal.acme.org',
+            'audience':'https://personal.acme.org/mcp','adoption_age_seconds':3600,
+            'routes':{stage:{'mode':'agent','provider':'dot','profile':stage,'model':'gpt-6-sol',
+                             'worker':'dot-personal'} for stage in STAGES}}
+
+
+@pytest.mark.parametrize('invalid',['missing','disabled','extra','project','ttl','mixed_provider','mixed_worker','unknown_profile','over_age'])
+def test_workflow_binding_requires_exact_single_handler_before_client_or_business(tmp_path,invalid):
+    config=workflow_config()
+    if invalid=='disabled':config['enabled']=False
+    if invalid=='extra':config['token']='not-allowed'
+    if invalid=='project':config['project']='QuantStrategyLab/QuantAIService'
+    if invalid=='ttl':config['timeout_seconds']=600
+    if invalid=='mixed_provider':config['routes']['cross_review']['provider']='grok'
+    if invalid=='mixed_worker':config['routes']['cross_review']['worker']='other'
+    if invalid=='unknown_profile':config['routes']['cross_review']['profile']='helper'
+    if invalid=='over_age':config['adoption_age_seconds']=3601
+    raw='' if invalid=='missing' else json.dumps(config)
+    with patch.dict('os.environ',{'PHOTOSTORY_NATIVE_BINDING':raw},clear=True),patch.object(batch,'request') as request:
+        with pytest.raises(batch.Stop):batch.workflow_binding(tmp_path,tmp_path,now=lambda:100)
+    request.assert_not_called()
+
+
+def test_workflow_binding_is_explicit_and_preserves_sixty_second_execution_contract(tmp_path):
+    config=workflow_config()
+    with patch.dict('os.environ',{'PHOTOSTORY_NATIVE_BINDING':json.dumps(config)},clear=True):
+        binding=batch.workflow_binding(tmp_path,tmp_path,now=lambda:100)
+    assert binding['deadline']==3700 and binding['synthetic_only'] is False
+    assert binding['routes']==config['routes'] and 'adoption_age_seconds' not in binding
+    assert binding['limits']=={'request_bytes':2_000_000,'response_bytes':2_000_000}
+    assert binding['project']=='Pigbibi/PhotoStory' and 'client' not in binding
+
+
+def test_actual_processor_uses_public_factory_without_private_sdk_or_token_at_bootstrap(tmp_path):
+    import github_gateway
+    ctx,wire=context(tmp_path);binding=bootstrap_binding(ctx);made=[]
+    def factory(resource,audience):made.append((resource,audience));return wire
+    with patch.object(github_gateway,'NativeTaskClient',side_effect=factory), \
+         patch.dict(sys.modules,{'ai_service':None,'ai_service.client':None}), \
+         patch.dict('os.environ',{'PHOTOSTORY_URL':'https://photo.invalid','PHOTOSTORY_BATCH_TOKEN':'synthetic'},clear=True), \
+         patch.object(batch,'request',side_effect=[b'{}',b'null']),patch('auto_publish.tick',return_value=False):
+        batch.run(native_binding=binding)
+    assert made==[(wire.resource,wire.resource+'/mcp')] and wire.calls==[]
+
+
+def http_client(ctx, wire):
+    import github_gateway
+    from unittest.mock import Mock
+    from urllib.parse import urlsplit
+    class Reply:
+        status=200;headers={}
+        def __init__(self,record):self.body=io.BytesIO(json.dumps(record).encode())
+        def __enter__(self):return self
+        def __exit__(self,*_):self.body.close()
+        def read(self,n):return self.body.read(n)
+    def send(request,timeout):
+        path=urlsplit(request.full_url).path
+        if path=='/v1/tasks':record=wire.submit(json.loads(request.data),request.get_header('Idempotency-key'))
+        elif path.endswith('/cancel'):record=wire.cancel(path.split('/')[-2])
+        else:record=wire.get(path.split('/')[-1])
+        return Reply(record)
+    opener=Mock();opener.open.side_effect=send
+    client=github_gateway.NativeTaskClient(wire.resource,wire.resource+'/mcp',opener=opener,token=lambda:'synthetic')
+    return {**ctx,'client':client},opener
+
+
+@pytest.mark.parametrize('mode',['success','pending_resume','unknown','cancel','expiry','wrong_revision','wrong_project','wrong_provider','invalid_output'])
+def test_public_http_factory_reuses_existing_ledger_and_consumer(tmp_path,mode):
+    from native_tasks import NativePending,NativeStopped
+    ctx,wire=context(tmp_path);ctx,opener=http_client(ctx,wire)
+    if mode in {'pending_resume','cancel','expiry'}:wire.complete=False
+    if mode=='unknown':wire.lose=True
+    if mode=='wrong_revision':wire.mutate=lambda r:{**r,'revision':True}
+    if mode=='wrong_project':wire.mutate=lambda r:{**r,'owner':'QuantStrategyLab/QuantAIService'}
+    if mode=='wrong_provider':wire.mutate=lambda r:{**r,'provider':'grok'}
+    if mode=='invalid_output':wire.output=lambda r:{'ok':False}
+    call=lambda:batch.native_review_gateway(ctx,stage='labels')('generated',[{'id':'p'}],[],SCHEMA,tmp_path)
+    if mode=='success':assert call()=={'ok':True}
+    elif mode in {'pending_resume','cancel','expiry'}:
+        with pytest.raises(NativePending):call()
+        task=next(iter(wire.records))
+        if mode=='pending_resume':wire.complete_task(task);assert call()=={'ok':True}
+        else:
+            if mode=='cancel':ctx['cancel']=True
+            else:wire.clock[0]=ctx['deadline']+1
+            for _ in range(2):
+                with pytest.raises(NativeStopped):call()
+            assert wire.records[task]['status']=='cancel_requested'
+            assert sum(p.endswith('/cancel') for _,p,_ in wire.calls)==1
+    else:
+        with pytest.raises(NativeStopped):call()
+        count=opener.open.call_count
+        with pytest.raises(NativeStopped):call()
+        assert opener.open.call_count==count
+    assert sum(m=='POST' and p=='/v1/tasks' for m,p,_ in wire.calls)==1
+
+
+@pytest.mark.parametrize('lost_response',[False,True])
+def test_actual_workflow_main_oidc_http_cloud_restore_and_consumer_without_private_sdk(tmp_path,lost_response):
+    import github_gateway
+    from urllib.parse import urlsplit
+    h=PendingBatchHarness(tmp_path,cloud=True);config=workflow_config()
+    h.wire.resource=config['service_url'];h.wire.routes=config['routes']
+    _,opener=http_client(h.ctx,h.wire);send=opener.open.side_effect;tokens=[]
+    class TokenReply(io.BytesIO):
+        status=200;headers={}
+    def dispatch(request,timeout):
+        if urlsplit(request.full_url).hostname.endswith('.actions.githubusercontent.com'):
+            tokens.append(request.full_url)
+            return TokenReply(b'{"value":"synthetic-workload-token"}')
+        assert request.get_header('Authorization')=='Bearer synthetic-workload-token'
+        return send(request,timeout)
+    opener.open.side_effect=dispatch
+    env={'PHOTOSTORY_NATIVE_BINDING':json.dumps(config),
+         'ACTIONS_ID_TOKEN_REQUEST_URL':'https://pipelines.actions.githubusercontent.com/token',
+         'ACTIONS_ID_TOKEN_REQUEST_TOKEN':'synthetic-request-token'}
+    h.wire.lose=lost_response
+    with patch.object(github_gateway.urllib.request,'build_opener',return_value=opener), \
+         patch.dict(sys.modules,{'ai_service':None,'ai_service.client':None}), \
+         patch('time.time',side_effect=lambda:h.wire.clock[0]):
+        if lost_response:
+            with pytest.raises(batch.Stop):h.run(workflow_env=env)
+            count=opener.open.call_count
+            with pytest.raises(batch.Stop):h.run(workflow_env=env)
+            assert opener.open.call_count==count and not h.completed
+        else:
+            h.run(workflow_env=env)
+            task=h.timely_result(resume=1800)
+            h.run(workflow_env=env)
+            assert len(h.completed)==1 and h.wire.records[task]['deadline']==h.started+60
+            assert [m for m,_,_ in h.wire.calls]==['POST','GET']
+    assert len(tokens)==(1 if lost_response else 2)
+    assert sum(m=='POST' and p=='/v1/tasks' for m,p,_ in h.wire.calls)==1

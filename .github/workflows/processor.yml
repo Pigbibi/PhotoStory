@@ -2,10 +2,6 @@ name: Process PhotoStory
 on:
   workflow_dispatch:
     inputs:
-      gateway_smoke:
-        description: Verify CodexGateway with a synthetic image before processing
-        type: boolean
-        default: false
       travel_backfill:
         description: Fill private travel hints for already-approved drafts without scanning
         type: boolean
@@ -27,11 +23,7 @@ jobs:
       PHOTOSTORY_URL: ${{ vars.PHOTOSTORY_URL }}
       PHOTOSTORY_BATCH_TOKEN: ${{ secrets.PHOTOSTORY_BATCH_TOKEN }}
       PHOTOSTORY_STATE_BACKEND: cloudflare
-      CODEX_GATEWAY_COMMAND: ${{ github.workspace }}/scripts/github_gateway.py
-      CODEX_GATEWAY_BACKEND: service
-      CODEX_GATEWAY_SERVICE_URL: ${{ vars.CODEX_GATEWAY_SERVICE_URL }}
-      CODEX_GATEWAY_SERVICE_AUDIENCE: ${{ vars.CODEX_GATEWAY_SERVICE_AUDIENCE || 'codex-gateway' }}
-      CODEX_GATEWAY_SERVICE_MODEL: ${{ vars.CODEX_GATEWAY_SERVICE_MODEL || 'gpt-6-sol' }}
+      PHOTOSTORY_NATIVE_BINDING: ${{ vars.PHOTOSTORY_NATIVE_BINDING }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -41,9 +33,6 @@ jobs:
       - name: Verify private Cloudflare inventory
         if: inputs.travel_backfill != true
         run: python scripts/cloud_inventory.py status
-      - name: Verify CodexGateway with synthetic image
-        if: inputs.gateway_smoke == true && inputs.travel_backfill != true
-        run: python scripts/smoke_gateway.py
       - name: Backfill approved travel hints
         if: inputs.travel_backfill == true
         run: python scripts/backfill_travel.py
