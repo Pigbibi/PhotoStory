@@ -268,3 +268,24 @@ test('halted or cancelled native waits do not gain owner recovery or a replaceme
  const row=JSON.parse((await DB.prepare('SELECT body FROM publications WHERE id=?').bind(auth.publicationId).first()).body);
  assert.equal(row.recoveryPending,undefined);assert.equal((await DB.prepare('SELECT count(*) AS n FROM publications').first()).n,1);
 });
+
+test('stale native ledgers cannot reserve two cancellation senders',async t=>{
+ const {env,DB,auth,checkpoint}=await nativeFixture(t);
+ Object.assign(checkpoint.value,{task_id:'synthetic-task',revision:1,task_deadline:Date.now()/1000+60});
+ await automatic(env,{...auth,action:'native_checkpoint',checkpoint});
+ const senderA=structuredClone(checkpoint),senderB=structuredClone(checkpoint);
+ senderA.value.cancel=true;senderB.value.cancel=true;
+ let sends=0;
+ await automatic(env,{...auth,action:'native_checkpoint',checkpoint:senderA});sends++;
+ await assert.rejects(async()=>{
+  await automatic(env,{...auth,action:'native_checkpoint',checkpoint:senderB});sends++;
+ },/publication_conflict/);
+ assert.equal(sends,1);
+ // The sender may then record its halt. This grants no new send; a lost
+ // reservation acknowledgement is also consumed, never automatically retried.
+ senderA.value.halt=true;
+ await automatic(env,{...auth,action:'native_checkpoint',checkpoint:senderA});
+ await assert.rejects(automatic(env,{...auth,action:'native_checkpoint',checkpoint:senderB}),/publication_conflict/);
+ assert.equal(await automatic(env,{action:'candidate'}),null);
+ assert.equal((await DB.prepare('SELECT count(*) AS n FROM publications').first()).n,1);
+});

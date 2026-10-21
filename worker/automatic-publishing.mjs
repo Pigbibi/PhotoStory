@@ -117,6 +117,10 @@ export async function automatic(e,b){
  if(b.action==='native_checkpoint'){
   const next=await nativeCheckpoint(b.checkpoint,d,p),old=body.nativeReview;
   if(old){
+   // cancel=true/halt=false reserves the one sender before its RPC. An
+   // identical stale copy must stop, including after a lost acknowledgement.
+   // The original sender may still persist halt=true after its attempt.
+   if(old.value.cancel&&next.value.cancel&&!next.value.halt)fail();
    if(old.operation!==next.operation||JSON.stringify(old.value.binding)!==JSON.stringify(next.value.binding))fail();
    for(const key of ['task_id','revision','task_deadline','claim','output_sha256']){
     if(old.value[key]!==null&&JSON.stringify(old.value[key])!==JSON.stringify(next.value[key]))fail();
