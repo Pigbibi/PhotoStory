@@ -18,6 +18,16 @@ connected accounts. Recorded photo-review flags, when present, highlight their
 matching thumbnail in orange; the warning opens that photo and follows its ID
 when reordered. No flag is inferred from the image or caption by the frontend.
 
+- [What it does](#what-it-does)
+- [Ownership and data isolation](#ownership-and-data-isolation)
+- [Architecture](#architecture)
+- [Quick start](#quick-start)
+- [Configure authentication and storage](#configure-authentication-and-storage)
+- [Run the workflow](#run-the-workflow)
+- [Safety boundaries](#safety-boundaries)
+- [Documentation](#documentation)
+- [Validation](#validation)
+
 ## What it does
 
 - Screens bounded OneDrive photo ranges for privacy, people, composition, and
@@ -33,7 +43,7 @@ when reordered. No flag is inferred from the image or caption by the frontend.
 - When automatic publishing is enabled, it favors another approved post from
   the most recently published trip, using capture days and coarse area. Missing
   travel hints fall back to approval order; the publishing cadence is unchanged.
-  Existing approved drafts can receive these private hints through the bounded
+- Existing approved drafts can pick up these private hints through the bounded
   `travel_backfill` option in the processor workflow, without rescanning photos.
 - Stores publication records and offers owner-confirmed historical matching to
   avoid reusing the same source photo.
@@ -73,9 +83,12 @@ Browser → Cloudflare Worker + D1 + private R2
 
 The Worker owns authentication, OAuth, settings, drafts, approval state, and
 publication state. GitHub Actions performs bounded scans, restores private SQLite
-state from R2, and calls the existing VPS CodexGateway with GitHub OIDC. The AI runtime
-does not receive OneDrive refresh tokens, Worker secrets, or publishing authority.
-The processor receives EXIF-free previews; it never deletes OneDrive originals.
+state from R2, and calls the existing VPS CodexGateway with GitHub OIDC.
+
+The AI runtime does not receive OneDrive refresh tokens, Worker secrets, or
+publishing authority. The processor receives EXIF-free previews; it never deletes
+OneDrive originals.
+
 The Gateway and its Codex login remain on the VPS and can serve other repositories.
 A self-hosted VPS processor remains an alternative; see the
 [processor migration guide](docs/github-actions-processor.zh-CN.md).
@@ -150,14 +163,18 @@ For a self-hosted processor, see [AI and VPS setup](docs/ai-setup.zh-CN.md).
    invocation handles one bounded metadata or AI step.
 4. Inspect every draft. You may edit text, order, photos, and framing; an edit
    invalidates prior approval.
+
    A further AI pass compares new posts with each other and with up to 50 pending
    or approved post summaries, and checks factual and place claims against the
-   images and coarse area. An uncertain place is removed from titles, captions,
-   hashtags, and alt text. If grounded copy cannot be produced, that draft is
-   deferred instead of asking the owner to identify the place. Possible
-   duplicates remain visible and cannot receive strict AI approval. This adds
-   one AI call per nonempty batch; it cannot guarantee that every duplicate or
-   incorrect place is found.
+   images and coarse area:
+
+   - An uncertain place is removed from titles, captions, hashtags, and alt text.
+   - If grounded copy cannot be produced, the draft is deferred rather than
+     asking you to identify the place.
+   - Possible duplicates stay visible but cannot receive strict AI approval.
+
+   This adds one AI call per nonempty batch. It cannot guarantee that every
+   duplicate or incorrect place is found.
 5. Approve a draft. In manual mode, prepare its final JPEGs and explicitly publish
    it to the connected account. Exporting a ZIP never publishes.
 
@@ -189,7 +206,7 @@ See [privacy and operating limits](docs/privacy.md),
 - [Instagram setup](docs/instagram-setup.md)
 - [Publication history and repeat protection](docs/publication-history.md)
 - [Private R2 storage](docs/storage.md)
-- [Security design and deployment checks](docs/security-audit.zh-CN.md)
+- [Security design and deployment checks](docs/security-design.zh-CN.md)
 - [Linux processor isolation](deploy/systemd/README.md)
 - [GitHub Actions processor migration](docs/github-actions-processor.zh-CN.md)
 

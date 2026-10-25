@@ -158,7 +158,7 @@ GitHub 登录不申请仓库权限。Microsoft 授权申请读取和离线访问
 - [Instagram 配置](docs/instagram-setup.zh-CN.md)
 - [发布历史与防重复](docs/publication-history.zh-CN.md)
 - [私有 R2 存储](docs/storage.zh-CN.md)
-- [安全设计与部署检查](docs/security-audit.zh-CN.md)
+- [安全设计与部署检查](docs/security-design.zh-CN.md)
 - [Linux 处理器隔离](deploy/systemd/README.md)
 - [GitHub Actions 处理器迁移](docs/github-actions-processor.zh-CN.md)
 
