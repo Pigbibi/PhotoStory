@@ -206,7 +206,7 @@ See [privacy and operating limits](docs/privacy.md),
 - [Instagram setup](docs/instagram-setup.md)
 - [Publication history and repeat protection](docs/publication-history.md)
 - [Private R2 storage](docs/storage.md)
-- [Security design and deployment checks](docs/security-audit.zh-CN.md)
+- [Security design and deployment checks](docs/security-design.zh-CN.md)
 - [Linux processor isolation](deploy/systemd/README.md)
 - [GitHub Actions processor migration](docs/github-actions-processor.zh-CN.md)
 
