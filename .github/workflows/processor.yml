@@ -47,7 +47,7 @@ jobs:
       CODEX_GATEWAY_SERVICE_MODEL: ${{ vars.CODEX_GATEWAY_SERVICE_MODEL || 'gpt-6-sol' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - run: python -m pip install -r scripts/requirements.txt
@@ -83,7 +83,7 @@ jobs:
           ref: b2414d00bc35e4b49b8b3e2631ad396b0c7d551d
           path: reviewed-native-caller
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - name: Freeze generated-only intent before any task request
