@@ -2,19 +2,9 @@
 
 PhotoStory connects to a Microsoft account, holds OAuth tokens, and can publish to Instagram. Please report problems that could expose someone else's data, tokens, or publishing rights.
 
-## Reporting
+## Reporting a vulnerability
 
-Open an issue only for problems that are safe to describe in public. For anything involving live tokens, account access, or a way to read another deployment's data, say so **without** the exploit details and ask for a private channel — the maintainer will follow up.
-
-Do not paste any of the following into an issue, pull request, comment, or screenshot:
-
-- Microsoft or GitHub access tokens, refresh tokens, cookies, or session values
-- `TOKEN_ENCRYPTION_KEY`, `BATCH_TOKEN`, or any Worker secret
-- Real photo URLs, OneDrive share links, or EXIF data
-- Your Cloudflare account ID, D1 database ID, or R2 bucket name
-- Contents of `wrangler.local.jsonc`
-
-Redact logs before posting. A stack trace is usually enough.
+Report security vulnerabilities through [GitHub private vulnerability reporting](https://github.com/Pigbibi/PhotoStory/security/advisories/new). Do not post exploit details, credentials, private sessions or personal data in public issues or PRs. Include the affected version, impact and minimal redacted reproduction. The maintainer handles reports on a best-effort basis; no bounty or response-time guarantee is implied.
 
 ## What to include
 

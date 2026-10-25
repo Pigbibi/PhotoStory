@@ -1,0 +1,19 @@
+name: Problem report
+description: Report a reproducible problem, with private data removed
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, sessions, private account data or personal information. Report security vulnerabilities through SECURITY.md.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Problem, version and environment
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps, expected result and actual result
+    validations:
+      required: true
