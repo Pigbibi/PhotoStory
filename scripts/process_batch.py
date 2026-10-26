@@ -986,9 +986,66 @@ def run(*, native_context=None):
         if inventory: inventory.close()
 
 
-if __name__ == "__main__":
+def _preflight_native_review_context(context):
+    """Reject an unbound explicit entry before processor configuration or I/O."""
+    import stat
+    if (not isinstance(context, dict) or context.get('synthetic_only') is not True
+            or context.get('project') != 'Pigbibi/PhotoStory'
+            or type(context.get('cancel', False)) is not bool
+            or context.get('cancel') is True):
+        raise Stop('native_review_setup_required')
+    transport = context.get('transport')
+    if (getattr(transport, 'synthetic_only', False) is not True
+            or any(not callable(getattr(transport, name, None)) for name in
+                   ('delegate_primary', 'submit_auxiliary', 'get_task'))):
+        raise Stop('native_review_setup_required')
+    routes = context.get('roles')
+    if not isinstance(routes, dict) or set(routes) != {'primary', 'auxiliary'}:
+        raise Stop('native_review_setup_required')
+    for role, provider in (('primary', 'dot'), ('auxiliary', 'grok')):
+        route = routes[role]
+        if (not isinstance(route, dict) or set(route) != {'provider', 'worker', 'model', 'profile'}
+                or route['provider'] != provider
+                or any(not isinstance(value, str) or not value or len(value) > 200
+                       for value in route.values())):
+            raise Stop('native_review_setup_required')
+    if routes['primary']['worker'] == routes['auxiliary']['worker']:
+        raise Stop('native_review_setup_required')
+    operation = context.get('operation_id')
+    if not isinstance(operation, str) or not 1 <= len(operation) <= 200:
+        raise Stop('native_review_setup_required')
+    for name in ('fixture_root', 'state_root'):
+        path = context.get(name)
+        if not isinstance(path, Path) or path.resolve() != path or not path.is_dir():
+            raise Stop('native_review_setup_required')
+    if stat.S_IMODE(context['state_root'].stat().st_mode) != 0o700:
+        raise Stop('native_review_setup_required')
+    clock, deadline = context.get('now'), context.get('deadline')
+    if not callable(clock) or type(deadline) not in (int, float) or not math.isfinite(deadline):
+        raise Stop('native_review_setup_required')
+    now = clock()
+    if type(now) not in (int, float) or not math.isfinite(now) or now >= deadline:
+        raise Stop('native_review_setup_required')
+
+
+def main(argv=None, *, native_context=None):
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--review-backend', choices=('gateway', 'native'), default='gateway')
+    args = parser.parse_args(argv)
     try:
-        run()
+        if args.review_backend == 'native':
+            _preflight_native_review_context(native_context)
+            run(native_context=native_context)
+        else:
+            if native_context is not None:
+                raise Stop('explicit_native_selection_required')
+            run()
+        return 0
     except Exception:
         print("PhotoStory could not complete this run. No automatic retry; check setup and job status.")
-        raise SystemExit(1) from None
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

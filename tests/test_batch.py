@@ -77,6 +77,125 @@ def _native_personal_context(root):
     }, transport
 
 
+class EntrySelectionTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.context, self.transport = _native_personal_context(Path(self.temp.name))
+
+    def invoke(self, args, context=None, error=None):
+        from contextlib import redirect_stdout
+        import io
+        from unittest.mock import patch
+        reads = []
+
+        class EmptyEnvironment(dict):
+            def get(self, key, default=None):
+                if key.startswith(('PHOTOSTORY_', 'CODEX_GATEWAY_')):
+                    reads.append(key)
+                    raise AssertionError('processor configuration read before entry validation')
+                return super().get(key, default)
+
+            def __getitem__(self, key):
+                if key.startswith(('PHOTOSTORY_', 'CODEX_GATEWAY_')):
+                    reads.append(key)
+                    raise AssertionError('processor configuration read before entry validation')
+                return super().__getitem__(key)
+
+        output = io.StringIO()
+        with patch.object(b, 'run', side_effect=error) as run, \
+             patch.object(b.os, 'environ', EmptyEnvironment()), \
+             patch.object(b, 'request', side_effect=AssertionError('business request')), \
+             patch.object(b, 'gateway', side_effect=AssertionError('gateway fallback')), \
+             redirect_stdout(output):
+            result = b.main(args, native_context=context)
+        self.assertEqual(reads, [])
+        self.assertEqual(self.transport.calls, [])
+        return result, run, output.getvalue()
+
+    def test_gateway_default_and_explicit_preserve_original_entry(self):
+        for args in ([], ['--review-backend', 'gateway']):
+            with self.subTest(args=args):
+                result, run, _ = self.invoke(args)
+                self.assertEqual(result, 0)
+                run.assert_called_once_with()
+
+    def test_explicit_native_passes_exact_injected_context(self):
+        result, run, _ = self.invoke(['--review-backend', 'native'], self.context)
+        self.assertEqual(result, 0)
+        run.assert_called_once_with(native_context=self.context)
+        self.assertIs(run.call_args.kwargs['native_context'], self.context)
+
+    def test_missing_native_context_stops_before_processor_configuration(self):
+        result, run, output = self.invoke(['--review-backend', 'native'])
+        self.assertEqual(result, 1)
+        run.assert_not_called()
+        self.assertIn('could not complete', output)
+
+    def test_invalid_binding_stops_before_processor_configuration(self):
+        from types import SimpleNamespace
+        cases = {
+            'wrong_project': {'project': 'QuantStrategyLab/QuantAIService'},
+            'not_synthetic': {'synthetic_only': False},
+            'missing_transport_method': {'transport': SimpleNamespace(
+                synthetic_only=True, delegate_primary=lambda: None,
+                get_task=lambda: None, submit_auxiliary=None)},
+            'wrong_provider': {'roles': {**self.context['roles'], 'auxiliary': {
+                **self.context['roles']['auxiliary'], 'provider': 'dot'}}},
+            'same_worker': {'roles': {**self.context['roles'], 'auxiliary': {
+                **self.context['roles']['auxiliary'], 'worker': 'photo-primary'}}},
+        }
+        for case, change in cases.items():
+            with self.subTest(case=case):
+                result, run, _ = self.invoke(['--review-backend', 'native'], {**self.context, **change})
+                self.assertEqual(result, 1)
+                run.assert_not_called()
+
+    def test_cancelled_expired_or_invalid_clock_stops_before_processor(self):
+        cases = {'cancelled': {'cancel': True},
+                 'expired': {'now': lambda: self.context['deadline']},
+                 'nonfinite_clock': {'now': lambda: float('nan')}}
+        for case, change in cases.items():
+            with self.subTest(case=case):
+                result, run, _ = self.invoke(['--review-backend', 'native'], {**self.context, **change})
+                self.assertEqual(result, 1)
+                run.assert_not_called()
+
+    def test_unusable_fixture_or_nonprivate_state_stops_before_processor(self):
+        with self.subTest(case='missing_fixture_root'):
+            result, run, _ = self.invoke(['--review-backend', 'native'], {
+                **self.context, 'fixture_root': Path(self.temp.name) / 'missing'})
+            self.assertEqual(result, 1)
+            run.assert_not_called()
+        self.context['state_root'].chmod(0o755)
+        with self.subTest(case='nonprivate_state'):
+            result, run, _ = self.invoke(['--review-backend', 'native'], self.context)
+            self.assertEqual(result, 1)
+            run.assert_not_called()
+
+    def test_context_does_not_implicitly_select_native_or_gateway_fallback(self):
+        result, run, _ = self.invoke([], self.context)
+        self.assertEqual(result, 1)
+        run.assert_not_called()
+
+    def test_processor_errors_keep_the_existing_sanitized_failure(self):
+        result, run, output = self.invoke([], error=RuntimeError('PRIVATE_DIAGNOSTIC_DO_NOT_EMIT'))
+        self.assertEqual(result, 1)
+        run.assert_called_once_with()
+        self.assertNotIn('PRIVATE_DIAGNOSTIC_DO_NOT_EMIT', output)
+
+    def test_unknown_backend_is_rejected_before_processor(self):
+        from contextlib import redirect_stderr
+        import io
+        from unittest.mock import patch
+        with patch.object(b, 'run') as run, redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                b.main(['--review-backend', 'api'])
+        self.assertEqual(error.exception.code, 2)
+        run.assert_not_called()
+
+
 class NativeReviewTests(unittest.TestCase):
 
     def test_delegated_callbacks_recheck_expiry_and_cancel_before_helper_dispatch(self):
