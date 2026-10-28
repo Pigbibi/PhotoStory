@@ -1,5 +1,7 @@
 # 所有权与选片偏好
 
+[English](ownership-and-preferences.md) | 简体中文
+
 PhotoStory 的设计单位是“一个部署实例对应一个私人编辑工作流”。它不是托管式多人
 服务，也没有跨实例共享的账号、偏好或用户档案。
 

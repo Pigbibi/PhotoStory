@@ -1,5 +1,7 @@
 # 发布历史与防重复
 
+[English](publication-history.md) | 简体中文
+
 登录后打开「已发布记录」。页面的两组数字含义不同：
 
 - PhotoStory 历史：成功发布的帖子数、照片使用次数、不同 OneDrive 来源数量。
