@@ -1,5 +1,7 @@
 # Publication history and repeat protection
 
+English | [简体中文](publication-history.zh-CN.md)
+
 Open **Publication history** after signing in. Two counters have different meanings:
 
 - **PhotoStory history** counts successful publication records, photo placements,
