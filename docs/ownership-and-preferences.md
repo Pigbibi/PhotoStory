@@ -1,5 +1,7 @@
 # Ownership and curation preferences
 
+English | [简体中文](ownership-and-preferences.zh-CN.md)
+
 PhotoStory is designed for one private editorial workflow per deployment. It is
 not a hosted shared service and has no cross-instance account, profile, or
 preference store.

@@ -1,0 +1,19 @@
+{
+  "repo": "Pigbibi/PhotoStory",
+  "branch": "main",
+  "files": [
+    "package-lock.json",
+    "package.json",
+    "scripts/requirements.txt"
+  ],
+  "directories": [
+    "/",
+    "/.github",
+    "/scripts"
+  ],
+  "required_checks": [
+    "checks",
+    "Repository hygiene",
+    "Safe dependency update"
+  ]
+}

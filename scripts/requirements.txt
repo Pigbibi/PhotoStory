@@ -1,2 +1,2 @@
-Pillow>=11.3.0,<13
+Pillow>=13.0.0,<14
 jsonschema>=4.26,<5

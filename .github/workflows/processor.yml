@@ -6,6 +6,23 @@ on:
         description: Fill private travel hints for already-approved drafts without scanning
         type: boolean
         default: false
+      cloud_native_qualification:
+        description: Qualify one generated image against the current native binding
+        type: boolean
+        default: false
+      native_qualification:
+        description: Run only the generated-image native qualification
+        type: boolean
+        default: false
+      native_qualification_action:
+        description: Submit once, or read/cancel the original known task
+        type: choice
+        options: [readback, submit, cancel]
+        default: readback
+      native_qualification_task_id:
+        description: Original known qualification task ID for readback or cancel
+        type: string
+        default: ''
   schedule:
     - cron: '11,41 * * * *'
 permissions:
@@ -16,17 +33,17 @@ concurrency:
   cancel-in-progress: false
 jobs:
   process:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PHOTOSTORY_PROCESSOR_ENABLED == 'true')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PHOTOSTORY_PROCESSOR_ENABLED == 'true') && inputs.native_qualification != true && inputs.cloud_native_qualification != true
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
       PHOTOSTORY_URL: ${{ vars.PHOTOSTORY_URL }}
       PHOTOSTORY_BATCH_TOKEN: ${{ secrets.PHOTOSTORY_BATCH_TOKEN }}
       PHOTOSTORY_STATE_BACKEND: cloudflare
-      PHOTOSTORY_NATIVE_BINDING: ${{ vars.PHOTOSTORY_NATIVE_BINDING }}
+      PHOTOSTORY_NATIVE_BINDING: ${{ secrets.PHOTOSTORY_NATIVE_BINDING }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - run: python -m pip install -r scripts/requirements.txt
@@ -41,3 +58,69 @@ jobs:
         run: python scripts/process_batch.py
         env:
           PHOTOSTORY_STATE_DIR: ${{ runner.temp }}/photostory-state
+  cloud_native_qualification:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.cloud_native_qualification == true && inputs.native_qualification != true && inputs.travel_backfill != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r scripts/requirements.txt
+      - name: Qualify only one generated image with the current native caller
+        run: python scripts/qualify_cloud_native.py --state "$RUNNER_TEMP/photostory-cloud-qualification"
+        env:
+          PHOTOSTORY_NATIVE_BINDING: ${{ secrets.PHOTOSTORY_NATIVE_BINDING }}
+      - name: Retain the sanitized original task receipt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cloud-native-qualification-receipt
+          path: ${{ runner.temp }}/photostory-cloud-qualification/receipt.json
+          retention-days: 7
+          if-no-files-found: error
+
+
+  native_qualification:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.native_qualification == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NATIVE_QUALIFICATION_ACTION: ${{ inputs.native_qualification_action }}
+      NATIVE_QUALIFICATION_TASK_ID: ${{ inputs.native_qualification_task_id }}
+      NATIVE_QUALIFICATION_LEGACY_FLAGS: ${{ inputs.gateway_smoke || inputs.travel_backfill }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Read the exact reviewed native transport
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: b2414d00bc35e4b49b8b3e2631ad396b0c7d551d
+          path: reviewed-native-caller
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Freeze generated-only intent before any task request
+        run: python scripts/smoke_gateway.py prepare --state "$RUNNER_TEMP/photostory-native-qualification"
+      - name: Retain the original intent before submission
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-qualification-intent-${{ github.run_id }}
+          path: ${{ runner.temp }}/photostory-native-qualification/receipt.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Execute only the explicit qualification action
+        run: python scripts/smoke_gateway.py run --state "$RUNNER_TEMP/photostory-native-qualification" --caller-root "$GITHUB_WORKSPACE/reviewed-native-caller/scripts"
+      - name: Retain the known identity or unknown outcome
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-qualification-receipt-${{ github.run_id }}
+          path: ${{ runner.temp }}/photostory-native-qualification/receipt.json
+          retention-days: 7
+          if-no-files-found: ignore

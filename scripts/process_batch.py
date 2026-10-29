@@ -862,7 +862,7 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
 
 
 def workflow_binding(fixture_root, state_root, *, now=None):
-    """Read only an explicit ordinary workflow variable; never discover credentials.
+    """Read only an explicit private workflow binding; never discover credentials.
 
     Adoption age starts at each original task.created, not batch startup. The
     finite existing call graph bounds the parent; its ledger restores the same
@@ -882,15 +882,17 @@ def workflow_binding(fixture_root, state_root, *, now=None):
                 or not 1 <= config['adoption_age_seconds'] <= 3600
                 or not isinstance(config['routes'],dict) or set(config['routes']) != STAGES):
             raise ValueError()
-        models = set()
+        models, workers = set(), set()
         for stage, route in config['routes'].items():
             if (not isinstance(route,dict) or set(route) != {'mode','provider','model','profile','worker'}
                     or route['mode'] != 'agent' or route['provider'] != 'dot'
-                    or route['profile'] != stage or route['worker'] != 'dot-personal'
+                    or route['profile'] != stage or not isinstance(route['worker'],str)
+                    or not 1 <= len(route['worker']) <= 200
                     or not isinstance(route['model'],str) or not 1 <= len(route['model']) <= 200):
                 raise ValueError()
             models.add(route['model'])
-        if len(models) != 1:
+            workers.add(route['worker'])
+        if len(models) != 1 or len(workers) != 1:
             raise ValueError()
         clock = now or time.time
         return dict(config) | {

@@ -1,5 +1,7 @@
 # Notifications and operator response
 
+English | [简体中文](notifications.zh-CN.md)
+
 PhotoStory currently provides an authenticated, in-site notification for the
 owner. The home page checks the saved publication issue when it loads and
 refreshes it while the page is open. The project does not send email, browser

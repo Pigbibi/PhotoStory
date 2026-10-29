@@ -1,5 +1,7 @@
 # Private R2 image storage
 
+English | [简体中文](storage.zh-CN.md)
+
 PhotoStory can store previews and final publishing JPEGs in a private Cloudflare
 R2 Standard bucket. Original photos remain in OneDrive. D1 retains draft text,
 settings, approval versions, source mappings, publication history and object
