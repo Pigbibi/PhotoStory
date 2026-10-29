@@ -91,7 +91,7 @@ jobs:
     env:
       NATIVE_QUALIFICATION_ACTION: ${{ inputs.native_qualification_action }}
       NATIVE_QUALIFICATION_TASK_ID: ${{ inputs.native_qualification_task_id }}
-      NATIVE_QUALIFICATION_LEGACY_FLAGS: ${{ inputs.gateway_smoke || inputs.travel_backfill }}
+      NATIVE_QUALIFICATION_LEGACY_FLAGS: ${{ inputs.cloud_native_qualification || inputs.travel_backfill }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
