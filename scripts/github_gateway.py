@@ -1,29 +1,22 @@
-#!/usr/bin/env python3
-"""PhotoStory's bounded client for the existing CodexGateway OIDC service.
+"""PhotoStory's own HTTPS/OIDC transport for the existing native task protocol.
 
-The public workflow cannot load an action from the private AIGateway repository.
-Codex authentication and model execution remain on the gateway service host.
+No SDK distribution, old CLI gateway, polling, write retry, or worker authority.
+The caller's persistent ledger owns operation identity and result validation.
 """
-import argparse
-import base64
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
-import urllib.parse
 import urllib.error
+import urllib.parse
 import urllib.request
 
-
-MAX_REQUEST_BYTES = 15_000_000  # Requires a 16 MB service-side cap for photo batches.
-USER_AGENT = "Pigbibi-CodexGateway/1.0"
-FAILURE_CATEGORIES = {
-    "unknown", "timeout", "transport_error", "setup_required", "invalid_json",
-    "gateway_failed", "output_missing", "invalid_input", "input_too_large",
-    "invalid_gateway_url", "invalid_oidc_url", "oidc_unavailable", "too_many_images",
-    "invalid_input_path", "invalid_image", "gateway_request_too_large", "gateway_result_invalid",
-}
+MAX_REQUEST_BYTES = MAX_RESPONSE_BYTES = 2_000_000
+USER_AGENT = "Pigbibi-PhotoStory-Native/1.0"
+FAILURE_CATEGORIES = {"unknown", "timeout", "transport_error", "setup_required", "invalid_json",
+    "gateway_failed", "output_missing", "invalid_input", "input_too_large", "invalid_gateway_url",
+    "invalid_oidc_url", "oidc_unavailable", "too_many_images", "invalid_input_path", "invalid_image",
+    "gateway_request_too_large", "gateway_result_invalid"}
 REQUEST_ID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 
@@ -66,105 +59,132 @@ def safe_failure_diagnostic(error):
     return validated_failure_diagnostic(data)
 
 
-def regular_bytes(path, limit):
-    import stat
-
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-    with os.fdopen(fd, "rb") as stream:
-        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-            raise ValueError("invalid_input")
-        data = stream.read(limit + 1)
-    if len(data) > limit:
-        raise ValueError("input_too_large")
-    return data
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        raise ValueError('redirect_blocked')
 
 
-def endpoint(base):
-    parsed = urllib.parse.urlparse(base)
-    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError("invalid_gateway_url")
-    return base.rstrip("/") + "/v1/codex"
+def _text(value, limit):
+    return (isinstance(value, str) and 0 < len(value) <= limit
+            and not any(ord(c) < 32 or ord(c) == 127 for c in value))
 
 
-def oidc_token(audience):
-    url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme != "https" or not parsed.netloc:
-        raise ValueError("invalid_oidc_url")
-    separator = "&" if parsed.query else "?"
-    request = urllib.request.Request(
-        url + separator + urllib.parse.urlencode({"audience": audience}),
-        headers={"Authorization": "bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"],
-                 "User-Agent": USER_AGENT},
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        token = json.load(response).get("value")
-    if not isinstance(token, str) or not token:
-        raise ValueError("oidc_unavailable")
+def _https(value, *, base=False):
+    if not _text(value, 2000) or any(c.isspace() for c in value):
+        raise ValueError('invalid_gateway_url')
+    parsed = urllib.parse.urlsplit(value)
+    parsed.port
+    if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
+            or parsed.fragment or (base and (parsed.query or parsed.path not in {'', '/'}))):
+        raise ValueError('invalid_gateway_url')
+    return parsed
+
+
+def _strict_json(raw):
+    def invalid(*_):
+        raise ValueError('invalid_json')
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result: invalid()
+            result[key] = value
+        return result
+    try:
+        value = json.loads(raw, parse_constant=invalid, object_pairs_hook=pairs)
+        if not isinstance(value, dict): invalid()
+        return value
+    except (ValueError, UnicodeError, RecursionError):
+        raise ValueError('invalid_json') from None
+
+
+def _read_json(opener, request, limit):
+    try:
+        with opener.open(request, timeout=45) as response:
+            if type(response.status) is not int or not 200 <= response.status < 300:
+                raise ValueError('native_http_rejected')
+            length = response.headers.get('Content-Length')
+            if length is not None and (not length.isdecimal() or int(length) > limit):
+                raise ValueError('response_too_large')
+            raw = response.read(limit + 1)
+        if len(raw) > limit:
+            raise ValueError('response_too_large')
+    except urllib.error.HTTPError:
+        raise ValueError('native_http_rejected') from None
+    except TimeoutError:
+        raise TimeoutError('native_timeout') from None
+    except (OSError, urllib.error.URLError):
+        raise ValueError('native_transport_error') from None
+    return _strict_json(raw)
+
+
+def oidc_token(audience, *, opener=None):
+    _https(audience)
+    url = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_URL', '')
+    secret = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_TOKEN', '')
+    parsed = _https(url)
+    if (not parsed.hostname.endswith('.actions.githubusercontent.com')
+            or parsed.port not in (None, 443) or not _text(secret, 65536)):
+        raise ValueError('invalid_oidc_url')
+    query = [(k, v) for k, v in urllib.parse.parse_qsl(parsed.query) if k != 'audience']
+    query.append(('audience', audience))
+    target = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path,
+                                     urllib.parse.urlencode(query), ''))
+    request = urllib.request.Request(target, headers={
+        'Authorization': 'Bearer ' + secret, 'User-Agent': USER_AGENT})
+    result = _read_json(opener or urllib.request.build_opener(NoRedirect()), request, 65536)
+    token = result.get('value')
+    if not _text(token, 65536):
+        raise ValueError('oidc_unavailable')
     return token
 
 
-def attachment(path, limit):
-    data = regular_bytes(path, limit)
-    return {"name": Path(path).name, "suffix": Path(path).suffix,
-            "content_base64": base64.b64encode(data).decode("ascii")}
+class NativeTaskClient:
+    """Three caller methods only. Construction does not obtain a token or do I/O."""
+    def __init__(self, resource, audience, *, opener=None, token=None):
+        _https(resource, base=True)
+        parsed_audience = _https(audience)
+        if parsed_audience.query:
+            raise ValueError('invalid_gateway_url')
+        self.resource, self.audience = resource.rstrip('/'), audience
+        self.opener = opener or urllib.request.build_opener(NoRedirect())
+        self.token = token if token is not None else lambda: oidc_token(audience, opener=self.opener)
+
+    def _request(self, method, path, body=None, idempotency_key=None):
+        if idempotency_key is not None and not _text(idempotency_key, 200):
+            raise ValueError('invalid_input')
+        raw = None if body is None else json.dumps(body, ensure_ascii=False, allow_nan=False,
+                                                  separators=(',', ':')).encode('utf-8')
+        if raw is not None and len(raw) > MAX_REQUEST_BYTES:
+            raise ValueError('input_too_large')
+        token = self.token()
+        if not _text(token, 65536):
+            raise ValueError('oidc_unavailable')
+        headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
+                   'User-Agent': USER_AGENT}
+        if idempotency_key is not None: headers['Idempotency-Key'] = idempotency_key
+        request = urllib.request.Request(self.resource + path, data=raw, method=method, headers=headers)
+        return _read_json(self.opener, request, MAX_RESPONSE_BYTES)
+
+    def submit(self, request, idempotency_key):
+        if (not isinstance(request, dict) or request.get('mode') != 'agent'
+                or type(request.get('timeout_seconds')) is not int or request['timeout_seconds'] != 60
+                or not _text(idempotency_key, 200)):
+            raise ValueError('invalid_input')
+        return self._request('POST', '/v1/tasks', request, idempotency_key)
+
+    @staticmethod
+    def _task_path(task_id):
+        if not isinstance(task_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', task_id):
+            raise ValueError('invalid_input')
+        return '/v1/tasks/' + task_id
+
+    def get(self, task_id):
+        return self._request('GET', self._task_path(task_id))
+
+    def cancel(self, task_id):
+        return self._request('POST', self._task_path(task_id) + '/cancel', {})
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    for name in ("prompt-file", "output-schema", "out", "cwd"):
-        parser.add_argument("--" + name, required=True)
-    parser.add_argument("--image", action="append", default=[])
-    parser.add_argument("--providers", choices=["codex"], required=True)
-    parser.add_argument("--sandbox", choices=["read-only"], required=True)
-    parser.add_argument("--ask-for-approval", choices=["never"], required=True)
-    parser.add_argument("--complexity", choices=["medium"], required=True)
-    parser.add_argument("--timeout-seconds", type=int, choices=[600], required=True)
-    args = parser.parse_args()
-    if len(args.image) > 24:
-        raise ValueError("too_many_images")
-    work = Path(args.cwd).resolve()
-    inputs = [args.prompt_file, args.output_schema, *args.image]
-    if any(Path(path).resolve().parent != work for path in inputs):
-        raise ValueError("invalid_input_path")
-    images = [attachment(path, 1_800_000) for path in args.image]
-    if any(image["suffix"].lower() != ".jpg" for image in images):
-        raise ValueError("invalid_image")
-    payload = {
-        "prompt": regular_bytes(args.prompt_file, 128_000).decode("utf-8"),
-        "output_schema": attachment(args.output_schema, 64_000),
-        "images": images,
-        "model": os.environ.get("CODEX_GATEWAY_SERVICE_MODEL", "gpt-6-sol"),
-        "timeout_seconds": 600,
-        "sandbox": "read-only",
-        "ask_for_approval": "never",
-        "provider_chain": "codex",
-        "complexity": "medium",
-        "search": False,
-    }
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    if len(body) > MAX_REQUEST_BYTES:
-        raise ValueError("gateway_request_too_large")
-    token = oidc_token(os.environ.get("CODEX_GATEWAY_SERVICE_AUDIENCE", "codex-gateway"))
-    request = urllib.request.Request(
-        endpoint(os.environ["CODEX_GATEWAY_SERVICE_URL"]), data=body,
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json",
-                 "User-Agent": USER_AGENT},
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=660) as response:
-        result = json.load(response)
-    output = result.get("output") if result.get("status") == "ok" else None
-    if not isinstance(output, str) or len(output.encode("utf-8")) > 100_000:
-        raise ValueError("gateway_result_invalid")
-    json.loads(output)  # The caller validates the task-specific schema.
-    Path(args.out).write_text(output)
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as error:
-        print("Gateway diagnostic:", json.dumps(safe_failure_diagnostic(error), sort_keys=True))
-        print("PhotoStory CodexGateway service call failed.")
-        raise SystemExit(1) from None
+if __name__ == '__main__':
+    print('Legacy gateway command retired; use the configured PhotoStory native caller.')
+    raise SystemExit(1)

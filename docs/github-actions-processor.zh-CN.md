@@ -58,3 +58,5 @@ CodexGateway 服务及登录继续留在 VPS，仍为其他仓库服务；PhotoS
 在七天后按限额清理。单份快照限制为 24 MiB；超限时停止并评估库存，不能
 静默丢弃旧记录。任何 R2/网关/认证故障均保持失败状态，不能通过重置
 库存或重复运行不明结果来“修复”。
+
+原生 AI 调用通过仓库 Secret `PHOTOSTORY_NATIVE_BINDING` 显式配置。各阶段使用同一个 Dot worker 身份；服务端仍按仓库 OIDC 限定项目。切换时可手工选择 `cloud_native_qualification`，它只向当前绑定提交一张生成色块图，通过与业务相同的提交、持久化、读取和结果采纳校验后写入脱敏回执，不访问 OneDrive、草稿或发布。原 `native_qualification` 保留原任务地址和幂等键，仅用于读取原验收结果。

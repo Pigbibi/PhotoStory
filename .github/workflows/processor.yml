@@ -2,12 +2,12 @@ name: Process PhotoStory
 on:
   workflow_dispatch:
     inputs:
-      gateway_smoke:
-        description: Verify CodexGateway with a synthetic image before processing
-        type: boolean
-        default: false
       travel_backfill:
         description: Fill private travel hints for already-approved drafts without scanning
+        type: boolean
+        default: false
+      cloud_native_qualification:
+        description: Qualify one generated image against the current native binding
         type: boolean
         default: false
       native_qualification:
@@ -33,18 +33,14 @@ concurrency:
   cancel-in-progress: false
 jobs:
   process:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PHOTOSTORY_PROCESSOR_ENABLED == 'true') && inputs.native_qualification != true
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PHOTOSTORY_PROCESSOR_ENABLED == 'true') && inputs.native_qualification != true && inputs.cloud_native_qualification != true
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
       PHOTOSTORY_URL: ${{ vars.PHOTOSTORY_URL }}
       PHOTOSTORY_BATCH_TOKEN: ${{ secrets.PHOTOSTORY_BATCH_TOKEN }}
       PHOTOSTORY_STATE_BACKEND: cloudflare
-      CODEX_GATEWAY_COMMAND: ${{ github.workspace }}/scripts/github_gateway.py
-      CODEX_GATEWAY_BACKEND: service
-      CODEX_GATEWAY_SERVICE_URL: ${{ vars.CODEX_GATEWAY_SERVICE_URL }}
-      CODEX_GATEWAY_SERVICE_AUDIENCE: ${{ vars.CODEX_GATEWAY_SERVICE_AUDIENCE || 'codex-gateway' }}
-      CODEX_GATEWAY_SERVICE_MODEL: ${{ vars.CODEX_GATEWAY_SERVICE_MODEL || 'gpt-6-sol' }}
+      PHOTOSTORY_NATIVE_BINDING: ${{ secrets.PHOTOSTORY_NATIVE_BINDING }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -54,9 +50,6 @@ jobs:
       - name: Verify private Cloudflare inventory
         if: inputs.travel_backfill != true
         run: python scripts/cloud_inventory.py status
-      - name: Verify CodexGateway with synthetic image
-        if: inputs.gateway_smoke == true && inputs.travel_backfill != true
-        run: python scripts/smoke_gateway.py
       - name: Backfill approved travel hints
         if: inputs.travel_backfill == true
         run: python scripts/backfill_travel.py
@@ -65,6 +58,32 @@ jobs:
         run: python scripts/process_batch.py
         env:
           PHOTOSTORY_STATE_DIR: ${{ runner.temp }}/photostory-state
+  cloud_native_qualification:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.cloud_native_qualification == true && inputs.native_qualification != true && inputs.travel_backfill != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r scripts/requirements.txt
+      - name: Qualify only one generated image with the current native caller
+        run: python scripts/qualify_cloud_native.py --state "$RUNNER_TEMP/photostory-cloud-qualification"
+        env:
+          PHOTOSTORY_NATIVE_BINDING: ${{ secrets.PHOTOSTORY_NATIVE_BINDING }}
+      - name: Retain the sanitized original task receipt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cloud-native-qualification-receipt
+          path: ${{ runner.temp }}/photostory-cloud-qualification/receipt.json
+          retention-days: 7
+          if-no-files-found: error
+
+
   native_qualification:
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.native_qualification == true
     runs-on: ubuntu-latest
@@ -72,7 +91,7 @@ jobs:
     env:
       NATIVE_QUALIFICATION_ACTION: ${{ inputs.native_qualification_action }}
       NATIVE_QUALIFICATION_TASK_ID: ${{ inputs.native_qualification_task_id }}
-      NATIVE_QUALIFICATION_LEGACY_FLAGS: ${{ inputs.gateway_smoke || inputs.travel_backfill }}
+      NATIVE_QUALIFICATION_LEGACY_FLAGS: ${{ inputs.cloud_native_qualification || inputs.travel_backfill }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:

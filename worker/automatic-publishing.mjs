@@ -1,4 +1,4 @@
-import {get} from './auth.mjs';
+import {get,hash} from './auth.mjs';
 import {original,reviewedDraft} from './originals.mjs';
 import {publishingAccount} from './instagram.mjs';
 import * as publishing from './publishing.mjs';
@@ -36,6 +36,30 @@ export function eligible(d,s,now=Date.now()){
 }
 // Every machine operation is checked against current owner settings. The batch
 // credential is trusted to submit AI evidence, but cannot enable this mode.
+async function nativeCheckpoint(checkpoint,d,p){
+ if(!checkpoint||Object.keys(checkpoint).sort().join()!=='operation,value'||JSON.stringify(checkpoint).length>16384)fail();
+ const v=checkpoint.value,x=v?.binding;
+ const operation='photostory:'+await hash(JSON.stringify(['Pigbibi/PhotoStory','publication',{draftId:d.id,publicationId:p.id,version:d.version}]));
+ const id=await hash(JSON.stringify([operation,'publication',d.photos.map(x=>x.id).sort()]));
+ if(checkpoint.operation!==id||x?.project!=='Pigbibi/PhotoStory'||x.operation_id!==operation||
+  !/^[0-9a-f]{64}$/.test(x.request_sha256||'')||!Number.isFinite(x.deadline)||x.deadline>p.expires/1000||
+  typeof x.resource!=='string'||x.route?.mode!=='agent'||!['dot','grok'].includes(x.route.provider)||
+  ['intent','halt','cancel'].some(k=>typeof v[k]!=='boolean')||
+  !(v.task_id===null||(typeof v.task_id==='string'&&/^[A-Za-z0-9_-]{1,200}$/.test(v.task_id)))||
+  !(v.revision===null||(Number.isInteger(v.revision)&&v.revision>=1))||
+  !(v.task_deadline===null||Number.isFinite(v.task_deadline)))fail();
+ const url=new URL(x.resource);if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash)fail();
+ if(!v.halt&&!v.cancel&&!v.task_id&&x.deadline<=Date.now()/1000)fail();
+ if(v.claim!==null&&(!Array.isArray(v.claim)||v.claim.length!==3||v.claim[0]!==x.route.worker||typeof v.claim[1]!=='string'||!v.claim[1]||v.claim[2]!==v.revision))fail();
+ if(v.output_sha256!==null&&!/^[0-9a-f]{64}$/.test(v.output_sha256))fail();
+ if(v.accepted_output!==undefined){
+  const completed=v.completed_at??v.accepted_at; // Existing timely receipts remain readable.
+  if(!v.claim||!Number.isFinite(completed)||!Number.isFinite(v.accepted_at)||
+   completed<0||completed>v.accepted_at||completed>=Math.min(x.deadline,v.task_deadline)||
+   v.accepted_at>=x.deadline||v.accepted_at>Date.now()/1000)fail();
+ }
+ return checkpoint;
+}
 export async function automatic(e,b){
  const s=await get(e,'automation');
  if(s?.publishMode!=='automatic'||s.reviewMode!=='strict_auto'){
@@ -53,6 +77,15 @@ export async function automatic(e,b){
    const activeRow=await e.DB.prepare('SELECT body FROM publications WHERE draft_id=?').bind(d.id).first();
    if(!claimedEligible(d,s)||JSON.parse(activeRow.body).autoPublishSince!==s.autoPublishSince)return null;
    return {draft:d,publication:await publishing.view(e,d.id)};
+  }
+  // A known native wait/cache resumes only this existing unexpired prepared
+  // publication. Unknown intent, external begin uncertainty and owner gates hold.
+  const waitingNative=await e.DB.prepare("SELECT * FROM publications WHERE status='prepared' AND expires>? AND json_extract(body,'$.automatic')=1 AND COALESCE(json_extract(body,'$.autoBlocked'),0)=0 AND json_extract(body,'$.nativeReview.value.intent')=1 AND json_extract(body,'$.nativeReview.value.task_id') IS NOT NULL AND json_extract(body,'$.nativeReview.value.halt')=0 AND json_extract(body,'$.nativeReview.value.cancel')=0 LIMIT 1").bind(Date.now()).first();
+  if(waitingNative){
+   const d=await reviewedDraft(e,waitingNative.draft_id,waitingNative.version),body=JSON.parse(waitingNative.body);
+   if(!claimedEligible(d,s)||body.autoPublishSince!==s.autoPublishSince||body.userId!==s.autoPublishUserId)return null;
+   const checkpoint=await nativeCheckpoint(body.nativeReview,d,waitingNative);
+   return {draft:d,publication:await publishing.view(e,d.id),nativeCheckpoint:checkpoint};
   }
   // Only an explicit owner recovery can reclaim a prepared automatic post.
   // Consume that permission once; a crashed preparation stays blocked.
@@ -86,6 +119,25 @@ export async function automatic(e,b){
  if(!claimedEligible(d,s)||b.version!==d.version)fail();
  if(b.action==='advance')return publishing.advance(e,d.id,p.id);
  if(p.status!=='prepared'||p.expires<=Date.now()||body.autoBlocked)fail();
+ if(b.action==='native_checkpoint'){
+  const next=await nativeCheckpoint(b.checkpoint,d,p),old=body.nativeReview;
+  if(old){
+   // cancel=true/halt=false reserves the one sender before its RPC. An
+   // identical stale copy must stop, including after a lost acknowledgement.
+   // The original sender may still persist halt=true after its attempt.
+   if(old.value.cancel&&next.value.cancel&&!next.value.halt)fail();
+   if(old.operation!==next.operation||JSON.stringify(old.value.binding)!==JSON.stringify(next.value.binding))fail();
+   for(const key of ['task_id','revision','task_deadline','claim','output_sha256']){
+    if(old.value[key]!==null&&JSON.stringify(old.value[key])!==JSON.stringify(next.value[key]))fail();
+   }
+   if(['intent','halt','cancel'].some(k=>old.value[k]&&!next.value[k]))fail();
+   if(old.value.accepted_output!==undefined&&(JSON.stringify(old.value.accepted_output)!==JSON.stringify(next.value.accepted_output)||old.value.accepted_at!==next.value.accepted_at||old.value.completed_at!==next.value.completed_at))fail();
+  }
+  const updated={...body,nativeReview:next};
+  const result=await e.DB.prepare("UPDATE publications SET body=? WHERE id=? AND status='prepared' AND body=? AND expires>? AND EXISTS(SELECT 1 FROM drafts WHERE id=? AND version=? AND json_extract(body,'$.status')='approved') AND EXISTS(SELECT 1 FROM state WHERE key='automation' AND json_extract(value,'$.publishMode')='automatic' AND json_extract(value,'$.reviewMode')='strict_auto' AND json_extract(value,'$.autoPublishSince')=? AND json_extract(value,'$.autoPublishUserId')=?)")
+   .bind(JSON.stringify(updated),p.id,p.body,Date.now(),d.id,d.version,s.autoPublishSince,s.autoPublishUserId).run();
+  if(result.meta.changes!==1)fail();return {ok:true};
+ }
  if(b.action==='original')return original(e,d.id,b.photoId,d.version);
  if(b.action==='upload'){
   if(typeof b.data!=='string'||b.data.length>2400000)fail();

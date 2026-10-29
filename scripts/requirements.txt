@@ -1,1 +1,2 @@
 Pillow>=13.0.0,<14
+jsonschema>=4.26,<5

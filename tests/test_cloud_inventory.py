@@ -16,6 +16,10 @@ import process_batch
 
 
 class CloudInventoryTests(unittest.TestCase):
+    def setUp(self):
+        from native_test_support import install_domain_native_entry
+        install_domain_native_entry(self, process_batch)
+
     def test_requests_identify_photostory_client(self):
         response = MagicMock()
         response.__enter__.return_value = response

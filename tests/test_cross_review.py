@@ -6,30 +6,29 @@ from cross_review import cross_review
 
 class CrossReviewTests(unittest.TestCase):
 
- def test_native_personal_transport_preserves_existing_checks_and_rejects_bad_schema(self):
-  from test_batch import _native_personal_context,b
+ def test_single_native_task_preserves_checks_and_rejects_bad_schema(self):
+  from test_native_tasks import context
+  import process_batch as batch
+  from native_tasks import NativeStopped
   with tempfile.TemporaryDirectory() as tmp:
-   cwd=Path(tmp)
+   cwd=Path(tmp).resolve()
    for pid in ('wide','tall'):Image.new('RGB',(100,80),'blue').save(cwd/(pid+'.jpg'))
-   context,transport=_native_personal_context(cwd)
-   transport.output={'checks':[{
-       'draftId':d['id'],'duplicateIds':[],'captionGrounded':True,'locationGrounded':True,
+   ctx,wire=context(cwd)
+   output={'checks':[{'draftId':d['id'],'duplicateIds':[],'captionGrounded':True,'locationGrounded':True,
        'copy':{'title':'Colorful facade','caption':'A colorful facade.','hashtags':'#Architecture',
-               'reason':'Visible scenery','photos':[{'id':d['photos'][0]['id'],'alt':'Colorful facade'}]}}
-       for d in self.drafts]}
-   callback=b.native_review_gateway(context,stage='cross_review')
+               'reason':'Visible scenery','photos':[{'id':d['photos'][0]['id'],'alt':'Colorful facade'}]}} for d in self.drafts]}
+   wire.output=lambda request:output
+   callback=batch.native_review_gateway(ctx,stage='cross_review')
    clean,checks=cross_review(self.drafts,self.screens,[],cwd,callback)
    self.assertEqual(len(clean),2);self.assertEqual(len(checks),2)
-   self.assertEqual([c[0] for c in transport.calls],['primary','auxiliary'])
-   self.assertEqual(transport.calls[0][2]['materials'][0]['records'],
-                    [{'id':'wide','draftId':'horizontal'},{'id':'tall','draftId':'vertical'}])
-  with tempfile.TemporaryDirectory() as tmp:
-   cwd=Path(tmp)
-   for pid in ('wide','tall'):Image.new('RGB',(100,80),'blue').save(cwd/(pid+'.jpg'))
-   context,transport=_native_personal_context(cwd)
-   transport.output={'checks':[{'draftId':'unknown'}]}
-   self.assertEqual(cross_review(self.drafts,self.screens,[],cwd,
-                    b.native_review_gateway(context,stage='cross_review')),([],[]))
+   self.assertEqual(sum(m=='POST' and p=='/v1/tasks' for m,p,_ in wire.calls),1)
+   wire.mutate=lambda record:{**record,'output':{'checks':[{'draftId':'unknown'}]}}
+   before=len(wire.calls)
+   self.assertEqual(cross_review(self.drafts,self.screens,[],cwd,callback),(clean,checks))
+   self.assertEqual(len(wire.calls),before) # Accepted receipts are immutable.
+   ctx['operation_id']+=':separate-invalid-output-fixture'
+   with self.assertRaises(NativeStopped):cross_review(self.drafts,self.screens,[],cwd,callback)
+   self.assertEqual(sum(m=='POST' and p=='/v1/tasks' for m,p,_ in wire.calls),2)
 
  def setUp(self):
   self.drafts=[{'id':'horizontal','title':'North Gate Street Scene','caption':'Colorful facades by North Gate.',

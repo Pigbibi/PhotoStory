@@ -1,4 +1,4 @@
-"""Run one queued PhotoStory job through an existing AIGateway installation.
+"""Run one queued PhotoStory job through configured, project-scoped native tasks.
 
 Secrets enter through environment only. No photos or model output are logged.
 Publishing only runs when the owner explicitly enabled automatic mode on the
@@ -404,62 +404,12 @@ def owner_feedback_guidance(value):
 
 
 def gateway_environment():
-    # An allowlist prevents unrelated host secrets and loader hooks reaching AI.
-    # HOME/CODEX_HOME must still belong to a dedicated, restricted VPS runtime.
-    keys = ("PATH", "HOME", "LANG", "LC_ALL", "TZ", "CODEX_HOME")
-    backend = "service" if os.environ.get("CODEX_GATEWAY_BACKEND") == "service" else "local"
-    if backend == "service":
-        keys += ("CODEX_GATEWAY_SERVICE_URL", "CODEX_GATEWAY_SERVICE_AUDIENCE", "CODEX_GATEWAY_SERVICE_MODEL",
-                 "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
-    env = {key: os.environ[key] for key in keys if key in os.environ}
-    env.update(CODEX_GATEWAY_AUTO_INSTALL_CODEX="false",
-               CODEX_GATEWAY_PROVIDER_CHAIN="codex", CODEX_GATEWAY_SEARCH="false",
-               CODEX_GATEWAY_BACKEND=backend)
-    return env
+    """Retired subprocess transport never inherits processor credentials."""
+    return {}
 
 
 def gateway(prompt, records, paths, schema, cwd):
-    command = os.environ.get("CODEX_GATEWAY_COMMAND", "")
-    if not command or not Path(command).is_file():
-        raise Stop("gateway_not_configured")
-    prompt_path, schema_path, output = cwd / "prompt.txt", cwd / "schema.json", cwd / "result.json"
-    prompt_path.write_text(prompt + "\nImage order / metadata:\n" + json.dumps(records, ensure_ascii=False))
-    schema_path.write_text(json.dumps(schema))
-    output.unlink(missing_ok=True)
-    args = [command, "--prompt-file", str(prompt_path), "--output-schema", str(schema_path),
-            "--out", str(output), "--providers", "codex", "--sandbox", "read-only",
-            "--ask-for-approval", "never", "--complexity", "medium", "--timeout-seconds", "600", "--cwd", str(cwd)]
-    for path in paths:
-        args += ["--image", str(path)]
-    env = gateway_environment()
-    try:
-        result = subprocess.run(args, cwd=cwd, env=env, capture_output=True, timeout=660)
-    except subprocess.TimeoutExpired:
-        print('Gateway diagnostic: {"category": "timeout"}')
-        raise Stop('gateway_timeout') from None
-    if result.returncode or not output.is_file() or output.stat().st_size > 100_000:
-        from github_gateway import validated_failure_diagnostic
-        category = ('gateway_failed' if result.returncode else
-                    'output_missing' if not output.is_file() else 'gateway_result_invalid')
-        diagnostic = {'category': category}
-        raw = getattr(result, 'stdout', b'')
-        text = raw[:8192].decode('utf-8', errors='replace') if isinstance(raw, bytes) else str(raw)[:8192]
-        for line in text.splitlines():
-            if line.startswith('Gateway diagnostic: '):
-                try:
-                    safe = validated_failure_diagnostic(json.loads(line.partition(': ')[2]))
-                    if safe:
-                        diagnostic = safe
-                        break
-                except (ValueError, TypeError):
-                    pass
-        print('Gateway diagnostic:', json.dumps(diagnostic, sort_keys=True))
-        raise Stop("gateway_failed")
-    try:
-        return json.loads(output.read_text())
-    except (UnicodeError, json.JSONDecodeError):
-        print('Gateway diagnostic: {"category": "invalid_json"}')
-        raise Stop('gateway_failed') from None
+    raise Stop('native_binding_required')
 
 
 def accepted_screening(result, expected):
@@ -543,218 +493,108 @@ def validated_groups(result, allowed_ids, job_id, dimensions=None):
 
 
 def native_review_gateway(context, *, stage):
-    """Inject P23/P25's synthetic delegation contract; no production transport exists here."""
-    if context is None:
-        return gateway
-
-    def review(prompt, records, paths, schema, cwd):
-        try:
-            import fcntl
-            import stat
-            from PIL import Image
-
-            def packed(value):
-                return json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False,
-                                  separators=(',', ':')).encode()
-
-            def digest(value):
-                return hashlib.sha256(packed(value)).hexdigest()
-
-            def number(value):
-                return type(value) in (int, float) and math.isfinite(value)
-
-            transport, routes = context['transport'], context['roles']
-            root, state = context['fixture_root'], context['state_root']
-            deadline, now = context['deadline'], context['now']
-            if (stage not in {'cross_review', 'strict_review', 'publication'}
-                    or context.get('synthetic_only') is not True
-                    or type(context.get('cancel', False)) is not bool
-                    or getattr(transport, 'synthetic_only', False) is not True
-                    or context['project'] != 'Pigbibi/PhotoStory'
-                    or not isinstance(context['operation_id'], str) or not context['operation_id']
-                    or len(context['operation_id']) > 200
-                    or not number(deadline) or not number(now())
-                    or set(routes) != {'primary', 'auxiliary'}
-                    or not isinstance(root, Path) or root.resolve() != root
-                    or not isinstance(state, Path) or state.resolve() != state
-                    or stat.S_IMODE(state.stat().st_mode) != 0o700
-                    or not isinstance(prompt, str) or len(prompt.encode()) > 128_000
-                    or not isinstance(records, list) or not 1 <= len(records) == len(paths) <= 24):
-                raise ValueError('synthetic context required')
-            for role, provider in (('primary', 'dot'), ('auxiliary', 'grok')):
-                route = routes[role]
-                if (set(route) != {'provider', 'worker', 'model', 'profile'}
-                        or route['provider'] != provider
-                        or any(not isinstance(v, str) or not v or len(v) > 200 for v in route.values())):
-                    raise ValueError('role binding required')
-            if routes['primary']['worker'] == routes['auxiliary']['worker']:
-                raise ValueError('independent workers required')
-            images = []
-            for record, path in zip(records, paths):
-                if (not isinstance(record, dict) or not isinstance(record.get('id'), str)
-                        or not record['id'] or len(record['id']) > 200
-                        or not isinstance(path, Path) or path.is_symlink()
-                        or not path.resolve().is_relative_to(root)
-                        or path.stat().st_size > 15_000_000):
-                    raise ValueError('only bound generated images allowed')
-                data = path.read_bytes()
-                with Image.open(io.BytesIO(data)) as image:
-                    if image.format != 'JPEG' or image.width * image.height > 50_000_000:
-                        raise ValueError('synthetic JPEG required')
-                    dimensions = [image.width, image.height]
-                images.append({'id': record['id'], 'mime': 'image/jpeg', 'dimensions': dimensions,
-                               'sha256': hashlib.sha256(data).hexdigest(),
-                               'synthetic_base64': base64.b64encode(data).decode()})
-            ids = [r['id'] for r in records]
-            if len(set(ids)) != len(ids):
-                raise ValueError('distinct ordered images required')
-            operation = context['operation_id'] + ':' + stage + ':' + digest(sorted(ids))
-            requests = {role: {
-                'mode': 'agent', 'model': routes[role]['model'], 'profile': routes[role]['profile'],
-                'objective': prompt,
-                'materials': [{'role': role, 'project': context['project'], 'operation_id': operation,
-                               'records': records, 'images': images}],
-                'output_schema': schema, 'timeout_seconds': 60,
-            } for role in ('primary', 'auxiliary')}
-            binding = {'operation': operation, 'routes': routes, 'deadline': deadline,
-                       'requests': {role: digest(value) for role, value in requests.items()}}
-            path = state / (hashlib.sha256(operation.encode()).hexdigest() + '.jsonl')
-            flags = os.O_RDWR | os.O_APPEND | os.O_NOFOLLOW
-            try:
-                fd = os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
-                fresh = True
-            except FileExistsError:
-                fd = os.open(path, flags)
-                fresh = False
-            with os.fdopen(fd, 'r+', encoding='utf-8') as journal:
-                fcntl.flock(journal, fcntl.LOCK_EX)
-                info = os.fstat(journal.fileno())
-                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                        or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600):
-                    raise ValueError('private operation journal required')
-
-                def append(value):
-                    journal.seek(0, os.SEEK_END)
-                    journal.write(packed(value).decode() + '\n')
-                    journal.flush()
-                    os.fsync(journal.fileno())
-
-                if fresh:
-                    append({'kind': 'binding', 'value': binding})
-                    directory = os.open(state, os.O_RDONLY | os.O_DIRECTORY)
-                    try:
-                        os.fsync(directory)
-                    finally:
-                        os.close(directory)
-                journal.seek(0)
-                raw = journal.read(100_001)
-                if len(raw) > 100_000 or not raw.endswith('\n'):
-                    raise ValueError('incomplete operation journal')
-                entries = [json.loads(line) for line in raw.splitlines()]
-                if not entries or entries[0] != {'kind': 'binding', 'value': binding}:
-                    raise ValueError('original material changed')
-                intents, identities = set(), {}
-                for entry in entries[1:]:
-                    role = entry.get('role')
-                    if entry.get('kind') == 'halt':
-                        raise ValueError('original result unknown')
-                    if role not in routes:
-                        raise ValueError('original role unknown')
-                    if entry.get('kind') == 'intent' and set(entry) == {'kind', 'role'} and role not in intents:
-                        intents.add(role)
-                    elif (entry.get('kind') == 'verified' and set(entry) == {'kind', 'role', 'identity'}
-                          and role in intents and role not in identities):
-                        identities[role] = entry['identity']
-                    else:
-                        raise ValueError('original role changed')
-                if intents - identities.keys():
-                    raise ValueError('original submission unknown')
-
-                def require_active():
-                    instant = now()
-                    if not number(instant) or instant >= deadline or context.get('cancel') is True:
-                        raise ValueError('review expired or cancelled')
-
-                try:
-                    require_active()
-                except ValueError:
-                    append({'kind': 'halt'})
-                    raise
-
-                def verify(record, role):
-                    require_active()
-                    if (not isinstance(record, dict) or record.get('owner') != context['project']
-                            or record.get('provider') != routes[role]['provider']
-                            or record.get('worker') != routes[role]['worker']
-                            or type(record.get('revision')) is not int or record['revision'] != 1
-                            or not isinstance(record.get('id'), str) or not 1 <= len(record['id']) <= 200
-                            or not isinstance(record.get('attempt'), str) or not record['attempt']
-                            or record.get('status') != 'completed'
-                            or record.get('request_sha256') != binding['requests'][role]
-                            or not isinstance(record.get('output'), dict)):
-                        raise ValueError('native role result not verified')
-                    identity = [record['id'], record['worker'], record['attempt'], record['revision'],
-                                record['request_sha256'], digest(record['output'])]
-                    if role in identities and identities[role] != identity:
-                        raise ValueError('original attempt or output changed')
-                    if role not in identities:
-                        append({'kind': 'verified', 'role': role, 'identity': identity})
-                        identities[role] = identity
-                    return record
-
-                auxiliary_record = None
-
-                def auxiliary():
-                    nonlocal auxiliary_record
-                    require_active()
-                    if auxiliary_record is None:
-                        append({'kind': 'intent', 'role': 'auxiliary'})
-                        require_active()
-                        auxiliary_record = verify(transport.submit_auxiliary(
-                            requests['auxiliary'], operation + ':auxiliary'), 'auxiliary')
-                    return {'task_id': auxiliary_record['id'],
-                            'output_sha256': digest(auxiliary_record['output']),
-                            'output': json.loads(packed(auxiliary_record['output']))}
-
-                try:
-                    if identities:
-                        require_active()
-                        auxiliary_record = verify(transport.get_task(identities['auxiliary'][0]), 'auxiliary')
-                        require_active()
-                        primary = verify(transport.get_task(identities['primary'][0]), 'primary')
-                    else:
-                        append({'kind': 'intent', 'role': 'primary'})
-                        require_active()
-                        primary = transport.delegate_primary(requests['primary'], operation + ':primary',
-                                                             auxiliary=auxiliary)
-                        if auxiliary_record is None:
-                            raise ValueError('Dot must obtain independent Grok evidence')
-                        primary = verify(primary, 'primary')
-                    if (primary['id'] == auxiliary_record['id']
-                            or primary.get('auxiliary_task_id') != auxiliary_record['id']
-                            or primary.get('auxiliary_output_sha256') != digest(auxiliary_record['output'])
-                            or digest(primary['output']) != digest(auxiliary_record['output'])):
-                        raise ValueError('unresolved auxiliary disagreement')
-                    # The original P23/strict-v2 validators remain the adoption gate.
-                    require_active()
-                    return primary['output']
-                except Exception:
-                    append({'kind': 'halt'})
-                    raise
-        except Exception:
-            raise Stop('native_review_unavailable') from None
-
-    return review
+    from native_tasks import task_call
+    return task_call(context, stage)
 
 
-def run(*, native_context=None):
+def _native_business_context(context, kind, identity):
+    operation = hashlib.sha256(json.dumps([context['project'], kind, identity],
+                                         sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    from native_tasks import operation_context
+    return operation_context(context, 'photostory:'+operation)
+
+
+def _pending_batch_state(inventory, source, context):
+    """Bind a known wait to the existing private inventory and native ledger."""
+    import sqlite3
+    from native_tasks import _private_database, digest
+    inflight = inventory.get('inflight')
+    if not isinstance(inflight, dict) or not inflight.get('id'):
+        raise Stop('native_checkpoint_conflict')
+    path = _private_database(context)
+    with sqlite3.connect(path.as_uri()+'?mode=ro', uri=True) as db:
+        rows = db.execute("SELECT operation,value FROM native_operations WHERE json_extract(value,'$.binding.operation_id')=? ORDER BY operation LIMIT 1001",
+                          (context['operation_id'],)).fetchall()
+    if not 0 < len(rows) <= 1000:
+        raise Stop('native_checkpoint_conflict')
+    waiting = False
+    for _, raw in rows:
+        value = json.loads(raw); binding = value['binding']
+        if (binding['project'] != context['project'] or binding['resource'] != context['client'].resource
+                or binding['deadline'] != context['deadline']
+                or binding['route'] not in context['routes'].values()
+                or any(binding.get(k)!=context.get(k) for k in ('adoption_age_seconds','task_limit'))
+                or value['halt'] or value['cancel'] or value['intent'] is not True
+                or not isinstance(value['task_id'],str) or not value['task_id']
+                or type(value['revision']) is not int or value['revision'] < 1
+                or type(value['task_deadline']) not in (int,float) or not math.isfinite(value['task_deadline'])):
+            raise Stop('native_checkpoint_conflict')
+        waiting = waiting or value.get('accepted_output') is None
+    if not waiting:
+        raise Stop('native_checkpoint_conflict')
+    # Logical contents avoid a self-referential raw SQLite hash. Existing table
+    # names only; no schema or Inventory reconciliation rules are changed.
+    state = {}
+    for table in ('meta','folders','pages','photos','cache.analyzed','cache.visual',
+                  'cache.instagram_visual','cache.history_meta'):
+        clause = " WHERE key!='native_pending'" if table == 'meta' else ''
+        state[table] = sorted([list(r) for r in inventory.db.execute('SELECT * FROM '+table+clause)],key=lambda r:json.dumps(r,sort_keys=True))
+    progress = {**inventory.progress(), 'phase':'processing'}
+    return {'batch_id':inflight['id'], 'operation_id':context['operation_id'],
+            'last_batch':source.get('lastBatch'), 'progress':progress,
+            'input_sha256':digest({k:v for k,v in source.items() if k not in {'accessToken','progress','lastBatch','stopRequested'}}),
+            'inventory_sha256':digest(state), 'ledger_sha256':digest(rows),
+            'routes_sha256':digest(context['routes'])}
+
+
+def _resume_pending_batch(inventory, source, context, job_id, directory):
+    from native_tasks import operation_context
+    # Without the original ledger there is no native wait to prove. Leave the
+    # original inflight/lastBatch reconciliation in charge (and unknown closed).
+    if not (Path(directory)/'native.sqlite3').exists():
+        return None
+    marker = inventory.get('native_pending')
+    if marker is None:
+        return None
+    inflight = inventory.get('inflight')
+    if not isinstance(marker,dict) or not isinstance(inflight,dict):
+        raise Stop('native_checkpoint_conflict')
+    if source.get('lastBatch') == inflight.get('id'):
+        # The original server has authoritatively acknowledged completion.
+        with inventory.db: inventory.set('native_pending',None)
+        return None
+    bound = _native_business_context(context,'batch',{'job_id':job_id,'batch_id':inflight['id']})
+    bound = operation_context(bound,bound['operation_id'],state_root=Path(directory))
+    if (_pending_batch_state(inventory,source,bound) != marker
+            or source.get('progress') != marker['progress']):
+        raise Stop('native_checkpoint_conflict')
+    if context.get('cancel') is True or bound['now']() >= bound['deadline']:
+        raise Stop('native_cancel_or_expiry')
+    return inflight
+
+
+def run(*, native_context=None, native_binding=None, native_client_factory=None):
+    from native_tasks import bootstrap_context, validate_context, NativePending, NativeStopped
+    try:
+        if native_binding is not None:
+            if native_context is not None:
+                raise NativeStopped('native_binding_required')
+            if native_client_factory is None:
+                from github_gateway import NativeTaskClient
+                native_client_factory = NativeTaskClient
+            native_context=bootstrap_context(native_binding,client_factory=native_client_factory)
+        elif native_client_factory is not None:
+            raise NativeStopped('native_binding_required')
+        validate_context(native_context)
+    except NativeStopped:
+        raise Stop("native_binding_required") from None
     from PIL import Image
     from inventory import Inventory
     from auto_review import review_drafts
     os.umask(0o077)
     base = os.environ.get("PHOTOSTORY_URL", "").rstrip("/")
     token = os.environ.get("PHOTOSTORY_BATCH_TOKEN", "")
-    if not base.startswith("https://") or not token or not os.environ.get("CODEX_GATEWAY_COMMAND"):
+    if not base.startswith("https://") or not token:
         raise Stop("setup_required")
     cloud = None
     if os.environ.get("PHOTOSTORY_STATE_BACKEND", "local") == "cloudflare":
@@ -780,8 +620,27 @@ def run(*, native_context=None):
         except (OSError,ValueError): pass
     call('/internal/maintenance',{'temporaryCleanup':report})
     from auto_publish import tick, AutomaticPublishingStopped
+    def publication_review(identity, checkpoint=None, expires_at=None):
+        from native_tasks import (operation_context,publication_checkpoint,
+                                  restore_publication_checkpoint,preflight_publication)
+        if not directory or not Path(directory).is_absolute():
+            raise Stop('setup_required')
+        if (type(expires_at) not in (int,float) or not math.isfinite(expires_at)
+                or expires_at <= native_context['now']()):
+            raise Stop('native_cancel_or_expiry')
+        context = _native_business_context(native_context, 'publication', identity)
+        context = {**context, 'deadline':min(context['deadline'],expires_at)}
+        if 'task_limit' in context: context['task_limit'] = 1
+        context = operation_context(context,context['operation_id'],state_root=Path(directory))
+        context = restore_publication_checkpoint(context,checkpoint)
+        context['persist'] = lambda: call('/internal/autopublish', {**identity,'action':'native_checkpoint',
+                                                   'checkpoint':publication_checkpoint(context)})
+        preflight_publication(context)
+        return native_review_gateway(context,stage='publication')
     try:
-        if tick(call, lambda path, body: request(base+path, token=token, body=body, max_bytes=25*1024*1024), native_review_gateway(native_context, stage='publication')):
+        if tick(call, lambda path, body: request(base+path, token=token, body=body, max_bytes=25*1024*1024),
+                native_review_gateway(native_context, stage='publication'), work_root=native_context['fixture_root'],
+                bind_review=publication_review):
             return  # Finish one post before slow scanning; never select another.
     except AutomaticPublishingStopped:
         print('Automatic publication stopped or blocked; inspect the private publication. No retry in this run.')
@@ -810,14 +669,15 @@ def run(*, native_context=None):
         snapshot_source, snapshot_policy = source, policy
         inventory_operation = 'open'
         inventory=Inventory(directory,job['id'],source,policy)
-        inventory.reconcile(source.get('lastBatch'))
+        pending_batch = _resume_pending_batch(inventory,source,native_context,job['id'],directory)
+        if pending_batch is None: inventory.reconcile(source.get('lastBatch'))
         if source.get('stopRequested'):
             completion_started=True
             call('/internal/checkpoint',{**auth,'progress':inventory.progress()})
             return
         inventory_operation = 'scan'
-        complete=inventory.scan(lambda url:graph(url,source['accessToken']),lambda item:candidate(item,source))
-        if not complete or source.get('progress',{}).get('phase')=='scanning':
+        complete=True if pending_batch else inventory.scan(lambda url:graph(url,source['accessToken']),lambda item:candidate(item,source))
+        if not pending_batch and (not complete or source.get('progress',{}).get('phase')=='scanning'):
             completion_started=True
             progress=inventory.progress()
             if complete: progress['phase']='processing'
@@ -871,9 +731,13 @@ def run(*, native_context=None):
             stage = 'completion'
             call('/internal/checkpoint',{**auth,'progress':progress})
             return
-        candidates=inventory.next_batch(limit)
-        batch_id=inventory.stage_batch(candidates)
-        with tempfile.TemporaryDirectory(prefix="photostory-") as tmp:
+        candidates=pending_batch['photos'] if pending_batch else inventory.next_batch(limit)
+        batch_id=pending_batch['id'] if pending_batch else inventory.stage_batch(candidates)
+        from native_tasks import operation_context
+        native_context = _native_business_context(native_context, 'batch', {'job_id':job['id'], 'batch_id':batch_id})
+        native_context = operation_context(native_context, native_context['operation_id'], state_root=Path(directory),
+            persist=lambda: call('/internal/checkpoint', {**auth, 'progress':inventory.progress(), 'nativeCheckpoint':True}))
+        with tempfile.TemporaryDirectory(prefix="photostory-", dir=native_context['fixture_root']) as tmp:
             cwd = Path(tmp)
             from preselect import representatives
             allowed, assets, digests = [], {}, {}
@@ -903,7 +767,7 @@ def run(*, native_context=None):
                     batch.append(photo);paths.append(path);assets[photo['id']]=image
                 if not batch:
                     continue
-                result = gateway(SCREEN_PROMPT, [{"id":p["id"], "captured":p["captured"], "area":p.get("area")} for p in batch], paths, SCREEN_SCHEMA, cwd)
+                result = native_review_gateway(native_context, stage="screen")(SCREEN_PROMPT, [{"id":p["id"], "captured":p["captured"], "area":p.get("area")} for p in batch], paths, SCREEN_SCHEMA, cwd)
                 safe = accepted_screening(result, [p["id"] for p in batch])
                 safe_ids = {p["id"] for p in safe}
                 for photo in batch:
@@ -936,7 +800,7 @@ def run(*, native_context=None):
                     remaining=draft_limit-len(drafts)
                     if remaining<=0: break
                     themed_prompt=prompt+"\nPrimary scene for this call: "+themed[0].get('scene','unknown')
-                    grouped=gateway(themed_prompt,themed,[cwd/(p['id']+'.jpg') for p in themed],GROUP_SCHEMA,cwd)
+                    grouped=native_review_gateway(native_context, stage="group")(themed_prompt,themed,[cwd/(p['id']+'.jpg') for p in themed],GROUP_SCHEMA,cwd)
                     drafts.extend(validated_groups(grouped,{p['id'] for p in themed},job['id']+'-'+batch_id+'-'+direction+'-'+str(theme_index),dimensions)[:remaining])
             from cross_review import cross_review
             drafts,cross_reviews=cross_review(drafts,allowed,source.get('referenceDrafts',[]),cwd,native_review_gateway(native_context, stage='cross_review'),source.get('locationHint',''))
@@ -954,17 +818,28 @@ def run(*, native_context=None):
             for p in allowed:
                 outcomes[p['id']]='grouped' if p['id'] in used_ids else 'theme_unmatched'
             from translate_labels import translate_labels
-            drafts=translate_labels(drafts,gateway,cwd)
+            drafts=translate_labels(drafts,native_review_gateway(native_context, stage="labels"),cwd)
             auto_reviews=review_drafts(drafts,allowed,source,cwd,native_review_gateway(native_context, stage='strict_review'))
             used = {p["id"] for d in drafts for p in d["photos"]}
             photos = [{"id":pid, "safety":"allow", "flags":[], "jpeg":base64.b64encode(assets[pid]).decode(),"source":next(p.get("source") for p in candidates if p["id"]==pid)} for pid in used]
             inventory.save_screening(digests,profiles,outcomes)
             progress=inventory.proposed_progress()
+            if pending_batch:
+                # Commit the end of the wait before a potentially ambiguous
+                # business completion. A lost ACK cannot revive an old wait.
+                with inventory.db: inventory.set('native_pending',None)
+                native_context['persist']()
             completion_started = True
             stage = 'completion'
             result = call("/internal/complete", {**auth, "batchId":batch_id,"more":progress['processed']<progress['total'],"progress":progress,"drafts":drafts, "photos":photos,"autoReviews":auto_reviews,"crossReviews":cross_reviews})
             inventory.reconcile(batch_id)
             print("Completed; draft count:", result["count"])
+    except NativePending:
+        marker = _pending_batch_state(inventory,source,native_context)
+        with inventory.db: inventory.set('native_pending',marker)
+        completion_started = True
+        call('/internal/checkpoint', {**auth, 'progress': marker['progress']})
+        return
     except Exception as error:
         if stage == 'inventory':
             code = error.code if isinstance(error, urllib.error.HTTPError) else None
@@ -986,9 +861,67 @@ def run(*, native_context=None):
         if inventory: inventory.close()
 
 
+def workflow_binding(fixture_root, state_root, *, now=None):
+    """Read only an explicit private workflow binding; never discover credentials.
+
+    Adoption age starts at each original task.created, not batch startup. The
+    finite existing call graph bounds the parent; its ledger restores the same
+    earlier deadline on resume. Publication also retains its original expiry.
+    """
+    import time
+    from github_gateway import _strict_json
+    from native_tasks import STAGES, MAX_BATCH_TASKS
+    try:
+        raw = os.environ.get('PHOTOSTORY_NATIVE_BINDING', '')
+        if not raw or len(raw.encode()) > 32000:
+            raise ValueError()
+        config = _strict_json(raw)
+        if (set(config) != {'enabled','project','service_url','audience','routes','adoption_age_seconds'}
+                or config['enabled'] is not True or config['project'] != 'Pigbibi/PhotoStory'
+                or type(config['adoption_age_seconds']) is not int
+                or not 1 <= config['adoption_age_seconds'] <= 3600
+                or not isinstance(config['routes'],dict) or set(config['routes']) != STAGES):
+            raise ValueError()
+        models, workers = set(), set()
+        for stage, route in config['routes'].items():
+            if (not isinstance(route,dict) or set(route) != {'mode','provider','model','profile','worker'}
+                    or route['mode'] != 'agent' or route['provider'] != 'dot'
+                    or route['profile'] != stage or not isinstance(route['worker'],str)
+                    or not 1 <= len(route['worker']) <= 200
+                    or not isinstance(route['model'],str) or not 1 <= len(route['model']) <= 200):
+                raise ValueError()
+            models.add(route['model'])
+            workers.add(route['worker'])
+        if len(models) != 1 or len(workers) != 1:
+            raise ValueError()
+        clock = now or time.time
+        return dict(config) | {
+            'synthetic_only':False, 'operation_id':'photostory-main-processor',
+            'fixture_root':fixture_root, 'state_root':state_root,
+            'now':clock, 'deadline':clock()+MAX_BATCH_TASKS*config['adoption_age_seconds'],
+            'task_limit':MAX_BATCH_TASKS,
+            'persist':lambda:None, 'limits':{'request_bytes':2_000_000,'response_bytes':2_000_000}}
+    except (TypeError,ValueError,KeyError):
+        raise Stop('native_binding_required') from None
+
+
+def main():
+    # Existing cloud snapshot/Inventory restores this private state on each run.
+    # No service URL, provider, freshness window or task is implicitly enabled.
+    os.umask(0o077)
+    directory = os.environ.get('PHOTOSTORY_STATE_DIR', '')
+    if not directory or not Path(directory).is_absolute() or Path(directory).is_symlink():
+        raise Stop('native_binding_required')
+    with tempfile.TemporaryDirectory(prefix='photostory-native-') as tmp:
+        state = Path(directory)
+        binding = workflow_binding(Path(tmp).resolve(),state.resolve())
+        state.mkdir(mode=0o700,parents=True,exist_ok=True)
+        run(native_binding=binding)
+
+
 if __name__ == "__main__":
     try:
-        run()
+        main()
     except Exception:
         print("PhotoStory could not complete this run. No automatic retry; check setup and job status.")
         raise SystemExit(1) from None
