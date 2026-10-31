@@ -25,3 +25,11 @@ Follow `AGENTS.md` and `.github/engineering.md`.
       same pull request.
 - [ ] Changes to what is read from OneDrive, what is written to D1 or R2, or what
       is published are stated above rather than implied.
+
+## AI assistance
+
+Which AI tool and model were used? Write `None` if no AI was used.
+
+## What changed
+
+Describe the change and its purpose.
