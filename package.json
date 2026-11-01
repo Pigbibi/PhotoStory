@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "vite": "^8.3.5",
-    "wrangler": "^4.151.3"
+    "wrangler": "^4.155.0"
   },
   "overrides": {
     "sharp": "0.35.5",
