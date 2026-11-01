@@ -164,14 +164,22 @@ export async function githubFinish(r, e) {
     cookie("__Host-ps-oauth", "", 0),
   ]);
 }
+let tokenKey;
+function encryptionKey(e) {
+  const source = e.TOKEN_ENCRYPTION_KEY;
+  if (!tokenKey || tokenKey.source !== source) {
+    const entry = { source, promise: crypto.subtle.importKey(
+      "raw", Uint8Array.from(atob(source), c => c.charCodeAt(0)),
+      { name: "AES-GCM" }, false, ["encrypt", "decrypt"],
+    ) };
+    tokenKey = entry;
+    entry.promise.catch(() => { if (tokenKey === entry) tokenKey = undefined; });
+  }
+  return tokenKey.promise;
+}
+
 export async function seal(e, value) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    Uint8Array.from(atob(e.TOKEN_ENCRYPTION_KEY), (c) => c.charCodeAt(0)),
-    { name: "AES-GCM" },
-    false,
-    ["encrypt"],
-  );
+  const key = await encryptionKey(e);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
@@ -184,13 +192,7 @@ export async function seal(e, value) {
   };
 }
 export async function unseal(e, value) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    Uint8Array.from(atob(e.TOKEN_ENCRYPTION_KEY), (c) => c.charCodeAt(0)),
-    { name: "AES-GCM" },
-    false,
-    ["decrypt"],
-  );
+  const key = await encryptionKey(e);
   const result = await crypto.subtle.decrypt(
     {
       name: "AES-GCM",

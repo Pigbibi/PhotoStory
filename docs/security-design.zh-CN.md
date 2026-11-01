@@ -14,6 +14,7 @@ PhotoStory 处理私人照片、OAuth 连接和可选发布权限。以下内容
 ## 凭据与服务边界
 
 - Microsoft token 以 Worker Secret 中的密钥加密后才写入 D1。
+- 同一 Worker 实例复用当前配置对应的 AES CryptoKey；配置密钥变化时立即重新导入，失败不缓存。每次加密仍生成新的随机 IV，不缓存明文、token 或鉴权结果。
 - `BATCH_TOKEN` 只属于 Worker 与受信任 VPS；不能交给浏览器、模型、插件或公开
   工作流。泄露时同时轮换两端。
 - AI 子进程只能收到允许名单中的环境变量，不能收到 Graph token、机器 token 或
