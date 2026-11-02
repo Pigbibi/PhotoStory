@@ -47,3 +47,9 @@
 - 安全问题走 SECURITY.md 的私密入口。普通问题按复现、版本和影响分类，已关闭历史需求不自动恢复。
 
 完成本次目标及必要验证即可交付。不能把这份约定扩展成每次全量测试、强制新建设计文档、持续 Goal、自动化或多轮审批。
+
+## Staged review policy
+
+See [acceptance-policy.md](../docs/acceptance-policy.md) for risk tiers and the proposed
+advisory provider policy. Existing enforcement remains authoritative until a
+separately authorized, reviewed and verified migration.
