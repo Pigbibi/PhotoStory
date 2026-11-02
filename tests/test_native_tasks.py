@@ -1062,7 +1062,7 @@ def workflow_config():
                              'worker':'dot-personal'} for stage in STAGES}}
 
 
-@pytest.mark.parametrize('invalid',['missing','disabled','extra','project','ttl','mixed_provider','mixed_worker','unknown_profile','over_age'])
+@pytest.mark.parametrize('invalid',['missing','disabled','extra','project','ttl','mixed_provider','mixed_grokbot','mixed_worker','unknown_profile','over_age'])
 def test_workflow_binding_requires_exact_single_handler_before_client_or_business(tmp_path,invalid):
     config=workflow_config()
     if invalid=='disabled':config['enabled']=False
@@ -1070,6 +1070,7 @@ def test_workflow_binding_requires_exact_single_handler_before_client_or_busines
     if invalid=='project':config['project']='QuantStrategyLab/QuantAIService'
     if invalid=='ttl':config['timeout_seconds']=600
     if invalid=='mixed_provider':config['routes']['cross_review']['provider']='grok'
+    if invalid=='mixed_grokbot':config['routes']['cross_review']['provider']='grokbot'
     if invalid=='mixed_worker':config['routes']['cross_review']['worker']='other'
     if invalid=='unknown_profile':config['routes']['cross_review']['profile']='helper'
     if invalid=='over_age':config['adoption_age_seconds']=3601
@@ -1314,3 +1315,42 @@ def test_new_task_age_policy_does_not_reinterpret_legacy_receipts(tmp_path):
     count=len(wire.calls)
     with pytest.raises(NativeStopped):call()
     assert len(wire.calls)==count
+
+
+@pytest.mark.parametrize('provider', ['dot', 'grokbot'])
+def test_workflow_binding_accepts_one_explicit_provider(tmp_path, provider):
+    config = workflow_config()
+    for route in config['routes'].values():
+        route.update(provider=provider, worker='synthetic-worker', model='configured-' + provider)
+    with patch.dict('os.environ', {'PHOTOSTORY_NATIVE_BINDING': json.dumps(config)}, clear=True):
+        binding = batch.workflow_binding(tmp_path, tmp_path, now=lambda:100)
+    assert {route['provider'] for route in binding['routes'].values()} == {provider}
+
+
+def test_grokbot_context_preserves_provider_identity(tmp_path):
+    from native_tasks import NativeStopped, validate_context
+    ctx, wire = context(tmp_path)
+    for route in ctx['routes'].values():
+        route['provider'] = 'grokbot'
+    validate_context(ctx)
+    ctx['routes']['screen']['provider'] = 'unknown-provider'
+    with pytest.raises(NativeStopped):
+        validate_context(ctx)
+
+
+def test_named_grokbot_completes_existing_stages_without_legacy_provider(tmp_path):
+    from native_tasks import NativeStopped
+    ctx, wire = context(tmp_path)
+    for route in ctx['routes'].values():
+        route.update(provider='grokbot', model='configured-grokbot', worker='synthetic-worker')
+    image = photo(tmp_path)
+    for stage in STAGES:
+        assert batch.native_review_gateway(ctx, stage=stage)(
+            'synthetic prompt', [{'id': 'synthetic-photo'}],
+            [] if stage == 'labels' else [image], SCHEMA, tmp_path) == {'ok': True}
+    assert len(wire.records) == len(STAGES)
+    assert all(record['provider'] == 'grokbot' for record in wire.records.values())
+    wire.mutate = lambda record: dict(record, provider='grok')
+    with pytest.raises(NativeStopped):
+        batch.native_review_gateway(ctx, stage='screen')(
+            'different synthetic prompt', [{'id': 'synthetic-photo'}], [image], SCHEMA, tmp_path)

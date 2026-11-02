@@ -76,29 +76,33 @@ the feature with more than one administrator.
 ```text
 Browser → Cloudflare Worker + D1 + private R2
                          ↕ machine-authenticated API
-              GitHub Actions processor → VPS CodexGateway
+              GitHub Actions processor → PersonalAIService tasks
                          ↕                  ↕
-                      OneDrive             Codex
+                      OneDrive          Dot / GrokBot
 ```
 
 The Worker owns authentication, OAuth, settings, drafts, approval state, and
 publication state. GitHub Actions performs bounded scans, restores private SQLite
-state from R2, and calls the existing VPS CodexGateway with GitHub OIDC.
+state from R2, and submits native tasks with GitHub OIDC through PersonalAIService.
+
+The private `PHOTOSTORY_NATIVE_BINDING` selects one admitted provider, model and
+worker across all six stages. Dot and named `grokbot` are supported; adding a
+provider name does not enable it or grant service access.
 
 The AI runtime does not receive OneDrive refresh tokens, Worker secrets, or
 publishing authority. The processor receives EXIF-free previews; it never deletes
 OneDrive originals.
 
-The Gateway and its Codex login remain on the VPS and can serve other repositories.
-A self-hosted VPS processor remains an alternative; see the
-[processor migration guide](docs/github-actions-processor.zh-CN.md).
+The Actions processor requires no Codex CLI or VPS gateway. The retained
+`run_isolated_ai.py` and systemd CLI setup are deprecated. Use the
+[processor setup](docs/github-actions-processor.zh-CN.md) for the active path.
 
 ## Quick start
 
 Requirements: Node.js and npm, Python 3 with Pillow, a Cloudflare account, a
 GitHub OAuth App, and a Microsoft Entra app that supports personal Microsoft
-accounts. The Actions processor needs a private R2 bucket and an existing
-CodexGateway service with an authenticated Codex CLI on a trusted Linux host.
+accounts. The Actions processor needs a private R2 bucket and an admitted native
+task binding to PersonalAIService, including an available Dot or GrokBot worker.
 
 ```sh
 npm ci
@@ -141,7 +145,7 @@ history, source file, frontend variable, issue, screenshot, or chat.
 | `BATCH_TOKEN` | Worker Secret | Authenticates the processor |
 | `PHOTOSTORY_BATCH_TOKEN` | GitHub Actions Secret | Same machine token |
 | `PHOTOSTORY_URL` | GitHub Actions variable | Your Worker origin |
-| `CODEX_GATEWAY_SERVICE_URL` | GitHub Actions variable | HTTPS CodexGateway endpoint |
+| `PHOTOSTORY_NATIVE_BINDING` | GitHub Actions Secret | Native service origin, audience and exact stage routes |
 
 Register these redirects with your own applications:
 
@@ -153,7 +157,7 @@ https://YOUR-SITE/auth/microsoft/callback
 GitHub login requests no repository scope. Microsoft consent requests read access
 and offline access; the processor applies the selected folder and date range.
 The Actions setup is in the [processor migration guide](docs/github-actions-processor.zh-CN.md).
-For a self-hosted processor, see [AI and VPS setup](docs/ai-setup.zh-CN.md).
+The [AI and VPS setup](docs/ai-setup.zh-CN.md) describes the deprecated CLI path.
 
 ## Run the workflow
 

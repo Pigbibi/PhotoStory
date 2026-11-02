@@ -1,5 +1,7 @@
 # AI 与 VPS 配置
 
+本文记录已弃用的 VPS CLI 安装。当前 Actions 使用 [PersonalAIService 原生任务](github-actions-processor.zh-CN.md)，不需要安装 Codex CLI 或网关。
+
 PhotoStory 将网站、照片读取器和 AI 运行环境分开部署。网站管理登录、授权、任务与
 人工审核；读取器从 OneDrive 取得有限范围的预览；AI 只负责筛选、分组、文案和可选
 严格复核。公开仓库不提供任何人的账号、密钥、照片或网关。
