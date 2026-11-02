@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fixed, unprivileged AI service. No browser, Graph, or machine credentials."""
+"""Deprecated VPS CLI runtime; active Actions use native_tasks instead."""
 import json
 import base64
 import time
@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import uuid
+import warnings
 from systemd_gateway import read_regular
 
 BRIDGE = Path('/var/lib/photostory-bridge')
@@ -32,6 +33,8 @@ def access_snapshot(source):
 
 def command_for(mode, work, count):
     if mode == 'codex-cli':
+        warnings.warn('codex-cli is deprecated; use the native task processor',
+                      DeprecationWarning, stacklevel=2)
         args = ['/opt/photostory/app/runtime/bin/codex', 'exec',
                 '--skip-git-repo-check', '--sandbox', 'read-only',
                 '--output-schema', str(work / 'schema.json'),

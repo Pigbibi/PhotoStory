@@ -882,17 +882,18 @@ def workflow_binding(fixture_root, state_root, *, now=None):
                 or not 1 <= config['adoption_age_seconds'] <= 3600
                 or not isinstance(config['routes'],dict) or set(config['routes']) != STAGES):
             raise ValueError()
-        models, workers = set(), set()
+        models, workers, providers = set(), set(), set()
         for stage, route in config['routes'].items():
             if (not isinstance(route,dict) or set(route) != {'mode','provider','model','profile','worker'}
-                    or route['mode'] != 'agent' or route['provider'] != 'dot'
+                    or route['mode'] != 'agent' or route['provider'] not in {'dot', 'grokbot'}
                     or route['profile'] != stage or not isinstance(route['worker'],str)
                     or not 1 <= len(route['worker']) <= 200
                     or not isinstance(route['model'],str) or not 1 <= len(route['model']) <= 200):
                 raise ValueError()
             models.add(route['model'])
             workers.add(route['worker'])
-        if len(models) != 1 or len(workers) != 1:
+            providers.add(route['provider'])
+        if len(models) != 1 or len(workers) != 1 or len(providers) != 1:
             raise ValueError()
         clock = now or time.time
         return dict(config) | {

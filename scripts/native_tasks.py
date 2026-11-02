@@ -82,7 +82,7 @@ def _context_fields(context):
             raise ValueError()
     for route in context['routes'].values():
         if (set(route) != {'mode', 'provider', 'model', 'profile', 'worker'}
-                or route['mode'] != 'agent' or route['provider'] not in {'dot', 'grok'}
+                or route['mode'] != 'agent' or route['provider'] not in {'dot', 'grok', 'grokbot'}
                 or any(not isinstance(v, str) or not 1 <= len(v) <= 200 for v in route.values())):
             raise ValueError()
 
