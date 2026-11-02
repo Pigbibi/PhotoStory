@@ -127,6 +127,8 @@ GitHub 登录不申请仓库权限。Microsoft 授权申请读取和离线访问
 范围由处理器执行。Actions 设置见[处理器迁移指南](docs/github-actions-processor.zh-CN.md)；
 [AI 与 VPS 配置](docs/ai-setup.zh-CN.md) 记录已弃用的 CLI 路径。
 
+云端合成验证未通过时，保留 task ID，通过处理器已有的 `native_qualification_task_id` 和 `native_qualification_action=readback` 输入读取原任务，并保持 `cloud_native_qualification=true`。读回不会重新提交；完成验证也不会将过期结果采纳为业务输出。
+
 ## 日常流程
 
 1. 使用允许名单中的 GitHub 账号登录并连接 OneDrive。

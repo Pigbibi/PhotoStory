@@ -159,6 +159,12 @@ and offline access; the processor applies the selected folder and date range.
 The Actions setup is in the [processor migration guide](docs/github-actions-processor.zh-CN.md).
 The [AI and VPS setup](docs/ai-setup.zh-CN.md) describes the deprecated CLI path.
 
+For an unverified cloud qualification, keep its task ID and use the processor's
+existing `native_qualification_task_id` and `native_qualification_action=readback`
+inputs with `cloud_native_qualification=true`. This reads the original synthetic
+task without another submission. A verified completion does not adopt late
+output into a business run.
+
 ## Run the workflow
 
 1. Sign in with an allowed GitHub account and connect OneDrive.
