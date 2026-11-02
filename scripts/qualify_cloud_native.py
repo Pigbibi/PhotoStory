@@ -2,18 +2,57 @@
 import argparse
 import base64
 import json
+import math
 import os
 from pathlib import Path
+import re
 import sqlite3
 import time
 
 from github_gateway import NativeTaskClient
-from native_tasks import bootstrap_context, digest, NativePending, NativeStopped, task_call
+from native_tasks import bootstrap_context, digest, NativePending, NativeStopped, task_call, _record_identity
+from jsonschema import Draft202012Validator
 from process_batch import workflow_binding
 from smoke_gateway import IMAGE_BASE64, IMAGE_SHA256, SCHEMA
 
+PROMPT = 'Generated color block qualification only. Return {"kind":"synthetic-test"}. No browsing, private photos, publishing, messages or external actions.'
 
-def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_factory=NativeTaskClient):
+
+def read_task(context, task_id):
+    """Read the same synthetic task; never adopt late output or submit more work."""
+    if not isinstance(task_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', task_id):
+        raise NativeStopped('qualification_identity_changed')
+    route = context['routes']['screen']
+    request = {'mode': route['mode'], 'model': route['model'], 'profile': route['profile'],
+               'objective': PROMPT, 'materials': [{'schema_version': 'photostory.task-input.v1',
+                   'stage': 'screen', 'records': [{'id': 'synthetic'}], 'images': [
+                       {'id': 'synthetic', 'mime': 'image/jpeg', 'sha256': IMAGE_SHA256,
+                        'base64': IMAGE_BASE64}]}], 'output_schema': SCHEMA, 'timeout_seconds': 60}
+    value = {'task_id': task_id, 'revision': 1, 'task_deadline': None, 'claim': None,
+             'binding': {'project': context['project'], 'route': route,
+                         'request_sha256': digest(request)}}
+    record = context['client'].get(task_id)
+    _record_identity(value, record)
+    status = record.get('status')
+    if status not in {'queued', 'submitting', 'running', 'outcome_unknown', 'cancel_requested',
+                      'completed', 'failed', 'invalid_output', 'cancelled'}:
+        raise NativeStopped('qualification_identity_changed')
+    verified = status == 'completed'
+    if verified:
+        created, updated, deadline = (record.get(k) for k in ('created', 'updated', 'deadline'))
+        if (not value['claim'] or any(type(t) not in (int, float) or not math.isfinite(t)
+                                     for t in (created, updated, deadline))
+                or not 0 <= created <= updated < deadline or updated > context['now']()):
+            raise NativeStopped('qualification_identity_changed')
+        Draft202012Validator(SCHEMA).validate(record.get('output'))
+    return {'phase': 'completion_verified' if verified else 'unverified',
+            'task_status': status, 'provider': route['provider'], 'adopted': False,
+            'synthetic_only': True, 'business_access': False, 'read_only': True,
+            'worker_claim_present': value['claim'] is not None}
+
+
+def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_factory=NativeTaskClient,
+        task_id=None):
     expected = {'GITHUB_REPOSITORY':'Pigbibi/PhotoStory', 'GITHUB_REF':'refs/heads/main',
                 'GITHUB_WORKFLOW_REF':'Pigbibi/PhotoStory/.github/workflows/processor.yml@refs/heads/main',
                 'GITHUB_EVENT_NAME':'workflow_dispatch', 'GITHUB_RUN_ATTEMPT':'1'}
@@ -46,13 +85,17 @@ def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_fac
 
     binding['persist']=persist
     context=bootstrap_context(binding,client_factory=client_factory)
+    if task_id is not None:
+        result = read_task(context, task_id)
+        (root/'receipt.json').write_text(json.dumps(result, sort_keys=True)+'\n')
+        (root/'receipt.json').chmod(0o600)
+        return result
     persist()
     call=task_call(context,'screen')
-    prompt='Generated color block qualification only. Return {"kind":"synthetic-test"}. No browsing, private photos, publishing, messages or external actions.'
     try:
         for _ in range(13):
             try:
-                output=call(prompt,[{'id':'synthetic'}],[image.resolve()],SCHEMA,root)
+                output=call(PROMPT,[{'id':'synthetic'}],[image.resolve()],SCHEMA,root)
                 receipt.update(phase='verified',adopted=True,output_sha256=digest(output))
                 persist()
                 return receipt
@@ -69,11 +112,18 @@ def main():
     parser.add_argument('--state',type=Path,required=True)
     args=parser.parse_args()
     try:
-        receipt=run(args.state)
+        event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+        inputs = event.get('inputs', {})
+        task_id = inputs.get('native_qualification_task_id', '')
+        if task_id and inputs.get('native_qualification_action') != 'readback':
+            raise NativeStopped('readback_required')
+        receipt=run(args.state, task_id=task_id or None)
     except Exception:
         print('{"phase":"unverified","reason":"read_original_receipt_do_not_rerun"}')
         return 1
-    print(json.dumps(receipt,sort_keys=True));return 0
+    print(json.dumps({k:receipt[k] for k in ('phase', 'task_status', 'provider', 'adopted',
+        'synthetic_only', 'business_access', 'read_only', 'worker_claim_present') if k in receipt},sort_keys=True))
+    return 0 if receipt['phase'] in {'verified', 'completion_verified'} else 1
 
 
 if __name__=='__main__':

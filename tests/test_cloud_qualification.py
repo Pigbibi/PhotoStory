@@ -70,3 +70,33 @@ class CloudQualificationTests(unittest.TestCase):
             with self.assertRaises(NativeStopped):
                 qualification.run(root,now=lambda:1000,sleep=lambda _:None,client_factory=lambda *_:client)
             self.assertFalse(json.loads((root/'receipt.json').read_text())['adopted'])
+
+    def test_readback_uses_only_original_task_and_never_adopts_late_output(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,self.env(),clear=True):
+            client=Mock(resource='https://personal.acme.org')
+            def submit(request,key):
+                return {'id':'synthetic-task','owner':'Pigbibi/PhotoStory','provider':'dot','request':request,
+                        'revision':1,'status':'completed','created':990,'updated':995,'deadline':1050,
+                        'worker':'private-cloud-worker','attempt':'synthetic-attempt',
+                        'output':{'kind':'synthetic-test'}}
+            client.submit.side_effect=submit
+            qualification.run(Path(tmp)/'original',now=lambda:1000,client_factory=lambda *_:client)
+            request=client.submit.call_args.args[0]
+            record=submit(request,'unused')
+            client.reset_mock()
+            client.get.return_value=record
+            result=qualification.run(Path(tmp)/'readback',task_id='synthetic-task',now=lambda:2000,
+                                     client_factory=lambda *_:client)
+            self.assertEqual(result['phase'],'completion_verified')
+            self.assertFalse(result['adopted']);self.assertTrue(result['read_only'])
+            client.get.assert_called_once_with('synthetic-task')
+            client.submit.assert_not_called();client.cancel.assert_not_called()
+            for mutation in [{'provider':'grok'}, {'worker':'other-worker'},
+                             {'request':dict(request,objective='private business task')},
+                             {'updated':1051}, {'revision':2}, {'output':{'kind':'wrong'}}]:
+                with self.subTest(mutation=mutation):
+                    client.get.return_value={**record,**mutation}
+                    with self.assertRaises(Exception):
+                        qualification.run(Path(tmp)/('rejected-'+str(len(list(Path(tmp).iterdir())))),
+                            task_id='synthetic-task',now=lambda:2000,client_factory=lambda *_:client)
+            client.submit.assert_not_called();client.cancel.assert_not_called()

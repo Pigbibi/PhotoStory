@@ -21,6 +21,8 @@
 
 在 main 手动运行 `Process PhotoStory`，选择 `cloud_native_qualification=true`，可向当前绑定提交一张生成色块图。该入口不访问 OneDrive、草稿或发布；通过提交、持久化、读取和结果校验后才写入脱敏回执。HTTP 接收成功不等于任务完成。随后以小范围任务核对进度、R2 快照和草稿无重复，再启用定时处理。
 
+若回执未验证，保留原 task ID。读取同一任务时仍选择 `cloud_native_qualification=true`，将 `native_qualification_task_id` 设为原 ID、`native_qualification_action` 设为 `readback`，`native_qualification` 保持 false。读回仅 GET 原任务，核对固定合成请求、provider、worker 和结果格式，不重新提交或取消。`completion_verified` 只证明任务按时完成，`adopted` 仍为 false；不会将过期结果采纳为业务输出。
+
 ## 库存与定时处理
 
 切换已有处理器前，停止其 batch timer，核对正在运行的 batch 和私有库存。结果不明的 batch 不重放。Worker 的 R2 `MEDIA_BUCKET` 绑定与 `/internal/inventory` 必须可用。
