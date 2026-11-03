@@ -183,3 +183,5 @@ npm run build
 ## 许可证
 
 [MIT](LICENSE)
+
+治理 SHADOW 试点通过固定版本的中央 workflow 输出审查观察结果。现有合并门禁和应用行为保持不变，详见[验收策略](docs/acceptance-policy.md)。

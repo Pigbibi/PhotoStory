@@ -108,3 +108,19 @@ Claude designs/plans/reviews frontend work; Qwen through Qoder implements it.
 Codex handles backend/ops/offline work. Cursor stays Auto (`default`), never Fast
 or a named model. This policy does not modify launcher arguments, host settings,
 repository exclusivity or queue admission, and launches no model trial or paid call.
+
+## Report-only governance pilot
+
+The separate `Governance shadow pilot` workflow calls the public central
+observer at an immutable commit. It reads native pull request, review and comment
+evidence and exports a SHADOW summary. It has no write permissions or inherited
+secrets and never checks out candidate source. The new job is not a required
+check; existing gates and settings continue to determine merge eligibility.
+
+Unknown or pending observations do not supply approval. Reviewer and owner
+identity lists default to empty.
+Base-only changes, merge queues and atomic merge
+freshness are not qualified by this snapshot pilot. The central source must be
+reviewed and integrated before this caller is integrated. Roll back by reverting
+only the added caller through a normal PR. No application, publication, deployment
+or data-access behavior changes.

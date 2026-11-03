@@ -1,0 +1,28 @@
+name: Governance shadow pilot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: governance-shadow-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  shadow:
+    if: github.event.pull_request || github.event.issue.pull_request
+    name: Governance shadow pilot
+    uses: QuantStrategyLab/.github/.github/workflows/governance-acceptance.yml@e785e6f7e9d60f40a816b794121f70ac91bf280f
+    with:
+      pr-number: ${{ github.event.pull_request.number || github.event.issue.number }}
+      policy-revision: e785e6f7e9d60f40a816b794121f70ac91bf280f
+      mode: SHADOW

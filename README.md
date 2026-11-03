@@ -247,3 +247,5 @@ own deployment.
 ## License
 
 [MIT](LICENSE)
+
+The optional governance shadow pilot reports review observations through a pinned central workflow. Existing merge gates and application behavior are unchanged. See [the acceptance policy](docs/acceptance-policy.md).
