@@ -18,6 +18,10 @@ STAGES = {'screen', 'group', 'cross_review', 'labels', 'strict_review', 'publica
 # Existing batch graph: screen ceil(100/6), <=24 shortlist groups, cross+labels,
 # and <=8 strict reviews. This bounds work; it never creates additional calls.
 MAX_BATCH_TASKS = 17 + 24 + 1 + 1 + 8
+TASK_STATUSES = {'queued', 'submitting', 'running', 'outcome_unknown', 'cancel_requested',
+                 'completed', 'failed', 'invalid_output', 'cancelled'}
+TASK_ERROR_CODES = {'deadline_before_submission', 'deadline_exceeded', 'acceptance_unknown',
+                    'submission_rejected', 'output_schema_mismatch'}
 
 
 class NativeStopped(Exception):
@@ -387,6 +391,12 @@ def task_call(context, stage):
                         else:
                             record = client.get(value['task_id'])
                         _record_identity(value, record)
+                        # Retain only fixed operational codes after identity validation.
+                        # Qualification receipts need these even when adoption stops.
+                        status, error = record.get('status'), record.get('error')
+                        value['task_status'] = status if isinstance(status, str) and status in TASK_STATUSES else 'unknown'
+                        value['service_error_code'] = (error if isinstance(error, str) and error in TASK_ERROR_CODES
+                                                       else None if error is None else 'unknown_error')
                         if record['status'] != 'completed':
                             active(record['deadline'])
                         if record['status'] in {'queued', 'submitting', 'running'}:

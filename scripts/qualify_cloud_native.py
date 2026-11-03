@@ -10,12 +10,58 @@ import sqlite3
 import time
 
 from github_gateway import NativeTaskClient
-from native_tasks import bootstrap_context, digest, NativePending, NativeStopped, task_call, _record_identity
+from native_tasks import (bootstrap_context, digest, NativePending, NativeStopped, task_call,
+                          _record_identity, TASK_STATUSES, TASK_ERROR_CODES)
 from jsonschema import Draft202012Validator
 from process_batch import workflow_binding
 from smoke_gateway import IMAGE_BASE64, IMAGE_SHA256, SCHEMA
 
 PROMPT = 'Generated color block qualification only. Return {"kind":"synthetic-test"}. No browsing, private photos, publishing, messages or external actions.'
+FAILURE_REASONS = {'task_expired_before_claim', 'task_expired_after_claim',
+                   'task_cancelled_before_claim', 'task_cancelled_after_claim',
+                   'task_failed', 'task_invalid_output', 'task_outcome_unknown',
+                   'task_pending', 'completion_rejected', 'qualification_unverified'}
+
+
+def public_summary(receipt):
+    """Project fixed codes and booleans only; never IDs, URLs or provider text."""
+    result = {'phase': 'unverified'}
+    choices = {'phase': {'verified', 'completion_verified', 'unverified'},
+               'task_status': TASK_STATUSES | {'unknown'}, 'provider': {'dot', 'grok', 'grokbot'},
+               'service_error_code': TASK_ERROR_CODES | {'unknown_error'},
+               'failure_reason': FAILURE_REASONS}
+    for key, allowed in choices.items():
+        value = receipt.get(key)
+        if isinstance(value, str) and value in allowed:
+            result[key] = value
+    for key in ('adopted', 'synthetic_only', 'business_access', 'read_only',
+                'worker_claim_present', 'caller_cancel_requested'):
+        if type(receipt.get(key)) is bool:
+            result[key] = receipt[key]
+    return result
+
+
+class QualificationUnverified(NativeStopped):
+    def __init__(self, receipt):
+        super().__init__('qualification_unverified_read_same_task')
+        self.summary = public_summary(receipt)
+
+
+def failure_reason(value, timestamp):
+    status = value.get('task_status')
+    claimed = value.get('claim') is not None
+    expired = value.get('service_error_code') in {'deadline_before_submission', 'deadline_exceeded'}
+    if status in {'queued', 'submitting', 'running', 'cancel_requested'}:
+        deadline = value.get('task_deadline')
+        expired = expired or (type(deadline) in (int, float) and timestamp >= deadline)
+    if expired:
+        return 'task_expired_after_claim' if claimed else 'task_expired_before_claim'
+    if status == 'cancelled':
+        return 'task_cancelled_after_claim' if claimed else 'task_cancelled_before_claim'
+    return {'failed': 'task_failed', 'invalid_output': 'task_invalid_output',
+            'outcome_unknown': 'task_outcome_unknown', 'completed': 'completion_rejected',
+            'queued': 'task_pending', 'submitting': 'task_pending', 'running': 'task_pending',
+            'cancel_requested': 'task_pending'}.get(status, 'qualification_unverified')
 
 
 def read_task(context, task_id):
@@ -45,10 +91,17 @@ def read_task(context, task_id):
                 or not 0 <= created <= updated < deadline or updated > context['now']()):
             raise NativeStopped('qualification_identity_changed')
         Draft202012Validator(SCHEMA).validate(record.get('output'))
-    return {'phase': 'completion_verified' if verified else 'unverified',
+    result = {'phase': 'completion_verified' if verified else 'unverified',
             'task_status': status, 'provider': route['provider'], 'adopted': False,
             'synthetic_only': True, 'business_access': False, 'read_only': True,
             'worker_claim_present': value['claim'] is not None}
+    if not verified:
+        error = record.get('error')
+        value.update(task_status=status, service_error_code=error if isinstance(error, str)
+                     and error in TASK_ERROR_CODES else None if error is None else 'unknown_error')
+        result.update(failure_reason=failure_reason(value, context['now']()),
+                      service_error_code=value['service_error_code'])
+    return result
 
 
 def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_factory=NativeTaskClient,
@@ -77,6 +130,12 @@ def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_fac
             if len(rows)!=1:raise NativeStopped('qualification_identity_changed')
             value=json.loads(rows[0][0])
             receipt.update(task_id=value['task_id'], request_sha256=value['binding']['request_sha256'])
+            receipt.update(worker_claim_present=value['claim'] is not None,
+                           caller_cancel_requested=value['cancel'])
+            for key in ('task_status', 'service_error_code'):
+                if key in value:receipt[key]=value[key]
+            if receipt['phase']=='unverified':
+                receipt['failure_reason']=failure_reason(value, now())
             if receipt['phase'] in {'prepared','submitted','submission_unknown'}:
                 receipt['phase']='submitted' if value['task_id'] else 'submission_unknown'
         target=root/'receipt.json';temporary=root/'receipt.tmp'
@@ -104,7 +163,7 @@ def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_fac
         raise NativeStopped('native_pending')
     except Exception:
         receipt['phase']='unverified';persist()
-        raise NativeStopped('qualification_unverified_read_same_task') from None
+        raise QualificationUnverified(receipt) from None
 
 
 def main():
@@ -118,11 +177,13 @@ def main():
         if task_id and inputs.get('native_qualification_action') != 'readback':
             raise NativeStopped('readback_required')
         receipt=run(args.state, task_id=task_id or None)
+    except QualificationUnverified as error:
+        print(json.dumps(error.summary, sort_keys=True))
+        return 1
     except Exception:
         print('{"phase":"unverified","reason":"read_original_receipt_do_not_rerun"}')
         return 1
-    print(json.dumps({k:receipt[k] for k in ('phase', 'task_status', 'provider', 'adopted',
-        'synthetic_only', 'business_access', 'read_only', 'worker_claim_present') if k in receipt},sort_keys=True))
+    print(json.dumps(public_summary(receipt),sort_keys=True))
     return 0 if receipt['phase'] in {'verified', 'completion_verified'} else 1
 
 
