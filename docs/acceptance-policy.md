@@ -43,6 +43,32 @@ currently enforced provider or workflow dependency. Preserve duplicate scanners
 until equivalent coverage is separately demonstrated. Required context names and
 app bindings must be read back before any future settings migration.
 
+## Shadow observer (installed, non-blocking)
+
+`.github/workflows/review-gate.yml` calls the central reusable workflow
+`QuantStrategyLab/.github/.github/workflows/governance-acceptance.yml`, pinned to a
+commit, with `mode: SHADOW`.
+
+What is active today:
+
+- Scope: `pull_request` events on this repository. The job reads the pull request,
+  its commits and its review state, then reports.
+- Output: one check, `review-gate / Governance shadow observation`. It is **not** in
+  the required set above and cannot block a merge.
+- Side effects: none. It does not label, comment, approve, dismiss, or write to the
+  branch. It does not modify protection, rulesets or required contexts.
+
+What is *not* active, and must not be inferred from the check appearing:
+
+- Enforcement. A green observation means the gate ran, not that this repository
+  requires it. Adding it to the required contexts is a separate, separately scoped
+  change with its own review.
+- Replacement of `risk-gate`. The two run independently; `risk-gate` remains the
+  authoritative blocking context.
+- Any waiver. This observer grants no exemption from the checks listed above.
+
+Rollback is deleting the caller file; nothing else references it.
+
 ## Risk tiers and acceptance
 
 Classify the complete diff, including renames, deletions and affected consumers,
