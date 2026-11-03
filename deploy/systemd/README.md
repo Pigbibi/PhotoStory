@@ -105,9 +105,10 @@ are recoverable for 30 days. See [lifecycle behavior](../../docs/lifecycle.zh-CN
   files; inspect and clean PhotoStory's own directories before recovery. The
   output mailbox retains the latest structured result until the next call.
 - Verify the effective namespace using harmless probes before supplying photos:
-  non-root UID, unreadable `/home/ubuntu` and scanner secrets, read-only inbox,
-  writable AI output, accepted Codex flags, and working TLS/DNS. A successful
-  local unit test does not establish these deployed boundaries.
+  non-root UID, an unreadable deployer home directory, unreadable scanner
+  secrets, read-only inbox, writable AI output, accepted Codex flags, and
+  working TLS/DNS. A successful local unit test does not establish these
+  deployed boundaries.
 - Do not relax the host's AppArmor or other existing service protections to make
   Codex tool sandboxes work. Keep the existing shared gateway service unchanged.
 - AI screening can miss private details. Human review and disabled IG publishing
