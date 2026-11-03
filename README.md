@@ -165,6 +165,16 @@ inputs with `cloud_native_qualification=true`. This reads the original synthetic
 task without another submission. A verified completion does not adopt late
 output into a business run.
 
+Failed qualification summaries retain the last identity-checked task status,
+whether a worker claim was observed, whether the caller requested cancellation,
+and an allowlisted service error code when available. Task IDs and service URLs
+are excluded from console summaries; the original task ID remains in the private
+receipt for readback.
+
+An unclaimed expiry remains a failed check. Investigate
+service event delivery and worker claims before submitting any replacement;
+ordinary processor success does not verify a skipped qualification job.
+
 ## Run the workflow
 
 1. Sign in with an allowed GitHub account and connect OneDrive.

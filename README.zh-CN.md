@@ -129,6 +129,8 @@ GitHub 登录不申请仓库权限。Microsoft 授权申请读取和离线访问
 
 云端合成验证未通过时，保留 task ID，通过处理器已有的 `native_qualification_task_id` 和 `native_qualification_action=readback` 输入读取原任务，并保持 `cloud_native_qualification=true`。读回不会重新提交；完成验证也不会将过期结果采纳为业务输出。
 
+验收失败摘要保留最后一次通过身份校验的任务状态、是否观察到 worker 领取、调用方是否请求取消，以及服务返回的固定错误码。控制台摘要不包含 task ID、服务地址或自由文本，原 task ID 仅保留在私有回执中供读回使用。未领取即过期仍然验收失败；提交替代任务前应检查服务事件投递与 worker 领取情况。普通处理任务成功不能证明被跳过的验收已通过。
+
 ## 日常流程
 
 1. 使用允许名单中的 GitHub 账号登录并连接 OneDrive。
