@@ -37,8 +37,8 @@ Future target, subject to a separately scoped enforcement change:
 
 Only after substantive PR-template evidence and authenticated approval verification
 are incorporated into the authoritative `risk-gate` may `pr-template` become
-advisory. Do not remove it now. `Evaluate PR governance` is an envelope, and
-CodeRabbit is advisory in the target design; this document cannot waive any
+advisory. Do not remove it now. `Evaluate PR governance` is an envelope, and the
+independent review is the Codex plugin; this document cannot waive any
 currently enforced provider or workflow dependency. Preserve duplicate scanners
 until equivalent coverage is separately demonstrated. Required context names and
 app bindings must be read back before any future settings migration.
@@ -91,6 +91,40 @@ recorded separately. Known base failures do not silently waive required red chec
 Substantive unresolved findings and valid REQUEST_CHANGES reviews still block;
 cosmetic suggestions do not create mandatory repair work.
 
+## What `risk-gate` enforces
+
+The gate runs on `pull_request_target`, `push` to the default branch, a scheduled
+sweep and manual dispatch, always from the trusted default-branch workflow, with
+`contents: read` and no checkout of pull-request code.
+
+- A workflow diff is R2 in full. No line in a workflow is treated as inert: a
+  removed assertion, an added `if: false`, a `continue-on-error`, a job-level `name`
+  (that name is the required check context) and a comment all change what CI proves.
+  A `#` line is not provably inert either, because inside a `run:` block it is shell
+  input where Actions still expands `${{ }}`, and a comment after a backslash
+  continuation cuts the command short. Any rename or removal out of
+  `.github/workflows/` is R2 because it silently disables the statuses it published.
+- Runtime configuration (`config`/`settings` files) and `.github/scripts/`, plus root
+  `scripts/` entries whose name carries `check`/`verify`/`validate`/`hygiene`/`lint`,
+  are R2: a changed default is invisible in the diff, and those scripts are what a
+  trusted workflow executes.
+- The approver login is read from the `RISK_GATE_OWNER` repository variable. With the
+  variable unset, no label is accepted.
+- Two labels, two claims. `owner-approved` states a human confirmed it;
+  `agent-approved` states an agent cleared it, and the status description then reads
+  `NOT confirmed by the owner`. `owner-approved` wins when both are present.
+- Dependabot keeps its provider-skip exemption only when every commit was authored by
+  the bot, committed by `web-flow` and signature-verified, and an action repin keeps
+  the same action while naming a workflow listed in the base branch
+  `.github/scripts/dependabot-policy.json` under `action_files`. A human push onto a
+  bot branch takes the normal path.
+- While two open pull requests share one head, statuses would collide, so the gate
+  fails closed; closing or moving one re-dispatches the siblings still showing the
+  collision error, and the condition is rechecked immediately before a verdict.
+- A merge into the base branch raises no pull-request event, so every push to the
+  default branch re-evaluates each open pull request, and a periodic sweep covers
+  merges made with `GITHUB_TOKEN`, which raise no push event at all.
+
 ## Review authority and receipt
 
 The dedicated code-review-and-merge bot is the sole PR review/merge authority.
@@ -108,11 +142,22 @@ R0/R1 routine technical acceptance needs no additional owner card within existin
 authorization; R2 needs the applicable owner decision. Source approval never grants
 deployment, activation, accounts/amounts, seeds, spending or secret access.
 
-CodeRabbit is supplementary. Its quota, availability or green icon supplies neither
-primary review nor owner permission. Manual on-demand reviews may include Drafts;
-automatic requests, automatic incremental reviews, automatic labels and provider
-auto-approval are disabled in the proposed configuration. No `review-ready` label
-is applied by this change. Do not widen `max_merge_risk` beyond `low`.
+The independent review is the Codex review plugin. `risk-gate` publishes `ai-review`
+from the machine-readable receipt (`codex-review-state:v1`) in the Codex summary
+comment: `success` only when the receipt reports a completed review whose
+`commit_sha` equals the current head, `has_unresolved_findings` is `false`, and the
+reviewed head already contains the base head by Git ancestry.
+
+A stale head or an unresolved finding is `failure`; an absent or unfinished review is
+`pending`, and `risk-gate` then stays `pending` rather than passing. Because the
+status is derived from the trusted default-branch workflow and never from PR code, a
+pull request cannot publish its own passing receipt.
+
+CodeRabbit is retired. Nothing here depends on it: no workflow calls it, no label
+comes from it, and its absence is not an open finding to wait for. Historical
+`max_merge_risk` guidance is void. Automatic provider approvals stay off; manual
+on-demand reviews may still be run against Drafts. No `review-ready` label is
+applied by this change.
 
 ## Model routing
 
