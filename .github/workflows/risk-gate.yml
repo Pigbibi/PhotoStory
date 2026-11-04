@@ -119,11 +119,12 @@ jobs:
                 .filter(line => /^[+-]/.test(line) && !/^(?:\+\+\+|---)/.test(line))
                 .map(line => ({ sign: line[0], text: line.slice(1) }));
               if (changed.some(entry => WORKFLOW_PRIVILEGE.some(pattern => pattern.test(entry.text)))) return true;
-              // Deleting a step removes verification or behaviour, which a rewrite
-              // does not; only a net reduction of step commands is R2.
+              // Deleting a step removes verification or behaviour. Rewriting one
+              // does the same while keeping the counts equal, which is how
+              // `npm test` becomes `echo "Tests skipped"`. Any removed step
+              // command is therefore R2; only a pure addition stays cheap.
               const removed = changed.filter(entry => entry.sign === '-' && STEP_COMMAND.test(entry.text)).length;
-              const added = changed.filter(entry => entry.sign === '+' && STEP_COMMAND.test(entry.text)).length;
-              if (removed > added) return true;
+              if (removed > 0) return true;
               if (!changed.some(entry => !COSMETIC.test(entry.text))) return false;
               return authorityBearing(file.filename, ref);
             }
@@ -142,26 +143,36 @@ jobs:
             // The receipt is a single JSON object closed just before the HTML
             // comment terminator, so the capture must stay greedy.
             const REVIEW_RECEIPT = /<!--\s*codex-review-state:v1\s*(\{[\s\S]*\})\s*-->/;
-            // Reading the base timestamp is part of evaluating the receipt, so a
-            // failure here errors the gate instead of silently accepting a stale review.
-            // pr.base.sha is the base commit GitHub recorded for the comparison and it
-            // lags the live branch, so read the branch head instead: a lagging value
-            // would hide base drift and let a pre-drift approval pass.
-            async function baseLastMovedAt(baseRef) {
+            // A receipt names only the head it reviewed, and commit dates are author
+            // metadata rather than the time a branch moved, so an old review can
+            // outlive a base push. Git ancestry is the authenticated evidence: the
+            // reviewed head must contain the current base head, which GitHub
+            // resolves from the object graph. pr.base.sha lags the live branch, so
+            // comparing it would miss the same drift.
+            async function headContainsBase(baseRef, headSha) {
               const { data } = await github.rest.repos.getBranch({ ...repo, branch: baseRef });
-              return new Date(data.commit.commit.committer.date).getTime();
+              const baseHead = data.commit.sha;
+              const { data: cmp } = await github.rest.repos.compareCommits({ ...repo, base: baseHead, head: headSha });
+              return cmp.merge_base_commit?.sha === baseHead;
             }
             // A Dependabot skip only holds for a head Dependabot itself wrote.
             async function dependabotHead(ref) {
               const { data } = await github.rest.repos.getCommit({ ...repo, ref });
-              const login = data.author?.login || '';
-              const name = data.commit?.author?.name || '';
-              return login === 'dependabot[bot]' || name === 'dependabot[bot]';
+              // The author name is free text: anyone can commit as "dependabot[bot]".
+              // Only the linked account is authenticated, so the name is not a signal.
+              // An unlinked commit falls through to the normal review path.
+              return data.author?.login === 'dependabot[bot]';
             }
             // Codex publishes a machine-readable receipt in its rolling summary
             // comment. Only a completed review of the current head with no
             // unresolved finding counts as a pass; anything else blocks the gate.
-            async function aiReview(prNumber, headSha, baseMovedAt) {
+            async function aiReview(prNumber, headSha, baseContained) {
+              // A review cannot outlive a base push. Re-requesting a review on the
+              // same head does not clear this: the merge would still combine that
+              // head with a base the review never saw, so the branch comes first.
+              if (!baseContained) {
+                return { state: 'failure', description: 'Base branch advanced since this head was built; update the branch then comment @codex review' };
+              }
               const comments = await github.paginate(github.rest.issues.listComments, { ...repo, issue_number: prNumber, per_page: 100 });
               const receipts = comments
                 .filter(comment => CODEX_LOGIN.test(comment.user?.login || ''))
@@ -185,12 +196,6 @@ jobs:
               }
               if (review.has_unresolved_findings !== false) {
                 return { state: 'failure', description: 'Codex review still has unresolved findings on this head' };
-              }
-              // The receipt only carries a head sha, so base drift is detected by
-              // comparing when the base last moved with when the review finished.
-              const reviewedAt = new Date(receipts[0].comment.updated_at).getTime();
-              if (Number.isFinite(baseMovedAt) && Number.isFinite(reviewedAt) && baseMovedAt > reviewedAt) {
-                return { state: 'failure', description: 'Base branch advanced after the review; comment @codex review' };
               }
               return { state: 'success', description: 'Codex reviewed this head with no unresolved findings' };
             }
@@ -246,7 +251,7 @@ jobs:
               }
               const review = isDependabot
                 ? { state: 'success', description: 'Automated dependency update: Codex review not required' }
-                : await aiReview(number, sha, await baseLastMovedAt(pr.base.ref));
+                : await aiReview(number, sha, await headContainsBase(pr.base.ref, sha));
               await status('ai-review', review.state, review.description);
               const tierOK = !risky || approval !== null;
               const tierNote = !risky ? 'Low-risk paths: no owner approval needed'
