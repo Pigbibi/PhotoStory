@@ -41,7 +41,10 @@
 - 工作流默认只读，按 job 授予写入；外部 Action 固定完整提交 SHA，由依赖更新 PR 维护版本。
 - 修改 workflow、依赖清单、AI 规则或发布脚本属于需要仔细检查的变更；CODEOWNERS 提供责任路由，实际审批要求以当前分支保护和可用维护者为准。
 - 构建与发布凭据分离；发布分支、实际 checkout 与获准提交保持一致。只在必要步骤读取凭据，不把凭据带进安装依赖或普通测试。
-- Dependabot 自动批准和 squash 合并仅接受签名校验通过的同仓 PR：稳定版本的 patch/minor，或只更换固定 SHA 的 GitHub Actions 版本。应用依赖 major、0.x、预发布、未知元数据及混合源码改动仍需复核。许可文件和必需检查见 `.github/scripts/dependabot-policy.json`；全部当前 CI 和已有治理检查必须成功，默认分支必须为最新，批准与合并均锁定 head。CODEOWNERS 的依赖文件例外同时影响人工 PR；其他文件归属不变。CodeRabbit 的 `max_merge_risk` 保持 `low`，不绕过保护或已有审批。
+- Dependabot 自动批准和 squash 合并仅接受签名校验通过的同仓 PR：稳定版本的 patch/minor，或只更换固定 SHA 的 GitHub Actions 版本。应用依赖 major、0.x、预发布、未知元数据及混合源码改动仍需复核。许可文件和必需检查见 `.github/scripts/dependabot-policy.json`；全部当前 CI 和已有治理检查必须成功，默认分支必须为最新，批准与合并均锁定 head。CODEOWNERS 的依赖文件例外同时影响人工 PR；其他文件归属不变。
+- workflow 改动整份按受保护处理，不设说明性行豁免：删断言、加 `if: false`、`continue-on-error`、job 级 `name`（它就是必需检查的上下文名）都算逻辑；`run:` 块里的 `#` 行也是 shell 输入，GitHub 会在 Bash 之前展开 `${{ }}`，反斜杠续行后的注释还会截断命令。改名或移出 `.github/workflows/` 同样受保护，因为它悄悄停掉了自己发布的检查。`config`/`settings` 运行时配置、`.github/scripts/` 以及根 `scripts/` 下名称含 check/verify/validate/hygiene/lint 的脚本都受保护：默认值改变在 diff 里看不出，而这些脚本正是可信 workflow 执行的东西。
+- 批准人登录名从仓库变量 `RISK_GATE_OWNER` 读取，变量未设置时不接受任何标签。`owner-approved` 表示人确认过，`agent-approved` 表示代理自行放行，状态描述会写明 `NOT confirmed by the owner`；两者同时存在时 `owner-approved` 生效。
+- 独立审查是 Codex review 插件，已不再使用 CodeRabbit：没有 workflow 调用它，没有标签来自它，它缺席也不构成待办发现，历史 `max_merge_risk` 说法作废。
 - AI 升级建议只能通过本仓已准入的调用身份提交；尚未接通服务时保持待处理，不借用 Quant 或其他项目凭据，不在有写权限的任务里执行 PR 代码。
 - 治理检查从默认分支加载同一套 Dependabot 策略；符合策略的依赖更新免人工路径审批，已验证的机器人描述免人工 PR 模板。人工 PR 仍按原规则审批，合并仍等待全部 CI 成功。
 - 安全问题走 SECURITY.md 的私密入口。普通问题按复现、版本和影响分类，已关闭历史需求不自动恢复。
