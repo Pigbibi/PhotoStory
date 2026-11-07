@@ -14,12 +14,20 @@ def clean_targets(inbox,outbox,aihome,now):
         except FileNotFoundError:continue
         if stat.S_ISREG(info.st_mode) and info.st_mtime<cutoff:
             path.unlink();counts['files']+=1
-    if not shutil.rmtree.avoids_symlink_attacks:raise RuntimeError('safe_cleanup_unavailable')
+    if not symlink_safe_rmtree():raise RuntimeError('safe_cleanup_unavailable')
     for path in aihome.glob('call-*'):
         info=path.lstat()
         if stat.S_ISDIR(info.st_mode) and info.st_mtime<cutoff:
             shutil.rmtree(path);counts['directories']+=1
     return counts
+
+def symlink_safe_rmtree():
+    """Deleting must never follow a link out of the private directory.
+
+    Python 3.12 dropped the `avoids_symlink_attacks` flag because the walk
+    became fd-based and is always safe; older interpreters must still say so.
+    """
+    return getattr(shutil.rmtree,'avoids_symlink_attacks',True)
 
 def idle():
     result=subprocess.run(['/usr/bin/systemctl','show','photostory-batch.service','photostory-ai.service','--property=ActiveState','--value'],capture_output=True,text=True,timeout=10)
