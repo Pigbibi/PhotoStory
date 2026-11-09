@@ -1,7 +1,8 @@
+import {digest} from './digest.mjs';
+
 const DAY=86400000;
 const fail=code=>{throw new Error(code);};
 export const usesR2=e=>Boolean(e.MEDIA_BUCKET)||e.MEDIA_STORAGE==='r2';
-const digest=async data=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),x=>x.toString(16).padStart(2,'0')).join('');
 function limits(e){
  const bounded=(key,fallback,max)=>{
   const v=Number(e[key]??fallback);

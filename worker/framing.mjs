@@ -1,4 +1,11 @@
-export const ASPECTS = {'4:5':4/5,'1:1':1,'3:2':3/2};
+import {aspects} from './vocabulary.mjs';
+
+// The processor emits the same three aspect labels, so they live in one place.
+export const ASPECTS = Object.fromEntries(aspects.map(value => {
+  const [width, height] = value.split(':').map(Number);
+  return [value, width / height];
+}));
+
 export function aspectValue(value='4:5') {
   if(typeof value!=='string'||!Object.hasOwn(ASPECTS,value))throw new Error('invalid_framing');
   return value;

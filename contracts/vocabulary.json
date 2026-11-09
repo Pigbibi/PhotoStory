@@ -1,0 +1,82 @@
+{
+  "failureCodes": [
+    "folder_limit",
+    "folder_not_found",
+    "gateway_failed",
+    "gateway_not_configured",
+    "gateway_timeout",
+    "group_contract",
+    "history_match_contract",
+    "history_not_complete",
+    "https_required",
+    "image_too_large",
+    "invalid_graph_origin",
+    "page_limit",
+    "photo_limit",
+    "redirect_blocked",
+    "response_too_large",
+    "screen_contract",
+    "setup_required",
+    "thumbnail_missing",
+    "thumbnail_origin",
+    "translation_contract",
+    "unknown"
+  ],
+  "failureStages": ["inventory", "thumbnail", "ai_gateway", "completion"],
+  "feedbackCategories": [
+    "not_scenery",
+    "wrong_place_time",
+    "incoherent",
+    "weak_cover",
+    "inaccurate_caption",
+    "ordinary",
+    "other"
+  ],
+  "languages": {
+    "en": "English",
+    "zh-CN": "简体中文",
+    "zh-TW": "繁體中文",
+    "ja": "日本語",
+    "ko": "한국어",
+    "es": "Español",
+    "fr": "Français",
+    "de": "Deutsch",
+    "pt": "Português",
+    "it": "Italiano",
+    "ru": "Русский",
+    "ar": "العربية",
+    "hi": "हिन्दी"
+  },
+  "promptLanguages": {
+    "en": "English",
+    "zh-CN": "Simplified Chinese",
+    "zh-TW": "Traditional Chinese",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "pt": "Portuguese",
+    "it": "Italian",
+    "ru": "Russian",
+    "ar": "Arabic",
+    "hi": "Hindi"
+  },
+  "aspects": ["4:5", "1:1", "3:2"],
+  "aspectByOrientation": {
+    "landscape": "3:2",
+    "portrait": "4:5",
+    "square": "1:1"
+  },
+  "matchAlgorithm": "dhash-v1",
+  "draftTextLimits": {
+    "title": 160,
+    "caption": 1800,
+    "hashtags": 350,
+    "reason": 600,
+    "alt": 300
+  },
+  "draftPhotoLimit": 8,
+  "idPattern": "^[A-Za-z0-9_-]{1,128}$",
+  "instagramIdPattern": "^\\d{1,32}$"
+}

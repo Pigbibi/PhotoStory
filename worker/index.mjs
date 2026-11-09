@@ -13,24 +13,12 @@ import { validateDraft, reviewDraft, validId } from "./review.mjs";
 import * as auth from "./auth.mjs";
 import * as health from './health.mjs';
 import {inventoryRequest,inventoryCommit,inventoryStatus} from './inventory-state.mjs';
-const json = (body, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-const failure = (code, status) => json({ error: code }, status);
-const JOB_FAILURE_CODES = new Set([
-  "folder_limit", "folder_not_found", "gateway_failed", "gateway_not_configured",
-  "group_contract", "history_match_contract", "history_not_complete", "https_required",
-  "image_too_large", "invalid_graph_origin", "page_limit", "photo_limit", "redirect_blocked",
-  "response_too_large", "screen_contract", "setup_required", "thumbnail_missing",
-  "thumbnail_origin", "translation_contract", "unknown",
-]);
-const JOB_FAILURE_STAGES = new Set(["inventory", "thumbnail", "ai_gateway", "completion"]);
-const jobFailureCode = (value) =>
-  typeof value === "string" && JOB_FAILURE_CODES.has(value) ? value : "unknown";
-const jobFailureStage = (value) =>
-  typeof value === "string" && JOB_FAILURE_STAGES.has(value) ? value : null;
+import {json,failure,errorResponse} from './http.mjs';
+import {failureCodeSet,failureStageSet} from './vocabulary.mjs';
+
+const BODY_LIMIT={small:4096,history:128000,automatic:2600000,batch:12*1024*1024};
+const PREFIX={publish:'/api/publish/',photos:'/api/photos/',drafts:'/api/drafts/',export:'/api/export/',jobs:'/api/jobs/',delivery:'/delivery/'};
+
 function secure(r) {
   const h = new Headers(r.headers);
   h.set("Cache-Control", "no-store");
@@ -43,20 +31,22 @@ function secure(r) {
   );
   return new Response(r.body, { status: r.status, headers: h });
 }
-async function readJSON(r, max = 16384) {
+
+// One reader for every request body. A caller that needs bytes and a caller that
+// needs JSON must not each re-implement the bounded accumulation loop.
+async function readBytes(r, max, tooLarge="request_too_large", noBody="invalid_request") {
   const declared = Number(r.headers.get("Content-Length") || 0);
-  if (declared > max) throw new Error("request_too_large");
-  let size = 0,
-    parts = [];
+  if (declared > max) throw new Error(tooLarge);
   const reader = r.body?.getReader();
-  if (!reader) throw new Error("invalid_request");
+  if (!reader) throw new Error(noBody);
+  let size = 0, parts = [];
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     size += value.length;
     if (size > max) {
       await reader.cancel();
-      throw new Error("request_too_large");
+      throw new Error(tooLarge);
     }
     parts.push(value);
   }
@@ -66,63 +56,221 @@ async function readJSON(r, max = 16384) {
     bytes.set(p, offset);
     offset += p.length;
   }
-  return JSON.parse(new TextDecoder().decode(bytes));
+  return bytes;
 }
+async function readJSON(r, max = 16384) {
+  return JSON.parse(new TextDecoder().decode(await readBytes(r, max)));
+}
+
 async function machine(r, e) {
   const value = r.headers.get("Authorization");
   if (!e.BATCH_TOKEN || !value?.startsWith("Bearer ")) return false;
   return (await auth.hash(value.slice(7))) === (await auth.hash(e.BATCH_TOKEN));
 }
+
+const jobFailureCode = (value) => (typeof value === "string" && failureCodeSet.has(value) ? value : "unknown");
+const jobFailureStage = (value) => (typeof value === "string" && failureStageSet.has(value) ? value : null);
+
+async function photoSources(r, e) {
+  if (r.method === "GET")
+    return json((await e.DB.prepare("SELECT id FROM photos WHERE NOT EXISTS(SELECT 1 FROM state WHERE key='photo-source:'||photos.id) LIMIT 100").all()).results);
+  const b = await readJSON(r);
+  if (!Array.isArray(b.sources) || b.sources.length > 10 || (b.dryRun !== undefined && typeof b.dryRun !== 'boolean')) throw new Error('invalid_request');
+  const statements = [];
+  for (const p of b.sources) {
+    if (!validId(p.id) || !await e.DB.prepare('SELECT id FROM photos WHERE id=?').bind(p.id).first()) throw new Error('source_unavailable');
+    const source = await recoverSource(e, p.id, p.item, p.fingerprint, p.policy);
+    statements.push(e.DB.prepare("INSERT OR IGNORE INTO state(key,value,expires) VALUES(?,?,NULL)").bind('photo-source:' + p.id, JSON.stringify(source)));
+  }
+  if (statements.length && !b.dryRun) await e.DB.batch(statements);
+  return json({ ok: true });
+}
+
+async function claim(e) {
+  const view = await settingsView(e);
+  if (view.backlogPaused || view.storage?.full) return json(null);
+  const lease = auth.random();
+  const row = await e.DB.prepare(
+    "UPDATE jobs SET status='running',lease=? WHERE id=(SELECT id FROM jobs WHERE status='pending' ORDER BY created LIMIT 1) AND status='pending' RETURNING id,body",
+  )
+    .bind(await auth.hash(lease))
+    .first();
+  return json(row ? { id: row.id, ...JSON.parse(row.body), lease } : null);
+}
+
+async function source(e, job) {
+  const used = await e.DB.prepare("SELECT id FROM photos").all();
+  const prior = (await e.DB.prepare("SELECT id,body FROM drafts WHERE json_extract(body,'$.status') IN ('draft','approved') ORDER BY CASE json_extract(body,'$.status') WHEN 'approved' THEN 0 ELSE 1 END,rowid DESC LIMIT 50").all()).results;
+  const view = await settingsView(e);
+  return json({
+    accessToken: await auth.microsoftToken(e),
+    knownPhotoIds: [...new Set([...used.results.map((x) => x.id), ...await history.excluded(e)])],
+    reviewMode: "manual",
+    strictAutoEnabled: view.settings.reviewMode === "strict_auto",
+    ownerPreferenceCounters: await auth.get(e, 'ownerPreferenceCounters') || { coherent: 0, compositionGood: 0, noDuplicateFrames: 0 },
+    ownerCurationFeedback: await auth.get(e, 'ownerCurationFeedback') || { removedFromCarousel: 0 },
+    ownerRejectionFeedback: await auth.get(e, 'ownerRejectionFeedback') || { categories: {}, recent: [] },
+    captionLanguage: "en",
+    editorLanguage: "zh-CN", // Legacy jobs keep their original prompt language.
+    ...JSON.parse(job.body),
+    referenceDrafts: prior.map(row => { const d = JSON.parse(row.body); return { id: row.id, status: d.status, title: d.title, caption: d.caption.slice(0, 400), photos: d.photos.slice(0, 2).map(p => ({ alt: p.alt })) }; }),
+    draftLimit: Math.max(0, Math.min(8, view.settings.draftLimit, view.settings.pendingLimit - view.pending)),
+  });
+}
+
+async function checkpoint(e, job, b) {
+  const previous = JSON.parse(job.body), progress = progressInput(b.progress, previous.progress);
+  if (progress.batches !== (previous.progress?.batches || 0)) throw new Error("invalid_progress");
+  const inventory = await inventoryCommit(e, job, b);
+  const statements = [];
+  if (inventory) statements.push(inventory);
+  if (b.nativeCheckpoint !== undefined && typeof b.nativeCheckpoint !== 'boolean') throw new Error('invalid_checkpoint');
+  // Native intent/result snapshots keep the same existing running lease.
+  // The ordinary checkpoint still releases it; neither path extends identity.
+  const retain = b.nativeCheckpoint === true;
+  if (retain && previous.stopRequested) throw new Error('job_stopped');
+  const update = retain
+    ? "UPDATE jobs SET body=json_set(body,'$.progress',json(?)) WHERE id=? AND lease=? AND status='running' AND COALESCE(json_extract(body,'$.stopRequested'),0)!=1"
+    : "UPDATE jobs SET body=json_set(body,'$.progress',json(?)),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE 'pending' END,lease=NULL WHERE id=? AND lease=? AND status='running'";
+  statements.push(e.DB.prepare(update).bind(JSON.stringify(progress), job.id, job.lease));
+  const results = await e.DB.batch(statements);
+  if (results.at(-1).meta.changes !== 1) return failure("job_conflict", 409);
+  return json({ ok: true });
+}
+
+async function failJob(e, job, b) {
+  const stage = jobFailureStage(b.stage);
+  const reason = { code: jobFailureCode(b.reason), ...(stage ? { stage } : {}) };
+  await e.DB.batch([
+    e.DB.prepare(
+      "UPDATE jobs SET body=json_set(body,'$.failure',json(?)),status='failed',lease=NULL WHERE id=? AND status='running'",
+    ).bind(JSON.stringify(reason), job.id),
+    e.DB.prepare("UPDATE state SET value=json_set(value,'$.enabled',json('false'),'$.nextRun',NULL,'$.pausedReason','failed','$.version',json_extract(value,'$.version')+1) WHERE key='automation' AND json_extract(value,'$.lastJobId')=?").bind(job.id),
+  ]);
+  return json({ ok: true });
+}
+
+async function complete(e, job, b) {
+  if (
+    !Array.isArray(b.drafts) ||
+    b.drafts.length > 30 ||
+    !Array.isArray(b.photos) ||
+    b.photos.length > 300
+  )
+    throw new Error("invalid_batch");
+  const previous = JSON.parse(job.body);
+  if (previous.pipeline !== 2 || !validId(b.batchId) || typeof b.more !== "boolean") throw new Error("invalid_batch");
+  const progress = progressInput(b.progress, previous.progress);
+  if (progress.batches !== (previous.progress?.batches || 0) + 1 || progress.processed - (previous.progress?.processed || 0) > previous.maxPhotos || b.more !== (progress.processed < progress.total)) throw new Error("invalid_progress");
+  if (progress.phase !== (b.more ? "processing" : "complete")) throw new Error("invalid_progress");
+  if (previous.analysisLimit && (!Number.isInteger(b.progress.analyzed) || progress.analyzed > previous.analysisLimit || progress.analyzed - (previous.progress?.analyzed || 0) > progress.processed - (previous.progress?.processed || 0))) throw new Error('invalid_progress');
+  const inventory = await inventoryCommit(e, job, b);
+  const drafts = b.drafts.map(validateDraft),
+    seen = new Set();
+  if (new Set(drafts.map((d) => d.id)).size !== drafts.length)
+    throw new Error("duplicate_draft");
+  const crossChecks = Array.isArray(b.crossReviews) ? b.crossReviews : [];
+  if (crossChecks.length && (crossChecks.length !== drafts.length || new Set(crossChecks.map(x => x?.draftId)).size !== drafts.length || crossChecks.some(x => !drafts.some(d => d.id === x?.draftId)))) throw new Error('invalid_batch');
+  const photos = new Map(b.photos.map((p) => [p.id, p]));
+  const stmts = inventory ? [inventory] : [];
+  for (const d of drafts) {
+    if (!d.id.startsWith(`${job.id}-${b.batchId}-`)) throw new Error("invalid_batch");
+    const existing = await e.DB.prepare("SELECT id FROM drafts WHERE id=?")
+      .bind(d.id)
+      .first();
+    if (existing) throw new Error("duplicate_draft");
+    for (const p of d.photos) {
+      if (seen.has(p.id)) throw new Error("duplicate_photo");
+      seen.add(p.id);
+      const photo = photos.get(p.id);
+      if (
+        !photo ||
+        photo.safety !== "allow" ||
+        !Array.isArray(photo.flags) ||
+        photo.flags.length ||
+        typeof photo.jpeg !== "string" ||
+        photo.jpeg.length > 300000
+      )
+        throw new Error("unsafe_photo");
+      // Only JPEG previews from the bounded scanner enter private storage.
+      const raw = Uint8Array.from(atob(photo.jpeg), (c) => c.charCodeAt(0));
+      if (raw[0] !== 255 || raw[1] !== 216 || raw[2] !== 255)
+        throw new Error("invalid_image");
+      const used = await e.DB.prepare("SELECT id FROM photos WHERE id=?")
+        .bind(p.id)
+        .first();
+      if (used) throw new Error("photo_already_used");
+      if (photo.source) stmts.push(e.DB.prepare("INSERT OR IGNORE INTO state(key,value,expires) VALUES(?,?,NULL)").bind('photo-source:' + p.id, JSON.stringify(sourceRecord(photo.source))));
+      stmts.push(
+        e.DB.prepare("INSERT INTO photos(id,data,mime) VALUES(?,?,?)").bind(
+          p.id,
+          await storeImage(e, 'preview:' + p.id, raw),
+          "image/jpeg",
+        ),
+      );
+    }
+    const evidence = Array.isArray(b.autoReviews) ? b.autoReviews.filter(x => x?.draftId === d.id) : [];
+    const boundedEvidence = evidence.length === 1 ? { policy: evidence[0].policy, photoIds: evidence[0].photoIds, screens: Array.isArray(evidence[0].screens) ? evidence[0].screens.map(s => ({ id: s.id, decision: s.decision, landscape: s.landscape, flags: Array.isArray(s.flags) ? s.flags.slice(0, 8) : [], aesthetic: s.aesthetic, light: s.light, scene: s.scene, place: s.place })) : [], review: evidence[0].review } : null;
+    const check = crossChecks.find(x => x?.draftId === d.id);
+    if (check && (!Array.isArray(check.duplicateIds) || check.duplicateIds.length > 8 || new Set(check.duplicateIds).size !== check.duplicateIds.length || check.duplicateIds.some(id => !validId(id) || id === d.id) || typeof check.captionGrounded !== 'boolean' || typeof check.locationGrounded !== 'boolean')) throw new Error('invalid_batch');
+    const crossReview = check ? { status: 'checked', duplicateIds: check.duplicateIds, captionGrounded: check.captionGrounded, locationGrounded: check.locationGrounded } : { status: 'unavailable' };
+    const eligible = evidence.length === 1 && strictApproval(d, evidence[0], previous.reviewMode) && crossReview.status === 'checked' && !crossReview.duplicateIds.length && crossReview.captionGrounded && crossReview.locationGrounded;
+    const reviewed = { ...d, crossReview, ...(boundedEvidence ? { strictReviewEvidence: boundedEvidence } : {}) };
+    const approved = { ...reviewed, status: "approved", approvalSource: "strict_ai_v1", autoApprovedAt: Date.now(), strictReviewSoftFields: ownerPreferenceCounters(evidence[0]) };
+    // Re-read the owner's mode inside the write transaction: switching to
+    // manual during inference must prevent automatic approval at commit.
+    stmts.push(e.DB.prepare("INSERT INTO drafts(id,body,version) SELECT ?,CASE WHEN ?=1 AND json_extract((SELECT value FROM state WHERE key='automation'),'$.reviewMode')='strict_auto' THEN ? ELSE ? END,1")
+      .bind(d.id, eligible ? 1 : 0, JSON.stringify(approved), JSON.stringify(reviewed)));
+
+  }
+  stmts.push(
+    e.DB.prepare(
+      "UPDATE jobs SET body=json_set(body,'$.progress',json(?),'$.lastBatch',?),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE ? END,lease=NULL WHERE id=? AND lease=? AND status='running'",
+    ).bind(JSON.stringify(progress), b.batchId, b.more ? (previous.analysisLimit && progress.analyzed >= previous.analysisLimit ? 'limited' : 'pending') : 'complete', job.id, job.lease),
+  );
+  await e.DB.batch(stmts);
+  return json({ ok: true, count: drafts.length });
+}
+
+// Machine routes that act on one running job read the same body and prove the
+// same lease before they run. Declaring that on the route, instead of letting
+// control fall into a shared tail, is what makes the order unbreakable.
+const internalRoutes = [
+  { path: '/internal/inventory/status', methods: ['GET'], handle: (r, e) => inventoryStatus(e) },
+  { path: '/internal/inventory', handle: (r, e) => inventoryRequest(r, e) },
+  { path: '/internal/health', methods: ['GET'], handle: async (r, e) => json(await health.view(e)) },
+  { path: '/internal/history-match', methods: ['POST'], handle: async (r, e) => json(await history.ingestMatches(e, await readJSON(r, BODY_LIMIT.history))) },
+  { path: '/internal/history-media', methods: ['POST'], handle: async (r, e) => json(await instagram.mediaHistoryMediaPage(e, (await readJSON(r, BODY_LIMIT.small))?.offset ?? 0)) },
+  { path: '/internal/instagram-check', methods: ['GET'], handle: async (r, e) => json(await instagram.publishingHealth(e)) },
+  { path: '/internal/storage/migrate', methods: ['POST'], handle: async (r, e) => json(await migrateImages(e)) },
+  { path: '/internal/travel-backfill', methods: ['POST'], handle: async (r, e) => json(await backfillTravel(e, (await readJSON(r, BODY_LIMIT.small)).cursor ?? null)) },
+  { path: '/internal/autopublish', methods: ['POST'], handle: async (r, e) => {
+    const result = await automatic(e, await readJSON(r, BODY_LIMIT.automatic));
+    return result instanceof Response ? result : json(result);
+  } },
+  { path: '/internal/photo-sources', methods: ['GET', 'POST'], handle: (r, e) => photoSources(r, e) },
+  { path: '/internal/cleanup-policy', methods: ['GET'], handle: async (r, e) => json({ enabled: (await settingsView(e)).settings.cleanupEnabled }) },
+  { path: '/internal/maintenance', methods: ['POST'], handle: async (r, e) => {
+    await maintenance(e, Date.now(), (await readJSON(r)).temporaryCleanup);
+    return json({ ok: true });
+  } },
+  { path: '/internal/claim', methods: ['POST'], handle: (r, e) => claim(e) },
+  { path: '/internal/source', methods: ['POST'], lease: true, handle: (r, e, job) => source(e, job) },
+  { path: '/internal/checkpoint', methods: ['POST'], lease: true, handle: (r, e, job, b) => checkpoint(e, job, b) },
+  { path: '/internal/fail', methods: ['POST'], lease: true, handle: (r, e, job, b) => failJob(e, job, b) },
+  { path: '/internal/complete', methods: ['POST'], lease: true, handle: (r, e, job, b) => complete(e, job, b) },
+];
+
+const matches = (route, method, path) => route.path === path && (!route.methods || route.methods.includes(method));
+
 async function internal(r, e, p) {
   if (!(await machine(r, e))) return failure("unauthorized", 401);
-  if(p==='/internal/inventory/status'&&r.method==='GET')return inventoryStatus(e);
-  if(p==='/internal/inventory')return inventoryRequest(r,e);
-  if(p==='/internal/health'&&r.method==='GET')return json(await health.view(e));
-  if(p==='/internal/history-match'&&r.method==='POST')return json(await history.ingestMatches(e,await readJSON(r,128000)));
-  if(p==='/internal/history-media'&&r.method==='POST'){
-    const b=await readJSON(r,4096);return json(await instagram.mediaHistoryMediaPage(e,b?.offset??0));
-  }
-  if(p==='/internal/instagram-check'&&r.method==='GET')return json(await instagram.publishingHealth(e));
-  if(p==='/internal/storage/migrate'&&r.method==='POST')return json(await migrateImages(e));
-  if(p==='/internal/travel-backfill'&&r.method==='POST'){
-    const b=await readJSON(r,4096);return json(await backfillTravel(e,b.cursor??null));
-  }
-  if(p==='/internal/autopublish'&&r.method==='POST'){
-    const result=await automatic(e,await readJSON(r,2600000));
-    return result instanceof Response?result:json(result);
-  }
-  if(p==='/internal/photo-sources'){
-    if(r.method==='GET')return json((await e.DB.prepare("SELECT id FROM photos WHERE NOT EXISTS(SELECT 1 FROM state WHERE key='photo-source:'||photos.id) LIMIT 100").all()).results);
-    if(r.method==='POST'){
-      const b=await readJSON(r);
-      if(!Array.isArray(b.sources)||b.sources.length>10||(b.dryRun!==undefined&&typeof b.dryRun!=='boolean'))throw new Error('invalid_request');
-      const statements=[];
-      for(const p of b.sources){
-        if(!validId(p.id)||!await e.DB.prepare('SELECT id FROM photos WHERE id=?').bind(p.id).first())throw new Error('source_unavailable');
-        const source=await recoverSource(e,p.id,p.item,p.fingerprint,p.policy);
-        statements.push(e.DB.prepare("INSERT OR IGNORE INTO state(key,value,expires) VALUES(?,?,NULL)").bind('photo-source:'+p.id,JSON.stringify(source)));
-      }
-      if(statements.length&&!b.dryRun)await e.DB.batch(statements);return json({ok:true});
-    }
-  }
-  if(p==='/internal/cleanup-policy'  && r.method==='GET')return json({enabled:(await settingsView(e)).settings.cleanupEnabled});
-  if(p==='/internal/maintenance' && r.method==='POST'){
-    const b=await readJSON(r);
-    await maintenance(e,Date.now(),b.temporaryCleanup);
-    return json({ok:true});
-  }
-  if (p === "/internal/claim" && r.method === "POST") {
-    const view=await settingsView(e);
-    if(view.backlogPaused||view.storage?.full)return json(null);
-    const lease = auth.random();
-    const row = await e.DB.prepare(
-      "UPDATE jobs SET status='running',lease=? WHERE id=(SELECT id FROM jobs WHERE status='pending' ORDER BY created LIMIT 1) AND status='pending' RETURNING id,body",
-    )
-      .bind(await auth.hash(lease))
-      .first();
-    return json(row ? { id: row.id, ...JSON.parse(row.body), lease } : null);
-  }
-  const b = await readJSON(r, 12 * 1024 * 1024);
+  const open = internalRoutes.find((route) => !route.lease && matches(route, r.method, p));
+  if (open) return open.handle(r, e);
+  // Every remaining route addresses one running job, so the lease check runs
+  // once for all of them. A path that matches nothing still reports this same
+  // malformed request, which is what the processor already handles.
+  const b = await readJSON(r, BODY_LIMIT.batch);
   if (!validId(b.jobId) || typeof b.lease !== "string")
     return failure("invalid_job", 400);
   const job = await e.DB.prepare(
@@ -131,139 +279,22 @@ async function internal(r, e, p) {
     .bind(b.jobId, await auth.hash(b.lease))
     .first();
   if (!job) return failure("job_conflict", 409);
-  if (p === "/internal/source" && r.method === "POST") {
-    const used = await e.DB.prepare("SELECT id FROM photos").all();
-    const prior=(await e.DB.prepare("SELECT id,body FROM drafts WHERE json_extract(body,'$.status') IN ('draft','approved') ORDER BY CASE json_extract(body,'$.status') WHEN 'approved' THEN 0 ELSE 1 END,rowid DESC LIMIT 50").all()).results;
-    const view=await settingsView(e);
-    return json({
-      accessToken: await auth.microsoftToken(e),
-      knownPhotoIds: [...new Set([...used.results.map((x) => x.id),...await history.excluded(e)])],
-      reviewMode: "manual",
-      strictAutoEnabled: view.settings.reviewMode==="strict_auto",
-      ownerPreferenceCounters: await auth.get(e,'ownerPreferenceCounters') || {coherent:0,compositionGood:0,noDuplicateFrames:0},
-      ownerCurationFeedback: await auth.get(e,'ownerCurationFeedback') || {removedFromCarousel:0},
-      ownerRejectionFeedback: await auth.get(e,'ownerRejectionFeedback') || {categories:{},recent:[]},
-      captionLanguage: "en",
-      editorLanguage: "zh-CN", // Legacy jobs keep their original prompt language.
-      ...JSON.parse(job.body),
-      referenceDrafts:prior.map(row=>{const d=JSON.parse(row.body);return {id:row.id,status:d.status,title:d.title,caption:d.caption.slice(0,400),photos:d.photos.slice(0,2).map(p=>({alt:p.alt}))};}),
-      draftLimit: Math.max(0,Math.min(8,view.settings.draftLimit,view.settings.pendingLimit-view.pending)),
-    });
-  }
-  if (p === "/internal/checkpoint" && r.method === "POST") {
-    const previous=JSON.parse(job.body), progress=progressInput(b.progress,previous.progress);
-    if(progress.batches !== (previous.progress?.batches||0)) throw new Error("invalid_progress");
-    const inventory=await inventoryCommit(e,job,b);
-    const statements=[];
-    if(inventory)statements.push(inventory);
-    if(b.nativeCheckpoint!==undefined&&typeof b.nativeCheckpoint!=='boolean')throw new Error('invalid_checkpoint');
-    // Native intent/result snapshots keep the same existing running lease.
-    // The ordinary checkpoint still releases it; neither path extends identity.
-    const retain=b.nativeCheckpoint===true;
-    if(retain&&previous.stopRequested)throw new Error('job_stopped');
-    const update=retain
-      ? "UPDATE jobs SET body=json_set(body,'$.progress',json(?)) WHERE id=? AND lease=? AND status='running' AND COALESCE(json_extract(body,'$.stopRequested'),0)!=1"
-      : "UPDATE jobs SET body=json_set(body,'$.progress',json(?)),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE 'pending' END,lease=NULL WHERE id=? AND lease=? AND status='running'";
-    statements.push(e.DB.prepare(update).bind(JSON.stringify(progress),job.id,job.lease));
-    const results=await e.DB.batch(statements);
-    const updated=results.at(-1);
-    if(updated.meta.changes!==1) return failure("job_conflict",409);
-    return json({ok:true});
-  }
-  if (p === "/internal/fail" && r.method === "POST") {
-    const stage = jobFailureStage(b.stage);
-    const failure = {code:jobFailureCode(b.reason), ...(stage ? {stage} : {})};
-    await e.DB.batch([e.DB.prepare(
-      "UPDATE jobs SET body=json_set(body,'$.failure',json(?)),status='failed',lease=NULL WHERE id=? AND status='running'",
-    )
-      .bind(JSON.stringify(failure),job.id),
-      e.DB.prepare("UPDATE state SET value=json_set(value,'$.enabled',json('false'),'$.nextRun',NULL,'$.pausedReason','failed','$.version',json_extract(value,'$.version')+1) WHERE key='automation' AND json_extract(value,'$.lastJobId')=?").bind(job.id),
-    ]);
-    return json({ ok: true });
-  }
-  if (p === "/internal/complete" && r.method === "POST") {
-    if (
-      !Array.isArray(b.drafts) ||
-      b.drafts.length > 30 ||
-      !Array.isArray(b.photos) ||
-      b.photos.length > 300
-    )
-      throw new Error("invalid_batch");
-    const previous=JSON.parse(job.body);
-    if(previous.pipeline!==2 || !validId(b.batchId) || typeof b.more!=="boolean") throw new Error("invalid_batch");
-    const progress=progressInput(b.progress,previous.progress);
-    if(progress.batches!==(previous.progress?.batches||0)+1 || progress.processed-(previous.progress?.processed||0)>previous.maxPhotos || b.more!==(progress.processed<progress.total)) throw new Error("invalid_progress");
-    if(progress.phase!==(b.more?"processing":"complete")) throw new Error("invalid_progress");
-    if(previous.analysisLimit && (!Number.isInteger(b.progress.analyzed)||progress.analyzed>previous.analysisLimit||progress.analyzed-(previous.progress?.analyzed||0)>progress.processed-(previous.progress?.processed||0)))throw new Error('invalid_progress');
-    const inventory=await inventoryCommit(e,job,b);
-    const drafts = b.drafts.map(validateDraft),
-      seen = new Set();
-    if (new Set(drafts.map((d) => d.id)).size !== drafts.length)
-      throw new Error("duplicate_draft");
-    const crossChecks=Array.isArray(b.crossReviews)?b.crossReviews:[];
-    if(crossChecks.length && (crossChecks.length!==drafts.length || new Set(crossChecks.map(x=>x?.draftId)).size!==drafts.length || crossChecks.some(x=>!drafts.some(d=>d.id===x?.draftId))))throw new Error('invalid_batch');
-    const photos = new Map(b.photos.map((p) => [p.id, p]));
-    const stmts = inventory?[inventory]:[];
-    for (const d of drafts) {
-      if(!d.id.startsWith(`${job.id}-${b.batchId}-`)) throw new Error("invalid_batch");
-      const existing = await e.DB.prepare("SELECT id FROM drafts WHERE id=?")
-        .bind(d.id)
-        .first();
-      if (existing) throw new Error("duplicate_draft");
-      for (const p of d.photos) {
-        if (seen.has(p.id)) throw new Error("duplicate_photo");
-        seen.add(p.id);
-        const photo = photos.get(p.id);
-        if (
-          !photo ||
-          photo.safety !== "allow" ||
-          !Array.isArray(photo.flags) ||
-          photo.flags.length ||
-          typeof photo.jpeg !== "string" ||
-          photo.jpeg.length > 300000
-        )
-          throw new Error("unsafe_photo");
-        // Only JPEG previews from the bounded scanner enter private storage.
-        const raw = Uint8Array.from(atob(photo.jpeg), (c) => c.charCodeAt(0));
-        if (raw[0] !== 255 || raw[1] !== 216 || raw[2] !== 255)
-          throw new Error("invalid_image");
-        const used = await e.DB.prepare("SELECT id FROM photos WHERE id=?")
-          .bind(p.id)
-          .first();
-        if (used) throw new Error("photo_already_used");
-        if(photo.source)stmts.push(e.DB.prepare("INSERT OR IGNORE INTO state(key,value,expires) VALUES(?,?,NULL)").bind('photo-source:'+p.id,JSON.stringify(sourceRecord(photo.source))));
-        stmts.push(
-          e.DB.prepare("INSERT INTO photos(id,data,mime) VALUES(?,?,?)").bind(
-            p.id,
-            await storeImage(e,'preview:'+p.id,raw),
-            "image/jpeg",
-          ),
-        );
-      }
-      const evidence=Array.isArray(b.autoReviews)?b.autoReviews.filter(x=>x?.draftId===d.id):[];
-      const boundedEvidence=evidence.length===1?{policy:evidence[0].policy,photoIds:evidence[0].photoIds,screens:Array.isArray(evidence[0].screens)?evidence[0].screens.map(s=>({id:s.id,decision:s.decision,landscape:s.landscape,flags:Array.isArray(s.flags)?s.flags.slice(0,8):[],aesthetic:s.aesthetic,light:s.light,scene:s.scene,place:s.place})):[],review:evidence[0].review}:null;
-      const check=crossChecks.find(x=>x?.draftId===d.id);
-      if(check && (!Array.isArray(check.duplicateIds)||check.duplicateIds.length>8||new Set(check.duplicateIds).size!==check.duplicateIds.length||check.duplicateIds.some(id=>!validId(id)||id===d.id)||typeof check.captionGrounded!=='boolean'||typeof check.locationGrounded!=='boolean'))throw new Error('invalid_batch');
-      const crossReview=check?{status:'checked',duplicateIds:check.duplicateIds,captionGrounded:check.captionGrounded,locationGrounded:check.locationGrounded}:{status:'unavailable'};
-      const eligible=evidence.length===1&&strictApproval(d,evidence[0],previous.reviewMode)&&crossReview.status==='checked'&&!crossReview.duplicateIds.length&&crossReview.captionGrounded&&crossReview.locationGrounded;
-      const reviewed={...d,crossReview,...(boundedEvidence?{strictReviewEvidence:boundedEvidence}: {})};
-      const approved={...reviewed,status:"approved",approvalSource:"strict_ai_v1",autoApprovedAt:Date.now(),strictReviewSoftFields:ownerPreferenceCounters(evidence[0])};
-      // Re-read the owner's mode inside the write transaction: switching to
-      // manual during inference must prevent automatic approval at commit.
-      stmts.push(e.DB.prepare("INSERT INTO drafts(id,body,version) SELECT ?,CASE WHEN ?=1 AND json_extract((SELECT value FROM state WHERE key='automation'),'$.reviewMode')='strict_auto' THEN ? ELSE ? END,1")
-        .bind(d.id,eligible?1:0,JSON.stringify(approved),JSON.stringify(reviewed)));
-
-    }
-    stmts.push(
-      e.DB.prepare(
-        "UPDATE jobs SET body=json_set(body,'$.progress',json(?),'$.lastBatch',?),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE ? END,lease=NULL WHERE id=? AND lease=? AND status='running'",
-      ).bind(JSON.stringify(progress),b.batchId,b.more?(previous.analysisLimit && progress.analyzed>=previous.analysisLimit?'limited':'pending'):'complete',job.id,job.lease),
-    );
-    await e.DB.batch(stmts);
-    return json({ ok: true, count: drafts.length });
-  }
-  return failure("not_found", 404);
+  const scoped = internalRoutes.find((route) => route.lease && matches(route, r.method, p));
+  return scoped ? scoped.handle(r, e, job, b) : failure("not_found", 404);
 }
+
+// The owner's stored preferences are all "read, add, clamp, write back", and
+// every one of them belongs to the same draft write. One helper keeps the guard
+// with the write: a losing version conflict must not count the action anyway.
+const CLAMP = 1000;
+const bump = (value, by = 1) => Math.min(CLAMP, Number(value || 0) + by);
+
+async function preferenceStatement(e, key, empty, apply, draft) {
+  const value = apply({ ...empty, ...await auth.get(e, key) });
+  return e.DB.prepare("INSERT INTO state(key,value,expires) SELECT ?,?,NULL WHERE EXISTS(SELECT 1 FROM drafts WHERE id=? AND body=?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+    .bind(key, JSON.stringify(value), draft.id, draft.body);
+}
+
 async function route(r, e) {
   const u = new URL(r.url),
     p = u.pathname;
@@ -292,7 +323,7 @@ async function route(r, e) {
     return auth.githubStart(r, e);
   if (p === "/auth/github/callback" && r.method === "GET")
     return auth.githubFinish(r, e);
-  if(p.startsWith('/delivery/')&&r.method==='GET'){
+  if(p.startsWith(PREFIX.delivery)&&r.method==='GET'){
     const parts=p.split('/');if(parts.length!==4||!validId(parts[2])||!validId(parts[3]))return failure('not_found',404);
     return publishing.media(e,parts[2],parts[3]);
   }
@@ -323,8 +354,8 @@ async function route(r, e) {
       return auth.microsoftStart(r, e, user);
     if (p === "/auth/microsoft/callback" && r.method === "GET")
       return auth.microsoftFinish(r, e, user);
-    if(p.startsWith('/api/publish/')){
-      const parts=p.slice(13).split('/'),[id,publicationId,action,photoId]=parts;
+    if(p.startsWith(PREFIX.publish)){
+      const parts=p.slice(PREFIX.publish.length).split('/'),[id,publicationId,action,photoId]=parts;
       if(!parts.every(validId))return failure('not_found',404);
       if(parts.length===1&&r.method==='GET')return json(await publishing.view(e,id));
       if(parts.length===2&&publicationId==='prepare'&&r.method==='POST')return json(await publishing.prepare(e,id,(await readJSON(r)).version));
@@ -332,10 +363,7 @@ async function route(r, e) {
         if(r.method==='GET')return publishing.privateImage(e,id,publicationId,photoId);
         if(r.method==='POST'){
           if(r.headers.get('Content-Type')!=='image/jpeg')throw new Error('invalid_publish_image');
-          const reader=r.body?.getReader();if(!reader)throw new Error('invalid_publish_image');
-          const parts=[];let size=0;
-          while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>publishing.MAX_PUBLISH_IMAGE){await reader.cancel();throw new Error('invalid_publish_image');}parts.push(value);}
-          const data=new Uint8Array(size);let at=0;for(const part of parts){data.set(part,at);at+=part.length;}
+          const data=await readBytes(r,publishing.MAX_PUBLISH_IMAGE,'invalid_publish_image','invalid_publish_image');
           return json(await publishing.upload(e,id,publicationId,photoId,data));
         }
       }
@@ -358,7 +386,7 @@ async function route(r, e) {
     if(p==='/api/history/matches' && r.method==='GET'){
       return json(await history.matching(e));
     }
-    if(p==='/api/history/matches/confirm' && r.method==='POST')return json(await history.confirmMatches(e,await readJSON(r,128000)));
+    if(p==='/api/history/matches/confirm' && r.method==='POST')return json(await history.confirmMatches(e,await readJSON(r,BODY_LIMIT.history)));
     if(p==='/api/history/matches/run' && r.method==='POST'){
       if(!(await auth.get(e,'microsoft')))return failure('onedrive_not_connected',409);
       const activeHistory=await e.DB.prepare("SELECT id,body FROM jobs WHERE status IN ('pending','running') AND json_extract(body,'$.mode')='history_match' ORDER BY created LIMIT 1").first();
@@ -391,8 +419,8 @@ async function route(r, e) {
         return {...row,mode:v.mode||'selection',folder:v.folder,selection:v.selection,maxPhotos:v.maxPhotos,locationHint:v.locationHint||"",progress:v.progress,failure:v.failure||null,stopRequested:Boolean(v.stopRequested),scheduled:Boolean(v.scheduled),analysisLimit:v.analysisLimit};
       }));
     }
-    if (p.startsWith("/api/jobs/") && p.endsWith("/stop") && r.method==="POST") {
-      const id=p.slice(10,-5);
+    if (p.startsWith(PREFIX.jobs) && p.endsWith("/stop") && r.method==="POST") {
+      const id=p.slice(PREFIX.jobs.length,-"/stop".length);
       if(!validId(id)) return failure("not_found",404);
       const updated=await e.DB.prepare("UPDATE jobs SET body=json_set(body,'$.stopRequested',json('true')),status=CASE WHEN status='pending' OR json_extract(body,'$.mode')='history_match' THEN 'cancelled' ELSE status END,lease=CASE WHEN json_extract(body,'$.mode')='history_match' THEN NULL ELSE lease END WHERE id=? AND status IN ('pending','running')").bind(id).run();
       return updated.meta.changes===1?json({ok:true}):failure("job_conflict",409);
@@ -414,14 +442,14 @@ async function route(r, e) {
         .run();
       return json({ id, status: "pending" }, 201);
     }
-    if(p.startsWith('/api/export/') && r.method==='POST'){
-      const parts=p.slice(12).split('/'),b=await readJSON(r);
+    if(p.startsWith(PREFIX.export) && r.method==='POST'){
+      const parts=p.slice(PREFIX.export.length).split('/'),b=await readJSON(r);
       if(parts.length>2||!parts.every(validId)||!Number.isSafeInteger(b.version))throw new Error('invalid_request');
       if(parts.length===1){const d=await reviewedDraft(e,parts[0],b.version);return json(d);}
       return original(e,parts[0],parts[1],b.version);
     }
-    if (p.startsWith("/api/photos/") && r.method === "GET") {
-      const id = p.slice(12);
+    if (p.startsWith(PREFIX.photos) && r.method === "GET") {
+      const id = p.slice(PREFIX.photos.length);
       if (!validId(id)) return failure("not_found", 404);
       const row = await e.DB.prepare("SELECT data,mime FROM photos WHERE id=?")
         .bind(id)
@@ -430,8 +458,8 @@ async function route(r, e) {
         ? readImage(e,'preview:'+id,row.data)
         : failure("not_found", 404);
     }
-    if (p.startsWith("/api/drafts/") && r.method === "PATCH") {
-      const id = p.slice(12);
+    if (p.startsWith(PREFIX.drafts) && r.method === "PATCH") {
+      const id = p.slice(PREFIX.drafts.length);
       if (!validId(id)) return failure("not_found", 404);
       const row = await e.DB.prepare("SELECT body FROM drafts WHERE id=?")
         .bind(id)
@@ -451,6 +479,7 @@ async function route(r, e) {
           next={...next,approvalSource:'owner_scheduled_v1',ownerApprovedAt:Date.now(),...(ownerPreference?{ownerPreferenceCounters:ownerPreference}: {})};
         }
       }
+      const draft={id,body:JSON.stringify(next)};
       const statements=[e.DB.prepare(
         "UPDATE drafts SET body=?,version=? WHERE id=? AND version=? AND NOT EXISTS(SELECT 1 FROM publications WHERE publications.draft_id=drafts.id AND status!='prepared')",
       )
@@ -460,21 +489,24 @@ async function route(r, e) {
           .bind(removed.id,Date.now()+RETENTION,id,JSON.stringify(next)));
       }
       if(ownerPreference){
-        const aggregate=await auth.get(e,'ownerPreferenceCounters')||{coherent:0,compositionGood:0,noDuplicateFrames:0};
-        for(const key of Object.keys(ownerPreference))if(ownerPreference[key]===1)aggregate[key]=Math.min(1000,Number(aggregate[key]||0)+1);
-        statements.push(e.DB.prepare("INSERT INTO state(key,value,expires) VALUES('ownerPreferenceCounters',?,NULL) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify(aggregate)));
+        statements.push(await preferenceStatement(e,'ownerPreferenceCounters',{coherent:0,compositionGood:0,noDuplicateFrames:0},counters=>{
+          for(const key of Object.keys(ownerPreference))if(ownerPreference[key]===1)counters[key]=bump(counters[key]);
+          return counters;
+        },draft));
       }
       if(input.action==='save'&&removedPhotos.length){
-        const feedback=await auth.get(e,'ownerCurationFeedback')||{removedFromCarousel:0};
-        feedback.removedFromCarousel=Math.min(1000,Number(feedback.removedFromCarousel||0)+removedPhotos.length);
-        statements.push(e.DB.prepare("INSERT INTO state(key,value,expires) VALUES('ownerCurationFeedback',?,NULL) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify(feedback)));
+        statements.push(await preferenceStatement(e,'ownerCurationFeedback',{removedFromCarousel:0},feedback=>{
+          feedback.removedFromCarousel=bump(feedback.removedFromCarousel,removedPhotos.length);
+          return feedback;
+        },draft));
       }
       if(input.action==='trash'&&next.ownerFeedback){
-        const feedback=await auth.get(e,'ownerRejectionFeedback')||{categories:{},recent:[]};
         const category=next.ownerFeedback.category;
-        feedback.categories[category]=Math.min(1000,Number(feedback.categories[category]||0)+1);
-        feedback.recent=[...(Array.isArray(feedback.recent)?feedback.recent:[]),{category,note:next.ownerFeedback.note}].slice(-20);
-        statements.push(e.DB.prepare("INSERT INTO state(key,value,expires) SELECT 'ownerRejectionFeedback',?,NULL WHERE EXISTS(SELECT 1 FROM drafts WHERE id=? AND body=?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify(feedback),id,JSON.stringify(next)));
+        statements.push(await preferenceStatement(e,'ownerRejectionFeedback',{categories:{},recent:[]},feedback=>{
+          feedback.categories[category]=bump(feedback.categories[category]);
+          feedback.recent=[...(Array.isArray(feedback.recent)?feedback.recent:[]),{category,note:next.ownerFeedback.note}].slice(-20);
+          return feedback;
+        },draft));
       }
       const updated=await e.DB.batch(statements);
       if (updated[0].meta.changes !== 1) return failure("version_conflict", 409);
@@ -484,54 +516,13 @@ async function route(r, e) {
   }
   return e.ASSETS.fetch(r);
 }
+
 export default {
   async fetch(r, e) {
     try {
       return secure(await route(r, e));
     } catch (err) {
-      const known = new Set([
-        "storage_limit","storage_request_limit","storage_busy","storage_conflict","storage_unavailable",
-        "source_unavailable",
-        "source_authentication_failed",
-        "source_metadata_unavailable",
-        "source_changed",
-        "original_format",
-        "original_too_large",
-        "approval_required",
-        "invalid_oauth_state",
-        "github_not_allowed",
-        "github_exchange_failed",
-        "microsoft_exchange_failed",
-        "invalid_dates",
-        "invalid_range",
-        "invalid_language",
-        "invalid_framing",
-        "invalid_settings",
-        "instagram_not_connected",
-        "invalid_publish_image",
-        "publication_conflict",
-        "publication_incomplete",
-        "invalid_action",
-        "invalid_batch_size",
-        "invalid_progress",
-        "invalid_location_hint",
-        "invalid_folder",
-        "version_conflict",
-        "save_before_approval",
-        "request_too_large",
-        "duplicate_draft",
-        "photo_already_used",
-        "unsafe_photo",
-        "invalid_batch",
-        "invalid_image",
-        "onedrive_not_connected",
-        "reauthorization_required",
-        "history_not_complete",
-        "history_match_contract",
-        "history_match_setup",
-      ]);
-      const code = known.has(err.message) ? err.message : "request_failed";
-      return secure(failure(code, code === "version_conflict" ? 409 : 400));
+      return secure(errorResponse(err));
     }
   },
 };
