@@ -1,9 +1,11 @@
 import {LANGUAGES} from './languages.mjs';
 import {aspectValue,photoFrame} from './framing.mjs';
-const idPattern = /^[A-Za-z0-9_-]{1,128}$/;
-export const FEEDBACK_CATEGORIES=['not_scenery','wrong_place_time','incoherent','weak_cover','inaccurate_caption','ordinary','other'];
+import {feedbackCategories,draftTextLimits,draftPhotoLimit,ID_PATTERN} from './vocabulary.mjs';
+// The processor validates the same draft, so categories and limits come from
+// the shared vocabulary instead of being restated here.
+export const FEEDBACK_CATEGORIES=[...feedbackCategories];
 export function validId(value) {
-  return typeof value === "string" && idPattern.test(value);
+  return typeof value === "string" && ID_PATTERN.test(value);
 }
 function text(value, name, max, required = true) {
   if (
@@ -20,7 +22,7 @@ function translations(value) {
   const result={};
   for(const [locale,label] of Object.entries(value)){
     if(!Object.hasOwn(LANGUAGES,locale)||!label||typeof label!=='object')throw new Error('invalid_translation');
-    result[locale]={title:text(label.title,'title',160),reason:text(label.reason,'reason',600,false)};
+    result[locale]={title:text(label.title,'title',draftTextLimits.title),reason:text(label.reason,'reason',draftTextLimits.reason,false)};
   }
   return {translations:result};
 }
@@ -35,13 +37,13 @@ function travel(value){
 }
 export function validateDraft(input) {
   if (!input || !validId(input.id)) throw new Error("invalid_id");
-  const title = text(input.title, "title", 160),
-    caption = text(input.caption, "caption", 1800),
-    hashtags = text(input.hashtags ?? "", "hashtags", 350, false);
+  const title = text(input.title, "title", draftTextLimits.title),
+    caption = text(input.caption, "caption", draftTextLimits.caption),
+    hashtags = text(input.hashtags ?? "", "hashtags", draftTextLimits.hashtags, false);
   if (
     !Array.isArray(input.photos) ||
     input.photos.length < 1 ||
-    input.photos.length > 8
+    input.photos.length > draftPhotoLimit
   )
     throw new Error("invalid_photos");
   const seen = new Set();
@@ -49,7 +51,7 @@ export function validateDraft(input) {
     if (!validId(p.id)) throw new Error("invalid_photo");
     if (seen.has(p.id)) throw new Error("duplicate_photo");
     seen.add(p.id);
-    return { id: p.id, alt: text(p.alt ?? "Landscape photo", "alt", 300), frame: photoFrame(p.frame) };
+    return { id: p.id, alt: text(p.alt ?? "Landscape photo", "alt", draftTextLimits.alt), frame: photoFrame(p.frame) };
   });
   return {
     id: input.id,
@@ -62,7 +64,7 @@ export function validateDraft(input) {
     aspect: aspectValue(input.aspect),
     status: "draft",
     version: 1,
-    reason: text(input.reason ?? "", "reason", 600, false),
+    reason: text(input.reason ?? "", "reason", draftTextLimits.reason, false),
   };
 }
 export function reviewDraft(current, input, now=Date.now()) {

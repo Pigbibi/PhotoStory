@@ -1,13 +1,11 @@
+import {digest,hex} from './digest.mjs';
+
 // Private, immutable R2 snapshots. D1's inventory-current pointer advances in
 // the same batch as the job checkpoint, never merely because an upload worked.
 const MAX_BYTES = 24 * 1024 * 1024;
 const refPattern = /^[0-9a-f-]{36}$/;
 const digestPattern = /^[0-9a-f]{64}$/;
 
-const digest = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)),
-  x => x.toString(16).padStart(2, '0')).join('');
-const hex = bytes => bytes ? Array.from(new Uint8Array(bytes),
-  x => x.toString(16).padStart(2, '0')).join('') : null;
 const response = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: {'Content-Type': 'application/json', 'Cache-Control': 'no-store'},
 });

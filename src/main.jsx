@@ -8,6 +8,7 @@ import { reviewDraft } from "../worker/review.mjs";
 const LifecycleSettings = lazy(() => import('./LifecycleSettings.jsx'));
 import "./style.css";
 import {frameStyle,photoFrame} from "../worker/framing.mjs";
+import {aspects,feedbackCategories} from "../worker/vocabulary.mjs";
 const demoDraft = {
   id: "demo-coast",
   title: "海边的慢时光",
@@ -136,9 +137,7 @@ function App() {
     }
   };
   const current = drafts.find((d) => d.id === selected),
-    filtered = drafts.filter((d) =>
-      view === 'trash'?d.status==='trash':view === "queue" ? d.status === "approved" : d.status === "draft",
-    );
+    filtered = drafts.filter((d) => inView(d, view));
   return (
     <>
       <header>
@@ -147,28 +146,18 @@ function App() {
           PhotoStory
         </a>
         <nav aria-label={t("主导航")}>
-          {[
-            ["review", t("待审核")],
-            ["queue", t("发布队列")],
-            ["history", t("Publication history")],
-            ['trash',t('回收站')],
-            ["settings", t("连接设置")],
-          ].map(([v, label]) => (
+          {VIEWS.map(({id: v, label}) => (
             <button
               key={v}
               className={view === v ? "active" : ""}
               onClick={() => {
                 setView(v);
                 if (v !== "settings" && session?.user && !demo) load();
-                const ds = drafts.filter((d) =>
-                  v === 'trash'?d.status==='trash':v === "queue"
-                    ? d.status === "approved"
-                    : d.status === "draft",
-                );
+                const ds = drafts.filter((d) => inView(d, v));
                 if (!ds.some((d) => d.id === selected)) setSelected(ds[0]?.id);
               }}
             >
-              {label}
+              {t(label)}
             </button>
           ))}
         </nav>
@@ -198,12 +187,7 @@ function App() {
         {(session?.user || demo || view === "settings") && (
           <section className="intro">
             <h1>
-              {view === "history" ? t("Publication history") : view === "settings"
-                ? t("连接设置")
-                :view==='trash'?t('回收站')
-                : view === "queue"
-                  ? t("发布队列")
-                  : t("待审核")}
+              {t(viewOf(view)?.label || "")}
             </h1>
           </section>
         )}
@@ -258,16 +242,13 @@ function App() {
                     {localizedDraftText(d,'title',locale)}
                     <small>
                       {t("{count} 张",{count:d.photos.length})}{" · "}
-                      {d.status === 'trash'?t('回收站'):d.status === "approved" ? t("已批准") : t("待审核")}
-                    </small>
+                      {t(DRAFT_STATUS[d.status]||"")}                    </small>
                   </span>
                 </button>
               ))}
               {!filtered.length && (
                 <p className="muted">
-                  {view === 'trash'?t('回收站是空的。'):view === "queue"
-                    ? t("还没有批准的草稿。")
-                    : t("还没有待审核草稿。连接 OneDrive 后可创建第一批选片任务。")}
+                  {t(viewOf(view)?.emptyList || "")}
                 </p>
               )}
               {!demo && (
@@ -293,11 +274,9 @@ function App() {
             ) : (
               <div className="empty">
                 <h2>
-                  {view==='trash'?t('回收站里没有草稿。'):view === "queue"
-                    ? t("慢慢挑，喜欢了再分享。")
-                    : t("从一次旅行开始。")}
+                  {t(viewOf(view)?.emptyTitle || "")}
                 </h2>
-                <p>{view==='trash'?t('不采用的草稿会在这里保留 30 天，期间可以恢复。'):t('先连接照片来源，再让 Codex 整理一组你愿意分享的故事。')}</p>
+                <p>{t(viewOf(view)?.emptyBody || "")}</p>
                 {view!=='trash' && <button
                   className="button secondary"
                   onClick={() => setView("settings")}
@@ -319,6 +298,30 @@ function App() {
   );
 }
 const feedbackLabels={not_scenery:'不是景点或风景',wrong_place_time:'地点或时间不符',incoherent:'照片主题不连贯',weak_cover:'封面或构图较弱',inaccurate_caption:'文案或标签不准确',ordinary:'普通或重复',other:'其他原因'};
+// The draft status each view shows, and the words it shows when empty. Keeping
+// them together means selecting a view, labelling it and filtering it can no
+// longer disagree.
+const VIEWS=[
+  {id:'review',label:'待审核',status:'draft',
+    emptyList:'还没有待审核草稿。连接 OneDrive 后可创建第一批选片任务。',
+    emptyTitle:'从一次旅行开始。',emptyBody:'先连接照片来源，再让 Codex 整理一组你愿意分享的故事。'},
+  {id:'queue',label:'发布队列',status:'approved',
+    emptyList:'还没有批准的草稿。',
+    emptyTitle:'慢慢挑，喜欢了再分享。',emptyBody:'先连接照片来源，再让 Codex 整理一组你愿意分享的故事。'},
+  {id:'history',label:'Publication history'},
+  {id:'trash',label:'回收站',status:'trash',
+    emptyList:'回收站是空的。',
+    emptyTitle:'回收站里没有草稿。',emptyBody:'不采用的草稿会在这里保留 30 天，期间可以恢复。'},
+  {id:'settings',label:'连接设置'},
+];
+const viewOf=id=>VIEWS.find(v=>v.id===id);
+const inView=(draft,id)=>{const status=viewOf(id)?.status;return Boolean(status)&&draft.status===status;};
+const DRAFT_STATUS={draft:'待审核',approved:'已批准',trash:'回收站'};
+const JOB_STATUS={pending:'等待处理器',running:'处理中',complete:'已完成',failed:'处理失败，未自动重试',cancelled:'已停止后续批次',limited:'已达到本次分析上限，剩余照片留到下个周期'};
+const ASPECT_LABELS={'4:5':'4:5 竖版','1:1':'1:1 方形','3:2':'3:2 横版'};
+// Labels are UI copy; the codes themselves come from the shared vocabulary so a
+// new aspect or feedback category cannot silently render as blank.
+const feedbackLabelsFor=()=>Object.fromEntries(feedbackCategories.map(code=>[code,feedbackLabels[code]]));
 function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, publishingEnabled, publishingSchedule, onPublishingSettings }) {
   const locked=Boolean(draft.publication&&draft.publication.status!=='prepared');
   busy=busy||locked;
@@ -396,7 +399,7 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
           <legend>{t("整组构图")}</legend>
           <div className="date-fields">
             <label>{t("统一尺寸")}<select value={form.aspect||'4:5'} onChange={e=>set('aspect',e.target.value)}>
-              <option value="4:5">{t("4:5 竖版")}</option><option value="1:1">{t("1:1 方形")}</option><option value="3:2">{t("3:2 横版")}</option>
+              {aspects.map(value=><option key={value} value={value}>{t(ASPECT_LABELS[value]||value)}</option>)}
             </select></label>
             <label>{t("当前照片")}<select value={photoFrame(photo.frame).mode} onChange={e=>setFrame({mode:e.target.value})}>
               <option value="fit">{t("完整保留 · 白色留边")}</option><option value="crop">{t("裁剪填满")}</option>
@@ -508,7 +511,7 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
             : t("批准后进入队列，连接 Instagram 后才能发布。")}
         </p>
         {!rejecting?<button className="text-button" disabled={busy||dirty} onClick={()=>setRejecting(true)}>{t("不采用，移入回收站")}</button>:<div className="approval-note">
-          <label>{t('不采用原因')}<select value={feedbackCategory} onChange={e=>setFeedbackCategory(e.target.value)}><option value="">{t('请选择原因')}</option>{Object.entries(feedbackLabels).map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}</select></label>
+          <label>{t('不采用原因')}<select value={feedbackCategory} onChange={e=>setFeedbackCategory(e.target.value)}><option value="">{t('请选择原因')}</option>{Object.entries(feedbackLabelsFor()).map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}</select></label>
           <label>{t('补充说明（可选）')}<textarea value={feedbackNote} maxLength={400} rows={3} onChange={e=>setFeedbackNote(e.target.value)}/></label>
           <p className="muted">{t('反馈会作为后续制稿的参考，不会自行更改审核规则。')}</p>
           <button className="button secondary" disabled={busy||!feedbackCategory||(feedbackCategory==='other'&&!feedbackNote.trim())} onClick={()=>update({...draft,feedback:{category:feedbackCategory,note:feedbackNote}},'trash')}>{t('确认不采用')}</button>
@@ -710,16 +713,7 @@ function Settings({ session, notify }) {
                 <li key={j.id}>
                   {date(j.created)}
                   <strong>
-                    {
-                      {
-                        pending: t("等待处理器"),
-                        running: t("处理中"),
-                        complete: t("已完成"),
-                        failed: t("处理失败，未自动重试"),
-                        cancelled: t("已停止后续批次"),
-                        limited: t("已达到本次分析上限，剩余照片留到下个周期"),
-                      }[j.status]
-                    }
+                    {t(JOB_STATUS[j.status]||"")}
                   </strong>
                   {j.progress && <p className="job-progress">
                     {j.progress.phase==="scanning" ? t("正在扫描 · 已发现 {count} 张候选",{count:j.progress.total}) : t("已处理 {done} / {total} 张 · {batches} 批",{done:j.progress.processed,total:j.progress.total,batches:j.progress.batches})}

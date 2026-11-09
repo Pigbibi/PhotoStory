@@ -1,3 +1,5 @@
+import {digest} from './digest.mjs';
+
 export const cookieName = "__Host-photostory";
 export const random = () => crypto.randomUUID() + crypto.randomUUID();
 export const cookie = (name, value, age) =>
@@ -11,13 +13,7 @@ export const configured = (e) =>
     e.GITHUB_CLIENT_ID && e.GITHUB_CLIENT_SECRET && e.ALLOWED_GITHUB_USERS,
   );
 export async function hash(s) {
-  return [
-    ...new Uint8Array(
-      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)),
-    ),
-  ]
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
+  return digest(new TextEncoder().encode(s));
 }
 export async function put(e, key, value, expires = null) {
   // D1 has no automatic TTL: retire expired auth records without touching tokens.
