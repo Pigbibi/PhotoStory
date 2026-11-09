@@ -1,12 +1,11 @@
 import {get,put} from './auth.mjs';
 import {mediaHistoryPage,publishingAccount} from './instagram.mjs';
-const MATCH_ALGORITHM='dhash-v1';
-const PHOTO_ID=/^[A-Za-z0-9_-]{1,128}$/;
-const IG_ID=/^\d{1,32}$/;
+import {matchAlgorithm,INSTAGRAM_ID_PATTERN} from './vocabulary.mjs';
+import {validId} from './review.mjs';
 const matchKey=(a)=>'instagram-history-matches:'+a.userId;
-async function matchState(e,a){return await get(e,matchKey(a))||{algorithm:MATCH_ALGORITHM,proposals:[],confirmed:[],updatedAt:null,complete:false};}
+async function matchState(e,a){return await get(e,matchKey(a))||{algorithm:matchAlgorithm,proposals:[],confirmed:[],updatedAt:null,complete:false};}
 function matchingView(state){const proposals=Array.isArray(state.proposals)?state.proposals:[],confirmed=Array.isArray(state.confirmed)?state.confirmed:[],confirmedSet=new Set(confirmed);
- return {algorithm:state.algorithm||MATCH_ALGORITHM,complete:Boolean(state.complete),updatedAt:state.updatedAt||null,
+ return {algorithm:state.algorithm||matchAlgorithm,complete:Boolean(state.complete),updatedAt:state.updatedAt||null,
  proposals,confirmed,proposalCount:proposals.length,confirmedCount:confirmed.length,pendingCount:proposals.filter(p=>!confirmedSet.has(p.photoId)).length};}
 // An Instagram media id can prove that a post was created by PhotoStory, but
 // it cannot identify the original OneDrive file. Keep that distinction explicit
@@ -58,21 +57,21 @@ export async function summary(e){
 // owner confirms them through the browser.
 export async function ingestMatches(e,body){
  const a=await publishingAccount(e),state=await matchState(e,a);
- if(!body||body.algorithm!==MATCH_ALGORITHM||!Array.isArray(body.proposals)||body.proposals.length>500)throw new Error('invalid_request');
+ if(!body||body.algorithm!==matchAlgorithm||!Array.isArray(body.proposals)||body.proposals.length>500)throw new Error('invalid_request');
  const existing=new Map(state.proposals.map(p=>[p.instagramId+'|'+p.photoId,p]));
  for(const p of body.proposals){
-  if(!IG_ID.test(p?.instagramId||'')||!PHOTO_ID.test(p?.photoId||'')||typeof p.distance!=='number'||!Number.isFinite(p.distance)||p.distance<0||p.distance>64)throw new Error('invalid_request');
-  existing.set(p.instagramId+'|'+p.photoId,{instagramId:p.instagramId,photoId:p.photoId,distance:p.distance,algorithm:MATCH_ALGORITHM});
+  if(!INSTAGRAM_ID_PATTERN.test(p?.instagramId||'')||!validId(p?.photoId||'')||typeof p.distance!=='number'||!Number.isFinite(p.distance)||p.distance<0||p.distance>64)throw new Error('invalid_request');
+  existing.set(p.instagramId+'|'+p.photoId,{instagramId:p.instagramId,photoId:p.photoId,distance:p.distance,algorithm:matchAlgorithm});
  }
  const proposals=[...existing.values()].slice(0,500),confirmed=new Set(state.confirmed||[]);
- const next={algorithm:MATCH_ALGORITHM,proposals,confirmed:[...confirmed].filter(id=>proposals.some(p=>p.photoId===id)),updatedAt:Date.now(),complete:body.complete===true};
+ const next={algorithm:matchAlgorithm,proposals,confirmed:[...confirmed].filter(id=>proposals.some(p=>p.photoId===id)),updatedAt:Date.now(),complete:body.complete===true};
  await put(e,matchKey(a),next);return matchingView(next);
 }
 export async function confirmMatches(e,body){
  const a=await publishingAccount(e),state=await matchState(e,a);
  if(!body||!Array.isArray(body.matches)||body.matches.length>500)throw new Error('invalid_request');
  const known=new Set(state.proposals.map(p=>p.instagramId+'|'+p.photoId)),confirmed=new Set(state.confirmed||[]);
- for(const p of body.matches){if(!IG_ID.test(p?.instagramId||'')||!PHOTO_ID.test(p?.photoId||'')||!known.has(p.instagramId+'|'+p.photoId))throw new Error('invalid_request');confirmed.add(p.photoId);}
+ for(const p of body.matches){if(!INSTAGRAM_ID_PATTERN.test(p?.instagramId||'')||!validId(p?.photoId||'')||!known.has(p.instagramId+'|'+p.photoId))throw new Error('invalid_request');confirmed.add(p.photoId);}
  const next={...state,confirmed:[...confirmed],updatedAt:Date.now()};await put(e,matchKey(a),next);return matchingView(next);
 }
 export async function matching(e){const a=await publishingAccount(e);return matchingView(await matchState(e,a));}
