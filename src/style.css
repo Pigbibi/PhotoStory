@@ -431,11 +431,14 @@ button.secondary:hover:not(:disabled) {
 .workspace {
   display: grid;
   grid-template-columns: 268px minmax(0, 1fr) 360px;
+  grid-template-rows: auto 1fr;
   gap: 16px;
   align-items: start;
 }
 
 aside {
+  grid-column: 1;
+  grid-row: 1 / span 2;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -527,6 +530,8 @@ aside h2 {
 
 /* Loupe Canvas Center */
 .canvas {
+  grid-column: 2;
+  grid-row: 1 / span 2;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -763,6 +768,9 @@ input[type="radio"] {
 
 /* Right Post Inspector */
 .editor {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -816,17 +824,35 @@ input[type="radio"] {
 
 /* Publishing Panel */
 .publication {
-  padding: 12px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-subtle);
+  grid-column: 3;
+  grid-row: 2;
+  min-width: 0;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
   border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   font-size: 0.85rem;
 }
 
+.publication h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+.publication button,
+.publication .button {
+  white-space: normal;
+  text-align: center;
+}
+
 .publication-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
   padding: 10px;
   border-radius: var(--radius-sm);
   background: var(--bg);
@@ -835,8 +861,18 @@ input[type="radio"] {
   color: var(--ink-secondary);
 }
 
+.publication-preview img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  border-radius: 2px;
+  background: var(--surface-recessed);
+}
+
 /* Empty State */
 .empty {
+  grid-column: 2 / span 2;
+  grid-row: 1 / span 2;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -868,6 +904,7 @@ input[type="radio"] {
 }
 
 .settings-panel {
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -923,8 +960,8 @@ table {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
   font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
 }
 
 th,
@@ -932,6 +969,11 @@ td {
   padding: 10px 12px;
   text-align: left;
   border-bottom: 1px solid var(--border);
+}
+
+td {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 th {
@@ -960,9 +1002,27 @@ footer {
 @media (max-width: 1180px) {
   .workspace {
     grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: auto;
+  }
+  aside {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .canvas {
+    grid-column: 2;
+    grid-row: 1;
   }
   .editor {
     grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .publication {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+  .empty {
+    grid-column: 1 / -1;
+    grid-row: 1;
   }
 }
 
@@ -992,6 +1052,14 @@ footer {
   .workspace {
     grid-template-columns: 1fr;
   }
+  aside,
+  .canvas,
+  .editor,
+  .publication,
+  .empty {
+    grid-column: auto;
+    grid-row: auto;
+  }
   aside {
     position: static;
     max-height: none;
@@ -1003,5 +1071,12 @@ footer {
   .mat > .main-photo,
   .main-photo {
     --stage-height: 56vh;
+  }
+  table {
+    font-size: 0.8rem;
+  }
+  th,
+  td {
+    padding: 8px 6px;
   }
 }
