@@ -143,7 +143,7 @@ function App() {
       <header>
         <a href="/" className="brand">
           <img className="brand-icon" src="/favicon.svg" alt="" width="32" height="32" />
-          PhotoStory
+          <span>PhotoStory</span>
         </a>
         <nav aria-label={t("主导航")}>
           {VIEWS.map(({id: v, label}) => (
@@ -223,7 +223,7 @@ function App() {
         ) : (
           <div className="workspace">
             <aside>
-              <h2>{t("主题草稿")}</h2>
+              <h2>{t("主题草稿")}<span className="contact-count">{filtered.length}</span></h2>
               {filtered.map((d) => (
                 <button
                   key={d.id}
@@ -364,6 +364,10 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
   return (
     <>
       <section className="canvas" aria-label={t("照片预览")}>
+        <div className="loupe-bar">
+          <span className="loupe-frame">{String(index + 1).padStart(2, "0")} / {String(form.photos.length).padStart(2, "0")}</span>
+          <span className="loupe-aspect">{form.aspect || "4:5"}</span>
+        </div>
         <div className="mat">
           <img
             key={photo.id}
@@ -484,7 +488,7 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
         {draft.crossReview?.status==='unavailable' && <p className="review-warning" role="alert">{t("跨草稿和文案核对未完成，请人工检查后再批准。")}</p>}
         {draft.crossReview?.status==='checked' && draft.crossReview.captionGrounded===null && <p className="review-warning" role="alert">{t("文案修改后尚未重新核对，请人工检查地点和事实。")}</p>}
         <button
-          className="button primary"
+          className="button primary approve"
           disabled={busy || dirty || draft.status === "approved"}
           onClick={() => update(form, "approve")}
         >
