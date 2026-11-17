@@ -172,7 +172,8 @@ test(`signed Muse completion claims its parked job once after GitHub ${dispatchS
    progress:{phase:'complete',total:1,processed:1,analyzed:1,batches:1},
    drafts:[{id:resumed.id+'-batch-landscape-0-1',title:'Scenery',caption:'For review',photos:[{id:'p'}]}],
    photos:[{id:'p',safety:'allow',flags:[],jpeg:'/9j/'}],autoReviews:[],crossReviews:[]};
- assert.equal((await api('/internal/complete',completion,true)).status,200);
+ const completed=await api('/internal/complete',completion,true);
+ assert.equal(completed.status,200,completed.ok?undefined:await completed.text());
  assert.equal((await api('/internal/complete',completion,true)).status,409);
  const savedDrafts=(await DB.prepare('SELECT body FROM drafts').all()).results;
  assert.equal(savedDrafts.length,1);
