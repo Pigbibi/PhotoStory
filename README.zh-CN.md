@@ -115,6 +115,7 @@ npm run deploy
 | `PHOTOSTORY_BATCH_TOKEN` | GitHub Actions Secret | 与 Worker 相同的机器凭据 |
 | `PHOTOSTORY_URL` | GitHub Actions 变量 | 你的站点地址 |
 | `PHOTOSTORY_NATIVE_BINDING` | GitHub Actions Secret | 原生服务入口、audience 和各阶段的精确路由 |
+| `PHOTOSTORY_MUSE_SCREEN_BINDING` | 可选 GitHub Actions Secret | 指定一个使用 Muse 筛选的试点任务 |
 
 在你的 OAuth 应用中登记：
 

@@ -11,12 +11,16 @@ import time
 
 from github_gateway import NativeTaskClient
 from native_tasks import (bootstrap_context, digest, NativePending, NativeStopped, task_call,
-                          _record_identity, TASK_STATUSES, TASK_ERROR_CODES)
+                          _record_identity, TASK_STATUSES, TASK_ERROR_CODES, MUSE_SCREEN_TIMEOUT, with_muse_screen)
 from jsonschema import Draft202012Validator
-from process_batch import workflow_binding
+from process_batch import workflow_binding, muse_screen_binding
 from smoke_gateway import IMAGE_BASE64, IMAGE_SHA256, SCHEMA
 
 PROMPT = 'Generated color block qualification only. Return {"kind":"synthetic-test"}. No browsing, private photos, publishing, messages or external actions.'
+MUSE_PROMPT = ('Inspect the generated color block. Return a JSON object whose color field names the dominant RGB channel. '
+               'Use the attached image only. No browsing, publishing or external actions.')
+MUSE_SCHEMA = {'type': 'object', 'additionalProperties': False, 'required': ['color'],
+               'properties': {'color': {'enum': ['red', 'green', 'blue']}}}
 FAILURE_REASONS = {'task_expired_before_claim', 'task_expired_after_claim',
                    'task_cancelled_before_claim', 'task_cancelled_after_claim',
                    'task_failed', 'task_invalid_output', 'task_outcome_unknown',
@@ -27,7 +31,7 @@ def public_summary(receipt):
     """Project fixed codes and booleans only; never IDs, URLs or provider text."""
     result = {'phase': 'unverified'}
     choices = {'phase': {'verified', 'completion_verified', 'unverified'},
-               'task_status': TASK_STATUSES | {'unknown'}, 'provider': {'dot', 'grok', 'grokbot'},
+               'task_status': TASK_STATUSES | {'unknown'}, 'provider': {'dot', 'grok', 'grokbot', 'muse'},
                'service_error_code': TASK_ERROR_CODES | {'unknown_error'},
                'failure_reason': FAILURE_REASONS}
     for key, allowed in choices.items():
@@ -64,16 +68,23 @@ def failure_reason(value, timestamp):
             'cancel_requested': 'task_pending'}.get(status, 'qualification_unverified')
 
 
+def qualification_contract(context):
+    if context['routes']['screen']['provider'] == 'muse':
+        return MUSE_PROMPT, MUSE_SCHEMA, MUSE_SCREEN_TIMEOUT
+    return PROMPT, SCHEMA, 60
+
+
 def read_task(context, task_id):
     """Read the same synthetic task; never adopt late output or submit more work."""
     if not isinstance(task_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', task_id):
         raise NativeStopped('qualification_identity_changed')
     route = context['routes']['screen']
+    prompt, schema, timeout = qualification_contract(context)
     request = {'mode': route['mode'], 'model': route['model'], 'profile': route['profile'],
-               'objective': PROMPT, 'materials': [{'schema_version': 'photostory.task-input.v1',
+               'objective': prompt, 'materials': [{'schema_version': 'photostory.task-input.v1',
                    'stage': 'screen', 'records': [{'id': 'synthetic'}], 'images': [
                        {'id': 'synthetic', 'mime': 'image/jpeg', 'sha256': IMAGE_SHA256,
-                        'base64': IMAGE_BASE64}]}], 'output_schema': SCHEMA, 'timeout_seconds': 60}
+                        'base64': IMAGE_BASE64}]}], 'output_schema': schema, 'timeout_seconds': timeout}
     value = {'task_id': task_id, 'revision': 1, 'task_deadline': None, 'claim': None,
              'binding': {'project': context['project'], 'route': route,
                          'request_sha256': digest(request)}}
@@ -90,7 +101,9 @@ def read_task(context, task_id):
                                      for t in (created, updated, deadline))
                 or not 0 <= created <= updated < deadline or updated > context['now']()):
             raise NativeStopped('qualification_identity_changed')
-        Draft202012Validator(SCHEMA).validate(record.get('output'))
+        Draft202012Validator(schema).validate(record.get('output'))
+        if route['provider'] == 'muse' and record['output'] != {'color': 'blue'}:
+            raise NativeStopped('qualification_image_result')
     result = {'phase': 'completion_verified' if verified else 'unverified',
             'task_status': status, 'provider': route['provider'], 'adopted': False,
             'synthetic_only': True, 'business_access': False, 'read_only': True,
@@ -105,7 +118,7 @@ def read_task(context, task_id):
 
 
 def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_factory=NativeTaskClient,
-        task_id=None):
+        task_id=None, use_muse=False):
     expected = {'GITHUB_REPOSITORY':'Pigbibi/PhotoStory', 'GITHUB_REF':'refs/heads/main',
                 'GITHUB_WORKFLOW_REF':'Pigbibi/PhotoStory/.github/workflows/processor.yml@refs/heads/main',
                 'GITHUB_EVENT_NAME':'workflow_dispatch', 'GITHUB_RUN_ATTEMPT':'1'}
@@ -116,11 +129,17 @@ def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_fac
     state = root/'state';state.mkdir(mode=0o700)
     image = root/'generated.jpg';image.write_bytes(base64.b64decode(IMAGE_BASE64, validate=True))
     binding = workflow_binding(root.resolve(), state.resolve(), now=now)
+    if use_muse:
+        pilot = muse_screen_binding()
+        if not pilot:
+            raise NativeStopped('native_binding_required')
+        binding = with_muse_screen(binding, pilot['route'])
     binding.update(operation_id='photostory-cloud-qualification:'+occurrence, task_limit=1,
-                   deadline=now()+120)
+                   deadline=now()+(MUSE_SCREEN_TIMEOUT+30 if use_muse else 120))
     receipt = {'project':'Pigbibi/PhotoStory', 'occurrence':occurrence,
                'phase':'prepared', 'task_id':None, 'image_sha256':IMAGE_SHA256,
-               'synthetic_only':True, 'business_access':False, 'adopted':False}
+               'synthetic_only':True, 'business_access':False, 'adopted':False,
+               'provider': binding['routes']['screen']['provider']}
 
     def persist():
         database=state/'native.sqlite3'
@@ -144,6 +163,7 @@ def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_fac
 
     binding['persist']=persist
     context=bootstrap_context(binding,client_factory=client_factory)
+    prompt, schema, timeout = qualification_contract(context)
     if task_id is not None:
         result = read_task(context, task_id)
         (root/'receipt.json').write_text(json.dumps(result, sort_keys=True)+'\n')
@@ -152,9 +172,11 @@ def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_fac
     persist()
     call=task_call(context,'screen')
     try:
-        for _ in range(13):
+        for _ in range(timeout // 5 + 1):
             try:
-                output=call(PROMPT,[{'id':'synthetic'}],[image.resolve()],SCHEMA,root)
+                output=call(prompt,[{'id':'synthetic'}],[image.resolve()],schema,root)
+                if use_muse and output != {'color': 'blue'}:
+                    raise NativeStopped('qualification_image_result')
                 receipt.update(phase='verified',adopted=True,output_sha256=digest(output))
                 persist()
                 return receipt
@@ -176,7 +198,8 @@ def main():
         task_id = inputs.get('native_qualification_task_id', '')
         if task_id and inputs.get('native_qualification_action') != 'readback':
             raise NativeStopped('readback_required')
-        receipt=run(args.state, task_id=task_id or None)
+        use_muse = inputs.get('qualify_muse_screen') in (True, 'true')
+        receipt=run(args.state, task_id=task_id or None, use_muse=use_muse)
     except QualificationUnverified as error:
         print(json.dumps(error.summary, sort_keys=True))
         return 1
