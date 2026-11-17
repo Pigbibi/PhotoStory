@@ -51,6 +51,7 @@ jobs:
       AI_TASK_GATEWAY_URL: ${{ vars.AI_TASK_GATEWAY_URL }}
       PHOTOSTORY_NATIVE_BINDING: ${{ secrets.PHOTOSTORY_NATIVE_BINDING }}
       PHOTOSTORY_SCREEN_BINDING: ${{ secrets.PHOTOSTORY_SCREEN_BINDING }}
+      PHOTOSTORY_MUSE_SCREEN_BINDING: ${{ secrets.PHOTOSTORY_MUSE_SCREEN_BINDING }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       PHOTOSTORY_OPENAI_MODEL: ${{ vars.PHOTOSTORY_OPENAI_MODEL }}
@@ -91,6 +92,7 @@ jobs:
         env:
           PHOTOSTORY_NATIVE_BINDING: ${{ secrets.PHOTOSTORY_NATIVE_BINDING }}
           PHOTOSTORY_SCREEN_BINDING: ${{ secrets.PHOTOSTORY_SCREEN_BINDING }}
+          PHOTOSTORY_MUSE_SCREEN_BINDING: ${{ secrets.PHOTOSTORY_MUSE_SCREEN_BINDING }}
       - name: Retain the sanitized original task receipt
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
