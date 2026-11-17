@@ -38,7 +38,7 @@ sensitive information in a note.
 
 Preferences are not model training and are not sent to another PhotoStory
 deployment. Recent feedback is supplied as data to this deployment's configured
-CodexGateway for future drafts. It cannot:
+AI backend for future drafts. It cannot:
 
 - make a private, uncertain, or unsafe photo eligible;
 - weaken people, location, privacy, approval, or publishing safeguards;

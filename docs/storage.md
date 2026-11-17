@@ -53,8 +53,10 @@ configuration. They are not secrets:
 The settings page shows reserved/used bytes and application R2 request counts,
 with a warning at 80%. D1 atomically reserves space before each upload; concurrent
 uploads cannot each claim the same remaining capacity. Reaching a limit stops new
-work. The monthly request budget resets by UTC calendar month. If the read limit
-is reached, image retrieval temporarily stops too; stored photos are not deleted.
+work.
+
+The monthly request budget resets by UTC calendar month. If the read limit is
+reached, image retrieval temporarily stops too; stored photos are not deleted.
 Counters conservatively count attempted operations, including failed attempts.
 
 These limits only cover this PhotoStory installation. **They are not Cloudflare
