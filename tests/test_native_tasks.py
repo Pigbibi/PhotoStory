@@ -107,6 +107,18 @@ def test_six_existing_stages_each_create_exactly_one_configured_task(tmp_path):
     assert all('helper' not in r['request']['objective'].lower() for r in records)
 
 
+def test_all_six_stages_accept_muse_provider(tmp_path):
+    ctx, wire = context(tmp_path)
+    ctx['routes'] = {stage: {**route, 'provider': 'muse'} for stage, route in ctx['routes'].items()}
+    wire.routes = {stage: route for stage, route in ctx['routes'].items()}
+    image = photo(tmp_path)
+    for stage in STAGES:
+        call = batch.native_review_gateway(ctx, stage=stage)
+        out = call('prompt', [{'id': 'p'}], [] if stage == 'labels' else [image], SCHEMA, tmp_path)
+        assert out == {'ok': True}
+    assert {r['provider'] for r in wire.records.values()} == {'muse'}
+
+
 def test_muse_screen_resumes_original_task_while_group_keeps_60_seconds(tmp_path):
     from native_tasks import NativePending, with_muse_screen
     ctx, wire = context(tmp_path)

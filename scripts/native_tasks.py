@@ -92,9 +92,8 @@ def _context_fields(context):
         if key in context and (type(context[key]) is not int or not 1 <= context[key] <= maximum):
             raise ValueError()
     for stage, route in context['routes'].items():
-        muse_screen = stage == 'screen' and route.get('provider') == 'muse' and route.get('profile') == MUSE_SCREEN_PROFILE
         if (set(route) != {'mode', 'provider', 'model', 'profile', 'worker'}
-                or route['mode'] != 'agent' or (not muse_screen and route['provider'] not in {'dot', 'grok', 'grokbot'})
+                or route['mode'] != 'agent' or route['provider'] not in {'muse', 'dot', 'grok', 'grokbot'}
                 or any(not isinstance(v, str) or not 1 <= len(v) <= 200 for v in route.values())):
             raise ValueError()
 
