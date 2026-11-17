@@ -146,7 +146,7 @@ history, source file, frontend variable, issue, screenshot, or chat.
 | `PHOTOSTORY_BATCH_TOKEN` | GitHub Actions Secret | Same machine token |
 | `PHOTOSTORY_URL` | GitHub Actions variable | Your Worker origin |
 | `PHOTOSTORY_NATIVE_BINDING` | GitHub Actions Secret | Native service origin, audience and exact stage routes |
-| `PHOTOSTORY_MUSE_SCREEN_BINDING` | Optional GitHub Actions Secret | Enable Muse screening for one named pilot job |
+| `PHOTOSTORY_MUSE_SCREEN_BINDING` | Optional GitHub Actions Secret | Enable Muse screening and rule-based manual drafts for one named pilot job |
 
 Register these redirects with your own applications:
 

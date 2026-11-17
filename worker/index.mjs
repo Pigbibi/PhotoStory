@@ -318,7 +318,7 @@ async function preferenceStatement(e, key, empty, apply, draft) {
     .bind(key, JSON.stringify(value), draft.id, draft.body);
 }
 
-async function route(r, e, ctx) {
+async function route(r, e) {
   const u = new URL(r.url),
     p = u.pathname;
   if (p === "/api/session") {
@@ -351,7 +351,7 @@ async function route(r, e, ctx) {
     return publishing.media(e,parts[2],parts[3]);
   }
   if (p === '/internal/screen-completed' && r.method === 'POST')
-    return resumeScreen(r, e, ctx, () => readBytes(r, BODY_LIMIT.small));
+    return resumeScreen(r, e, () => readBytes(r, BODY_LIMIT.small));
   if (p.startsWith("/internal/")) return internal(r, e, p);
   if (p.startsWith("/api/") || p.startsWith("/auth/")) {
     const user = await auth.session(r, e);
@@ -543,9 +543,9 @@ async function route(r, e, ctx) {
 }
 
 export default {
-  async fetch(r, e, ctx) {
+  async fetch(r, e) {
     try {
-      return secure(await route(r, e, ctx));
+      return secure(await route(r, e));
     } catch (err) {
       return secure(errorResponse(err));
     }

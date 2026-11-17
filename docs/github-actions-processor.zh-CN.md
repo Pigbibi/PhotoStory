@@ -33,7 +33,9 @@ PersonalAIService 只向 PhotoStory Worker 的 `/internal/screen-completed` 投�
 
 Worker 使用单仓 GitHub App 唤醒主分支的 `processor.yml`。配置 `SCREEN_RESUME_APP_ID`、`SCREEN_RESUME_INSTALLATION_ID`，并把 PKCS#8 私钥直接绑定为 `SCREEN_RESUME_APP_KEY` Secret。App 仅安装到 PhotoStory 并具备 Actions 写权限；每次唤醒使用短期安装凭据。
 
-回传只唤醒对应的已挂起批次，重复通知不会重复启动，唤醒路径跳过自动发布。GitHub 唤醒失败时，现有定时处理器仍可按原 ID 读回。退出试点前确认原任务和库存快照已结清，再移除试点绑定。
+回传只唤醒对应的已挂起批次，唤醒路径跳过自动发布。为该通知在 PersonalAIService 设置 `timeout_ms: 20000`，留出签发安装凭据和请求 GitHub 的时间。GitHub 确认接收后 Worker 才确认唤醒。明确拒绝时允许同一通知重试，结果不明时保留原断点，由现有定时处理器按原 ID 读回。
+
+Muse 试点只请求图片筛选。处理器从筛选通过的照片按场景和画幅挑选代表照，生成待编辑草稿。流程使用现有库存去重，照片、分组和文案由人工复核。退出试点前确认原任务和库存快照已结清，再移除试点绑定。
 
 ## 库存与定时处理
 

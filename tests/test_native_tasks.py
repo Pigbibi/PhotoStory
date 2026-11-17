@@ -959,6 +959,11 @@ def test_muse_wakeup_restores_cloud_checkpoint_and_never_enters_publication(tmp_
     fixture = PendingBatchHarness(tmp_path, cloud=True)
     route = {**fixture.ctx['routes']['screen'], 'provider': 'muse', 'profile': 'muse-screen'}
     fixture.wire.routes = {**fixture.wire.routes, 'muse-screen': route}
+    fixture.wire.output = lambda request: {'photos':[{
+        'id':'p','decision':'allow','flags':[],'landscape':True,'aesthetic':8,
+        'description':'Synthetic scenery','peopleRole':'none','compositionClear':True,
+        'contentKind':'permanent_scenery','light':'day','scene':'architecture',
+        'place':{'city':'','landmark':'','evidence':'','confidence':'none'}}]}
     pilot = {'job_id': 'job', 'route': route}
     fixture.run(muse_screen=pilot)
     task, = fixture.wire.records
@@ -970,7 +975,13 @@ def test_muse_wakeup_restores_cloud_checkpoint_and_never_enters_publication(tmp_
     assert fixture.calls[before] == ('/internal/claim', {'resumeScreen': wake, 'pilotJob': 'job'})
     assert not any(path in {'/internal/maintenance', '/internal/autopublish'} for path, _ in fixture.calls[before:])
     assert len(fixture.completed) == 1
-    assert sum(call[:2] == ('POST', '/v1/tasks') for call in fixture.wire.calls) == 1
+    completion = fixture.completed[0]
+    draft, = completion['drafts']
+    assert draft['id'].startswith('job-' + completion['batchId'] + '-')
+    assert [p['id'] for p in draft['photos']] == ['p']
+    assert completion['autoReviews'] == completion['crossReviews'] == []
+    assert [(method,path) for method,path,_ in fixture.wire.calls] == [
+        ('POST','/v1/tasks'), ('GET','/v1/tasks/'+task)]
 
 
 @pytest.mark.parametrize('cloud', [False,True])
