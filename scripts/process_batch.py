@@ -580,8 +580,8 @@ def _resume_pending_batch(inventory, source, context, job_id, directory):
     return inflight
 
 
-def run(*, native_context=None, native_binding=None, native_client_factory=None):
-    from native_tasks import bootstrap_context, validate_context, NativePending, NativeStopped
+def run(*, native_context=None, native_binding=None, native_client_factory=None, muse_screen=None, resume_screen=None):
+    from native_tasks import bootstrap_context, validate_context, with_muse_screen, NativePending, NativeStopped
     try:
         if native_binding is not None:
             if native_context is not None:
@@ -593,6 +593,8 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
         elif native_client_factory is not None:
             raise NativeStopped('native_binding_required')
         validate_context(native_context)
+        if resume_screen and not muse_screen:
+            raise NativeStopped('native_binding_required')
     except NativeStopped:
         raise Stop("native_binding_required") from None
     from PIL import Image
@@ -625,7 +627,8 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
     if directory:
         try: report=json.loads((Path(directory)/'cleanup-status.json').read_text())
         except (OSError,ValueError): pass
-    call('/internal/maintenance',{'temporaryCleanup':report})
+    if not resume_screen:
+        call('/internal/maintenance',{'temporaryCleanup':report})
     from auto_publish import tick, AutomaticPublishingStopped
     def publication_review(identity, checkpoint=None, expires_at=None):
         from native_tasks import (operation_context,publication_checkpoint,
@@ -645,7 +648,7 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
         preflight_publication(context)
         return native_review_gateway(context,stage='publication')
     try:
-        if tick(call, lambda path, body: request(base+path, token=token, body=body, max_bytes=25*1024*1024),
+        if not resume_screen and tick(call, lambda path, body: request(base+path, token=token, body=body, max_bytes=25*1024*1024),
                 native_review_gateway(native_context, stage='publication'), work_root=native_context['fixture_root'],
                 bind_review=publication_review):
             return  # Finish one post before slow scanning; never select another.
@@ -655,7 +658,7 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
     except Exception:
         print('Automatic publishing unavailable; no retry in this run.')
         raise Stop('automatic_publication_unavailable') from None
-    job = call("/internal/claim", {})
+    job = call("/internal/claim", {'resumeScreen': resume_screen, 'pilotJob': muse_screen['job_id']} if resume_screen else {})
     if not job:
         print("No pending job.")
         return
@@ -664,6 +667,10 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
     stage = 'inventory'
     inventory_operation = 'source'
     try:
+        if muse_screen and job['id'] == muse_screen['job_id']:
+            native_context = with_muse_screen(native_context, muse_screen['route'])
+        elif resume_screen:
+            raise Stop('native_checkpoint_conflict')
         source = call("/internal/source", auth)
         localized_group_prompt=group_prompt(source.get('captionLanguage','en'),source.get('editorLanguage','zh-CN'))
         if source.get('pipeline')!=2: raise Stop('processor_upgrade_required')
@@ -836,11 +843,14 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None)
             result = call("/internal/complete", {**auth, "batchId":batch_id,"more":progress['processed']<progress['total'],"progress":progress,"drafts":drafts, "photos":photos,"autoReviews":auto_reviews,"crossReviews":cross_reviews})
             inventory.reconcile(batch_id)
             print("Completed; draft count:", result["count"])
-    except NativePending:
+    except NativePending as pending:
         marker = _pending_batch_state(inventory,source,native_context)
         with inventory.db: inventory.set('native_pending',marker)
         completion_started = True
-        call('/internal/checkpoint', {**auth, 'progress': marker['progress']})
+        body = {**auth, 'progress': marker['progress']}
+        if pending.screen_wait:
+            body['screenWait'] = pending.screen_wait
+        call('/internal/checkpoint', body)
         return
     except Exception as error:
         if stage == 'inventory':
@@ -908,6 +918,28 @@ def workflow_binding(fixture_root, state_root, *, now=None):
         raise Stop('native_binding_required') from None
 
 
+def muse_screen_binding():
+    from github_gateway import _strict_json
+    from native_tasks import MUSE_SCREEN_PROFILE
+
+    raw = os.environ.get('PHOTOSTORY_MUSE_SCREEN_BINDING', '')
+    if not raw:
+        return None
+    try:
+        config = _strict_json(raw)
+        if (set(config) != {'job_id', 'model', 'worker'}
+                or not isinstance(config['job_id'], str)
+                or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', config['job_id'])
+                or any(not isinstance(config[k], str) or not 1 <= len(config[k]) <= 200
+                       or not config[k].isprintable() for k in ('model', 'worker'))):
+            raise ValueError()
+        return {'job_id': config['job_id'], 'route': {
+            'mode': 'agent', 'provider': 'muse', 'profile': MUSE_SCREEN_PROFILE,
+            'model': config['model'], 'worker': config['worker']}}
+    except (TypeError, ValueError, KeyError):
+        raise Stop('native_binding_required') from None
+
+
 def main():
     # Existing cloud snapshot/Inventory restores this private state on each run.
     # No service URL, provider, freshness window or task is implicitly enabled.
@@ -919,7 +951,13 @@ def main():
         state = Path(directory)
         binding = workflow_binding(Path(tmp).resolve(),state.resolve())
         state.mkdir(mode=0o700,parents=True,exist_ok=True)
-        run(native_binding=binding)
+        resume = os.environ.get('PHOTOSTORY_RESUME_SCREEN', '')
+        if resume and not re.fullmatch(r'[0-9a-f]{64}', resume):
+            raise Stop('native_binding_required')
+        pilot = muse_screen_binding()
+        if resume and not pilot:
+            raise Stop('native_binding_required')
+        run(native_binding=binding, muse_screen=pilot, resume_screen=resume or None)
 
 
 if __name__ == "__main__":

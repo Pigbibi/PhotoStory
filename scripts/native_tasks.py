@@ -15,6 +15,8 @@ from jsonschema import Draft202012Validator
 from PIL import Image
 
 STAGES = {'screen', 'group', 'cross_review', 'labels', 'strict_review', 'publication'}
+MUSE_SCREEN_PROFILE = 'muse-screen'
+MUSE_SCREEN_TIMEOUT = 600
 # Existing batch graph: screen ceil(100/6), <=24 shortlist groups, cross+labels,
 # and <=8 strict reviews. This bounds work; it never creates additional calls.
 MAX_BATCH_TASKS = 17 + 24 + 1 + 1 + 8
@@ -30,6 +32,10 @@ class NativeStopped(Exception):
 
 class NativePending(NativeStopped):
     """A known task is still running; retain the same identity for readback."""
+
+    def __init__(self, message, *, screen_wait=None):
+        super().__init__(message)
+        self.screen_wait = screen_wait
 
 
 def packed(value):
@@ -84,11 +90,21 @@ def _context_fields(context):
     for key, maximum in (('adoption_age_seconds',3600),('task_limit',MAX_BATCH_TASKS)):
         if key in context and (type(context[key]) is not int or not 1 <= context[key] <= maximum):
             raise ValueError()
-    for route in context['routes'].values():
+    for stage, route in context['routes'].items():
+        muse_screen = stage == 'screen' and route.get('provider') == 'muse' and route.get('profile') == MUSE_SCREEN_PROFILE
         if (set(route) != {'mode', 'provider', 'model', 'profile', 'worker'}
-                or route['mode'] != 'agent' or route['provider'] not in {'dot', 'grok', 'grokbot'}
+                or route['mode'] != 'agent' or (not muse_screen and route['provider'] not in {'dot', 'grok', 'grokbot'})
                 or any(not isinstance(v, str) or not 1 <= len(v) <= 200 for v in route.values())):
             raise ValueError()
+
+
+def with_muse_screen(context, route):
+    routes = {**context['routes'], 'screen': route}
+    result = {**context, 'routes': routes}
+    if 'native_binding' in result:
+        result['native_binding'] = {**result['native_binding'], 'routes': routes}
+    return result
+
 
 def validate_context(context):
     try:
@@ -278,9 +294,10 @@ def task_call(context, stage):
                                'sha256': hashlib.sha256(data).hexdigest(),
                                'base64': base64.b64encode(data).decode()})
             route = json.loads(packed(context['routes'][stage]))
+            muse_screen = stage == 'screen' and route['provider'] == 'muse'
             request = {'mode': route['mode'], 'model': route['model'], 'profile': route['profile'],
                        'objective': prompt, 'materials': [{'schema_version':'photostory.task-input.v1', 'stage': stage, 'records': records, 'images': images}],
-                       'output_schema': schema, 'timeout_seconds': 60}
+                       'output_schema': schema, 'timeout_seconds': MUSE_SCREEN_TIMEOUT if muse_screen else 60}
             request_limit, output_limit = media_limits(context)
             if len(packed(request)) > request_limit:
                 raise ValueError()
@@ -403,7 +420,8 @@ def task_call(context, stage):
                             if value['output_sha256']:
                                 raise ValueError()
                             save()
-                            raise NativePending('native_pending')
+                            screen_wait = {'taskId': value['task_id'], 'revision': value['revision']} if muse_screen else None
+                            raise NativePending('native_pending', screen_wait=screen_wait)
                         _completed_receipt(context, value, record, schema, output_limit)
                         save()
                         active()

@@ -14,6 +14,31 @@ from native_tasks import NativeStopped, STAGES
 
 
 class CloudQualificationTests(unittest.TestCase):
+    def test_muse_generated_image_compares_the_observed_color(self):
+        for color in ('blue', 'red'):
+            with self.subTest(color=color), tempfile.TemporaryDirectory() as tmp:
+                config = self.env() | {'PHOTOSTORY_MUSE_SCREEN_BINDING': json.dumps({
+                    'job_id': 'synthetic-job', 'model': 'synthetic-muse', 'worker': 'fixture-worker'})}
+                client = Mock(resource='https://personal.acme.org')
+                client.submit.side_effect = lambda request, _: {
+                    'id': 'original-task', 'owner': 'Pigbibi/PhotoStory', 'provider': 'muse',
+                    'request': request, 'revision': 1, 'status': 'completed',
+                    'created': 990, 'updated': 995, 'deadline': 1590, 'worker': 'fixture-worker',
+                    'attempt': 'one-attempt', 'output': {'color': color},
+                }
+                root = Path(tmp)/'qualification'
+                with patch.dict(os.environ, config, clear=True):
+                    kwargs = {'use_muse': True, 'now': lambda: 1000, 'client_factory': lambda *_: client}
+                    if color == 'blue':
+                        self.assertEqual(qualification.run(root, **kwargs)['phase'], 'verified')
+                    else:
+                        with self.assertRaises(qualification.QualificationUnverified):
+                            qualification.run(root, **kwargs)
+                request = client.submit.call_args.args[0]
+                self.assertEqual((request['profile'], request['timeout_seconds']), ('muse-screen', 600))
+                self.assertNotIn('blue', request['objective'])
+                client.submit.assert_called_once()
+
     def env(self):
         binding={'enabled':True,'project':'Pigbibi/PhotoStory','service_url':'https://personal.acme.org',
                  'audience':'https://personal.acme.org/mcp','adoption_age_seconds':3600,

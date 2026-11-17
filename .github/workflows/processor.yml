@@ -10,6 +10,14 @@ on:
         description: Qualify one generated image against the current native binding
         type: boolean
         default: false
+      qualify_muse_screen:
+        description: Use the configured Muse screen route for the generated image
+        type: boolean
+        default: false
+      resume_screen:
+        description: Opaque resume value from the PhotoStory Worker
+        type: string
+        default: ''
       native_qualification:
         description: Run only the generated-image native qualification
         type: boolean
@@ -33,7 +41,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   process:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PHOTOSTORY_PROCESSOR_ENABLED == 'true') && inputs.native_qualification != true && inputs.cloud_native_qualification != true
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PHOTOSTORY_PROCESSOR_ENABLED == 'true') && inputs.native_qualification != true && inputs.cloud_native_qualification != true && inputs.qualify_muse_screen != true && (inputs.resume_screen == '' || (github.event_name == 'workflow_dispatch' && inputs.travel_backfill != true))
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -41,6 +49,7 @@ jobs:
       PHOTOSTORY_BATCH_TOKEN: ${{ secrets.PHOTOSTORY_BATCH_TOKEN }}
       PHOTOSTORY_STATE_BACKEND: cloudflare
       PHOTOSTORY_NATIVE_BINDING: ${{ secrets.PHOTOSTORY_NATIVE_BINDING }}
+      PHOTOSTORY_MUSE_SCREEN_BINDING: ${{ secrets.PHOTOSTORY_MUSE_SCREEN_BINDING }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -58,10 +67,11 @@ jobs:
         run: python scripts/process_batch.py
         env:
           PHOTOSTORY_STATE_DIR: ${{ runner.temp }}/photostory-state
+          PHOTOSTORY_RESUME_SCREEN: ${{ inputs.resume_screen }}
   cloud_native_qualification:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.cloud_native_qualification == true && inputs.native_qualification != true && inputs.travel_backfill != true
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.cloud_native_qualification == true && inputs.native_qualification != true && inputs.travel_backfill != true && inputs.resume_screen == ''
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -74,6 +84,7 @@ jobs:
         run: python scripts/qualify_cloud_native.py --state "$RUNNER_TEMP/photostory-cloud-qualification"
         env:
           PHOTOSTORY_NATIVE_BINDING: ${{ secrets.PHOTOSTORY_NATIVE_BINDING }}
+          PHOTOSTORY_MUSE_SCREEN_BINDING: ${{ secrets.PHOTOSTORY_MUSE_SCREEN_BINDING }}
       - name: Retain the sanitized original task receipt
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -85,7 +96,7 @@ jobs:
 
 
   native_qualification:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.native_qualification == true
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.native_qualification == true && inputs.qualify_muse_screen != true && inputs.resume_screen == ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

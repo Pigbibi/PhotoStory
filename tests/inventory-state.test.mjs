@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHmac, generateKeyPairSync, verify} from 'node:crypto';
 import worker from '../worker/index.mjs';
 import {cleanupInventories} from '../worker/inventory-state.mjs';
 import {setup} from './helpers/database.mjs';
@@ -83,6 +84,71 @@ test('native snapshot commits the same inventory pointer without releasing the r
  const released=await DB.prepare('SELECT lease,status FROM jobs WHERE id=?').bind(job.id).first();
  assert.equal(released.lease,null);assert.equal(released.status,'pending');
  const resumed=await(await api('/internal/claim',{},true)).json();assert.equal(resumed.id,job.id);assert.notEqual(resumed.lease,job.lease);
+});
+
+test('signed Muse completion wakes only the parked PhotoStory task once', async t => {
+ const {env,api,DB}=await setup(t);env.MEDIA_BUCKET=bucket();
+ const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
+ Object.assign(env,{
+   SCREEN_COMPLETION_SECRET:'local-fixture-completion-key'.repeat(2),
+   SCREEN_RESUME_APP_ID:'1',SCREEN_RESUME_INSTALLATION_ID:'2',
+   SCREEN_RESUME_APP_KEY:privateKey.export({type:'pkcs8',format:'pem'}),
+ });
+ const posts=[],background=[];
+ t.mock.method(globalThis,'fetch',async (target,options)=>{
+   const credential=options.headers.Authorization;
+   if (posts.length===0) {
+     const [header,claims,signature]=credential.slice('Bearer '.length).split('.');
+     assert.ok(verify('RSA-SHA256',Buffer.from(header+'.'+claims),publicKey,Buffer.from(signature,'base64url')));
+     const decoded=JSON.parse(Buffer.from(claims,'base64url'));
+     assert.equal(decoded.iss,'1');
+     assert.ok(decoded.exp-decoded.iat<=600);
+   } else {
+     assert.equal(credential,'Bearer synthetic-installation-token');
+   }
+   posts.push({url:new URL(target),body:JSON.parse(options.body)});
+   return posts.length===1?Response.json({token:'synthetic-installation-token'},{status:201}):new Response(null,{status:204});
+ });
+ const taskId='01010101-0101-0101-0101-010101010101';
+ const event={name:'task.terminal',event_id:5,task_id:taskId,revision:1,project:'Pigbibi/PhotoStory',status:'completed'};
+ const webhook=(payload=event, stamp=Math.floor(Date.now()/1000), signature=null)=>{
+   const body=JSON.stringify(payload);
+   const mac=signature??createHmac('sha256',env.SCREEN_COMPLETION_SECRET).update(stamp+'.'+body).digest('hex');
+   return worker.fetch(new Request('https://example.test/internal/screen-completed',{method:'POST',body,
+     headers:{'X-Callback-Timestamp':String(stamp),'X-Callback-Signature':'sha256='+mac}}),
+   env,{waitUntil:promise=>background.push(promise)});
+ };
+ assert.equal((await webhook(event,Math.floor(Date.now()/1000),'0'.repeat(64))).status,401);
+ assert.equal((await webhook(event,Math.floor(Date.now()/1000)-600)).status,401);
+ assert.equal((await webhook({...event,project:'Other/Project'})).status,400);
+ assert.equal((await webhook()).status,503);
+ assert.equal(posts.length,0);
+
+ const bytes=new Uint8Array([80,75,3,4,1]);
+ await upload(env,bytes,{'X-Inventory-Seed':'1'});
+ await api('/api/jobs',{folder:'Photos',range:'all'});
+ const job=await(await api('/internal/claim',{},true)).json();
+ const saved=await(await upload(env,bytes,{'X-Job-Id':job.id,'X-Job-Lease':job.lease})).json();
+ const progress={phase:'processing',total:1,processed:0,analyzed:0,batches:0};
+ const parked={jobId:job.id,lease:job.lease,progress,inventoryRef:saved.ref,screenWait:{taskId,revision:1}};
+ assert.equal((await api('/internal/checkpoint',parked,true)).status,200);
+ const wake=JSON.parse((await DB.prepare('SELECT body FROM jobs WHERE id=?').bind(job.id).first()).body).screenWait.wake;
+ assert.equal(await (await api('/internal/claim',{resumeScreen:wake,pilotJob:job.id},true)).json(),null);
+ assert.equal((await webhook({...event,revision:2})).status,503);
+ assert.equal((await webhook()).status,202);
+ assert.equal((await webhook()).status,200);
+ await Promise.all(background);
+ assert.equal(posts.length,2);
+ assert.equal(posts[0].url.pathname,'/app/installations/2/access_tokens');
+ assert.deepEqual(posts[0].body,{repositories:['PhotoStory'],permissions:{actions:'write'}});
+ assert.equal(posts[1].url.pathname,'/repos/Pigbibi/PhotoStory/actions/workflows/processor.yml/dispatches');
+ assert.deepEqual(posts[1].body,{ref:'main',inputs:{resume_screen:wake}});
+ assert.equal(await (await api('/internal/claim',{resumeScreen:'1'.repeat(64),pilotJob:job.id},true)).json(),null);
+ assert.equal(await (await api('/internal/claim',{resumeScreen:wake,pilotJob:'other-job'},true)).json(),null);
+ const resumed=await(await api('/internal/claim',{resumeScreen:wake,pilotJob:job.id},true)).json();
+ assert.equal(resumed.id,job.id);
+ assert.notEqual(resumed.lease,job.lease);
+ assert.equal(await (await api('/internal/claim',{resumeScreen:wake,pilotJob:job.id},true)).json(),null);
 });
 
 test('native snapshot rejects malformed flags and owner stop without pointer or lease changes',async t=>{

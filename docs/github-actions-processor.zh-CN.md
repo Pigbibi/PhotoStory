@@ -23,6 +23,18 @@
 
 若回执未验证，保留原 task ID。读取同一任务时仍选择 `cloud_native_qualification=true`，将 `native_qualification_task_id` 设为原 ID、`native_qualification_action` 设为 `readback`，`native_qualification` 保持 false。读回仅 GET 原任务，核对固定合成请求、provider、worker 和结果格式，不重新提交或取消。`completion_verified` 只证明任务按时完成，`adopted` 仍为 false；不会将过期结果采纳为业务输出。
 
+## Muse 筛选试点
+
+在 PersonalAIService 的同一 PhotoStory 项目准入 `agent:muse-screen`、指定模型及 Muse worker，项目允许的最长执行时间设为 600 秒。Muse 云端轮询间隔和心跳窗口都要留出识图及回传时间。PhotoStory 发给其他阶段的请求仍限 60 秒，结果采纳时限应覆盖试点执行和续跑。
+
+仓库 Secret `PHOTOSTORY_MUSE_SCREEN_BINDING` 包含 `job_id`、`model`、`worker` 三个字段。先用占位 job ID，在 main 手动运行 `cloud_native_qualification=true` 和 `qualify_muse_screen=true`。验收要求识别生成色块的主色通道，并校验原任务回执。验收通过后再设为选定的小批量任务 ID，并在该任务运行期间保留绑定。
+
+PersonalAIService 只向 PhotoStory Worker 的 `/internal/screen-completed` 投递 `muse-screen` 的签名终态通知。双方使用同一个至少 32 字节的受保护 Secret，PhotoStory 的绑定名为 `SCREEN_COMPLETION_SECRET`。通知只携带任务身份和状态；处理器从原任务读回建议，并校验同一领取记录、时限和输出结构。
+
+Worker 使用单仓 GitHub App 唤醒主分支的 `processor.yml`。配置 `SCREEN_RESUME_APP_ID`、`SCREEN_RESUME_INSTALLATION_ID`，并把 PKCS#8 私钥直接绑定为 `SCREEN_RESUME_APP_KEY` Secret。App 仅安装到 PhotoStory 并具备 Actions 写权限；每次唤醒使用短期安装凭据。
+
+回传只唤醒对应的已挂起批次，重复通知不会重复启动，唤醒路径跳过自动发布。GitHub 唤醒失败时，现有定时处理器仍可按原 ID 读回。退出试点前确认原任务和库存快照已结清，再移除试点绑定。
+
 ## 库存与定时处理
 
 切换已有处理器前，停止其 batch timer，核对正在运行的 batch 和私有库存。结果不明的 batch 不重放。Worker 的 R2 `MEDIA_BUCKET` 绑定与 `/internal/inventory` 必须可用。

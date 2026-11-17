@@ -39,7 +39,7 @@ class LocalTransport:
         route = self.routes[request['profile']]
         task = 'synthetic-task-'+str(len(self.records)+1)
         record = {'id':task, 'owner':self.project, 'request':json.loads(json.dumps(request)),
-                  'provider':route['provider'], 'revision':1, 'deadline':self.clock[0]+60,
+                  'provider':route['provider'], 'revision':1, 'deadline':self.clock[0]+request['timeout_seconds'],
                   'created':self.clock[0], 'updated':self.clock[0],
                   'worker':route['worker'] if self.dispatch else None,
                   'attempt':'synthetic-attempt-'+task if self.dispatch else None,
@@ -105,6 +105,28 @@ def test_six_existing_stages_each_create_exactly_one_configured_task(tmp_path):
     assert {r['request']['profile'] for r in records} == set(STAGES)
     assert all(r['provider'] == ctx['routes'][r['request']['profile']]['provider'] for r in records)
     assert all('helper' not in r['request']['objective'].lower() for r in records)
+
+
+def test_muse_screen_resumes_original_task_while_group_keeps_60_seconds(tmp_path):
+    from native_tasks import NativePending, with_muse_screen
+    ctx, wire = context(tmp_path)
+    route = {**ctx['routes']['screen'], 'provider': 'muse', 'profile': 'muse-screen'}
+    ctx = with_muse_screen({**ctx, 'deadline': wire.clock[0] + 3600}, route)
+    wire.routes['muse-screen'] = route
+    image = photo(tmp_path)
+    wire.complete = False
+    screen = batch.native_review_gateway(ctx, stage='screen')
+    with pytest.raises(NativePending):
+        screen('prompt', [{'id': 'p'}], [image], SCHEMA, tmp_path)
+    task, = wire.records
+    assert wire.records[task]['request']['timeout_seconds'] == 600
+    wire.clock[0] += 300
+    wire.complete_task(task)
+    assert screen('prompt', [{'id': 'p'}], [image], SCHEMA, tmp_path) == {'ok': True}
+    assert [call[0] for call in wire.calls] == ['POST', 'GET']
+    wire.complete = True
+    batch.native_review_gateway(ctx, stage='group')('prompt', [{'id': 'p'}], [image], SCHEMA, tmp_path)
+    assert [row['request']['timeout_seconds'] for row in wire.records.values()] == [600, 60]
 
 
 @pytest.mark.parametrize('phase', ['intent_checkpoint', 'response', 'adoption_checkpoint'])
@@ -891,7 +913,7 @@ class PendingBatchHarness:
         else: raise AssertionError('unexpected fake business request: '+path)
         return json.dumps(result).encode()
 
-    def run(self, *, workflow_env=None):
+    def run(self, *, workflow_env=None, **runtime):
         import cloud_inventory
         h = self
         class Cloud:
@@ -922,7 +944,7 @@ class PendingBatchHarness:
              patch.object(batch,'graph',side_effect=AssertionError('no real media/scan')), \
              patch('preselect.representatives',side_effect=lambda previews,*args:[(v,data,{}) for v,data in previews]), \
              patch.object(batch,'gateway',side_effect=AssertionError('retired gateway')):
-            if workflow_env is None: batch.run(native_context=self.ctx)
+            if workflow_env is None: batch.run(native_context=self.ctx, **runtime)
             else: batch.main()
 
     def timely_result(self, resume=1800):
@@ -931,6 +953,24 @@ class PendingBatchHarness:
         self.wire.complete_task(task)
         self.wire.clock[0] = self.started + resume
         return task
+
+
+def test_muse_wakeup_restores_cloud_checkpoint_and_never_enters_publication(tmp_path):
+    fixture = PendingBatchHarness(tmp_path, cloud=True)
+    route = {**fixture.ctx['routes']['screen'], 'provider': 'muse', 'profile': 'muse-screen'}
+    fixture.wire.routes = {**fixture.wire.routes, 'muse-screen': route}
+    pilot = {'job_id': 'job', 'route': route}
+    fixture.run(muse_screen=pilot)
+    task, = fixture.wire.records
+    assert fixture.calls[-1][1]['screenWait'] == {'taskId': task, 'revision': 1}
+    fixture.timely_result(resume=300)
+    before = len(fixture.calls)
+    wake = 'a' * 64
+    fixture.run(muse_screen=pilot, resume_screen=wake)
+    assert fixture.calls[before] == ('/internal/claim', {'resumeScreen': wake, 'pilotJob': 'job'})
+    assert not any(path in {'/internal/maintenance', '/internal/autopublish'} for path, _ in fixture.calls[before:])
+    assert len(fixture.completed) == 1
+    assert sum(call[:2] == ('POST', '/v1/tasks') for call in fixture.wire.calls) == 1
 
 
 @pytest.mark.parametrize('cloud', [False,True])
