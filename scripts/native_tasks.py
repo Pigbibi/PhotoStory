@@ -291,9 +291,8 @@ def restore_muse_screen_inputs(context, candidate_ids):
                     or binding['project'] != context['project'] or binding['deadline'] != context['deadline']
                     or not task_id or value['halt'] or value['cancel'] or task_id in receipts):
                 raise ValueError()
-            if (value.get('accepted_output') is None and 'adoption_age_seconds' in binding
-                    and context['now']() >= value['task_created']+binding['adoption_age_seconds']):
-                raise NativeStopped('native_cancel_or_expiry')
+            # The normal task path still applies expiry and persists any
+            # cancellation against this original task before stopping.
             record = context['client'].get(task_id)
             _record_identity(value, record)
             material, = record['request']['materials']

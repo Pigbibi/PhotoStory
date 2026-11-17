@@ -958,7 +958,7 @@ class PendingBatchHarness:
 @pytest.mark.parametrize('receipt_case', ['valid', 'altered_request', 'expired'])
 def test_muse_wakeup_restores_cloud_checkpoint_and_never_enters_publication(tmp_path, receipt_case):
     fixture = PendingBatchHarness(tmp_path, cloud=True)
-    fixture.ctx['adoption_age_seconds'] = 600
+    fixture.ctx['adoption_age_seconds'] = 60
     route = {**fixture.ctx['routes']['screen'], 'provider': 'muse', 'profile': 'muse-screen'}
     fixture.wire.routes = {**fixture.wire.routes, 'muse-screen': route}
     fixture.wire.output = lambda request: {'photos':[{
@@ -970,7 +970,10 @@ def test_muse_wakeup_restores_cloud_checkpoint_and_never_enters_publication(tmp_
     fixture.run(muse_screen=pilot)
     task, = fixture.wire.records
     assert fixture.calls[-1][1]['screenWait'] == {'taskId': task, 'revision': 1}
-    fixture.timely_result(resume=600 if receipt_case=='expired' else 300)
+    if receipt_case=='expired':
+        fixture.wire.clock[0] = fixture.started + 60
+    else:
+        fixture.timely_result(resume=30)
     original_image = fixture.image
     latest_image = io.BytesIO()
     Image.new('RGB',(80,60),'red').save(latest_image,'JPEG')
@@ -985,7 +988,8 @@ def test_muse_wakeup_restores_cloud_checkpoint_and_never_enters_publication(tmp_
         assert fixture.completed == []
         expected = 'native_cancel_or_expiry' if receipt_case=='expired' else 'native_screen_readback_failed'
         assert fixture.calls[-1][1]['reason'] == expected
-        assert sum(m=='POST' for m,_,_ in fixture.wire.calls)==1
+        assert sum(m=='POST' and path=='/v1/tasks' for m,path,_ in fixture.wire.calls)==1
+        assert sum(path.endswith('/cancel') for _,path,_ in fixture.wire.calls)==(receipt_case=='expired')
         return
     fixture.run(muse_screen=pilot, resume_screen=wake)
     assert fixture.calls[before] == ('/internal/claim', {'resumeScreen': wake, 'pilotJob': 'job'})
