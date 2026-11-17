@@ -166,10 +166,12 @@ class NativeTaskClient:
         return _read_json(self.opener, request, MAX_RESPONSE_BYTES)
 
     def submit(self, request, idempotency_key):
-        from native_tasks import MUSE_SCREEN_PROFILE, MUSE_SCREEN_TIMEOUT
+        from native_tasks import ASYNC_SCREEN_PROFILES, ASYNC_SCREEN_TIMEOUT
 
-        timeout = MUSE_SCREEN_TIMEOUT if isinstance(request, dict) and request.get('profile') == MUSE_SCREEN_PROFILE else 60
-        if (not isinstance(request, dict) or request.get('mode') != 'agent'
+        timeout = (ASYNC_SCREEN_TIMEOUT
+                   if isinstance(request, dict) and request.get('profile') in ASYNC_SCREEN_PROFILES
+                   else 60)
+        if (not isinstance(request, dict) or request.get('mode') not in {'agent', 'api'}
                 or type(request.get('timeout_seconds')) is not int or request['timeout_seconds'] != timeout
                 or not _text(idempotency_key, 200)):
             raise ValueError('invalid_input')

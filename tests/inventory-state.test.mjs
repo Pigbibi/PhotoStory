@@ -87,7 +87,7 @@ test('native snapshot commits the same inventory pointer without releasing the r
 });
 
 for (const dispatchStatus of [204, 302, 502]) {
-test(`signed Muse completion claims its parked job once after GitHub ${dispatchStatus}`, async t => {
+test(`signed screen completion claims its parked job once after GitHub ${dispatchStatus}`, async t => {
  const {env,api,DB}=await setup(t);env.MEDIA_BUCKET=bucket();
  const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
  Object.assign(env,{

@@ -1,4 +1,4 @@
-"""Qualify one generated image through the current private native binding."""
+"""Qualify one generated image through the configured AI task gateway."""
 import argparse
 import base64
 import json
@@ -11,16 +11,17 @@ import time
 
 from github_gateway import NativeTaskClient
 from native_tasks import (bootstrap_context, digest, NativePending, NativeStopped, task_call,
-                          _record_identity, TASK_STATUSES, TASK_ERROR_CODES, MUSE_SCREEN_TIMEOUT, with_muse_screen)
+                          _record_identity, TASK_STATUSES, TASK_ERROR_CODES, ASYNC_SCREEN_PROFILES,
+                          ASYNC_SCREEN_TIMEOUT, PROVIDER_PATTERN, with_screen_route)
 from jsonschema import Draft202012Validator
-from process_batch import workflow_binding, muse_screen_binding
+from process_batch import configured_project, workflow_binding, screen_binding
 from smoke_gateway import IMAGE_BASE64, IMAGE_SHA256, SCHEMA
 
 PROMPT = 'Generated color block qualification only. Return {"kind":"synthetic-test"}. No browsing, private photos, publishing, messages or external actions.'
-MUSE_PROMPT = ('Inspect the generated color block. Return a JSON object whose color field names the dominant RGB channel. '
-               'Use the attached image only. No browsing, publishing or external actions.')
-MUSE_SCHEMA = {'type': 'object', 'additionalProperties': False, 'required': ['color'],
-               'properties': {'color': {'enum': ['red', 'green', 'blue']}}}
+SCREEN_PROMPT = ('Inspect the generated color block. Return a JSON object whose color field names the dominant RGB channel. '
+                 'Use the attached image only. No browsing, publishing or external actions.')
+SCREEN_SCHEMA = {'type': 'object', 'additionalProperties': False, 'required': ['color'],
+                 'properties': {'color': {'enum': ['red', 'green', 'blue']}}}
 FAILURE_REASONS = {'task_expired_before_claim', 'task_expired_after_claim',
                    'task_cancelled_before_claim', 'task_cancelled_after_claim',
                    'task_failed', 'task_invalid_output', 'task_outcome_unknown',
@@ -31,13 +32,16 @@ def public_summary(receipt):
     """Project fixed codes and booleans only; never IDs, URLs or provider text."""
     result = {'phase': 'unverified'}
     choices = {'phase': {'verified', 'completion_verified', 'unverified'},
-               'task_status': TASK_STATUSES | {'unknown'}, 'provider': {'dot', 'grok', 'grokbot', 'muse'},
+               'task_status': TASK_STATUSES | {'unknown'},
                'service_error_code': TASK_ERROR_CODES | {'unknown_error'},
                'failure_reason': FAILURE_REASONS}
     for key, allowed in choices.items():
         value = receipt.get(key)
         if isinstance(value, str) and value in allowed:
             result[key] = value
+    provider = receipt.get('provider')
+    if isinstance(provider, str) and PROVIDER_PATTERN.fullmatch(provider):
+        result['provider'] = provider
     for key in ('adopted', 'synthetic_only', 'business_access', 'read_only',
                 'worker_claim_present', 'caller_cancel_requested'):
         if type(receipt.get(key)) is bool:
@@ -69,8 +73,8 @@ def failure_reason(value, timestamp):
 
 
 def qualification_contract(context):
-    if context['routes']['screen']['provider'] == 'muse':
-        return MUSE_PROMPT, MUSE_SCHEMA, MUSE_SCREEN_TIMEOUT
+    if context['routes']['screen']['profile'] in ASYNC_SCREEN_PROFILES:
+        return SCREEN_PROMPT, SCREEN_SCHEMA, ASYNC_SCREEN_TIMEOUT
     return PROMPT, SCHEMA, 60
 
 
@@ -102,7 +106,7 @@ def read_task(context, task_id):
                 or not 0 <= created <= updated < deadline or updated > context['now']()):
             raise NativeStopped('qualification_identity_changed')
         Draft202012Validator(schema).validate(record.get('output'))
-        if route['provider'] == 'muse' and record['output'] != {'color': 'blue'}:
+        if route['profile'] in ASYNC_SCREEN_PROFILES and record['output'] != {'color': 'blue'}:
             raise NativeStopped('qualification_image_result')
     result = {'phase': 'completion_verified' if verified else 'unverified',
             'task_status': status, 'provider': route['provider'], 'adopted': False,
@@ -118,27 +122,29 @@ def read_task(context, task_id):
 
 
 def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_factory=NativeTaskClient,
-        task_id=None, use_muse=False):
-    expected = {'GITHUB_REPOSITORY':'Pigbibi/PhotoStory', 'GITHUB_REF':'refs/heads/main',
-                'GITHUB_WORKFLOW_REF':'Pigbibi/PhotoStory/.github/workflows/processor.yml@refs/heads/main',
-                'GITHUB_EVENT_NAME':'workflow_dispatch', 'GITHUB_RUN_ATTEMPT':'1'}
+        task_id=None, use_screen_route=False, use_muse=False):
+    project = configured_project(environ)
+    expected = {'GITHUB_REPOSITORY': project, 'GITHUB_REF': 'refs/heads/main',
+                'GITHUB_WORKFLOW_REF': f'{project}/.github/workflows/processor.yml@refs/heads/main',
+                'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_RUN_ATTEMPT': '1'}
     occurrence = environ.get('GITHUB_RUN_ID', '')
-    if any(environ.get(k) != v for k,v in expected.items()) or not occurrence.isdecimal():
+    if any(environ.get(k) != v for k, v in expected.items()) or not occurrence.isdecimal():
         raise NativeStopped('main_first_attempt_required')
+    use_async_screen = use_screen_route or use_muse
     root.mkdir(mode=0o700, parents=False, exist_ok=False)
-    state = root/'state';state.mkdir(mode=0o700)
-    image = root/'generated.jpg';image.write_bytes(base64.b64decode(IMAGE_BASE64, validate=True))
-    binding = workflow_binding(root.resolve(), state.resolve(), now=now)
-    if use_muse:
-        pilot = muse_screen_binding()
+    state = root / 'state'; state.mkdir(mode=0o700)
+    image = root / 'generated.jpg'; image.write_bytes(base64.b64decode(IMAGE_BASE64, validate=True))
+    binding = workflow_binding(root.resolve(), state.resolve(), now=now, environ=environ)
+    if use_async_screen:
+        pilot = screen_binding(environ=environ)
         if not pilot:
             raise NativeStopped('native_binding_required')
-        binding = with_muse_screen(binding, pilot['route'])
+        binding = with_screen_route(binding, pilot['route'])
     binding.update(operation_id='photostory-cloud-qualification:'+occurrence, task_limit=1,
-                   deadline=now()+(MUSE_SCREEN_TIMEOUT+30 if use_muse else 120))
-    receipt = {'project':'Pigbibi/PhotoStory', 'occurrence':occurrence,
-               'phase':'prepared', 'task_id':None, 'image_sha256':IMAGE_SHA256,
-               'synthetic_only':True, 'business_access':False, 'adopted':False,
+                   deadline=now()+(ASYNC_SCREEN_TIMEOUT+30 if use_async_screen else 120))
+    receipt = {'project': project, 'occurrence': occurrence,
+               'phase': 'prepared', 'task_id': None, 'image_sha256': IMAGE_SHA256,
+               'synthetic_only': True, 'business_access': False, 'adopted': False,
                'provider': binding['routes']['screen']['provider']}
 
     def persist():
@@ -175,7 +181,7 @@ def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_fac
         for _ in range(timeout // 5 + 1):
             try:
                 output=call(prompt,[{'id':'synthetic'}],[image.resolve()],schema,root)
-                if use_muse and output != {'color': 'blue'}:
+                if use_async_screen and output != {'color': 'blue'}:
                     raise NativeStopped('qualification_image_result')
                 receipt.update(phase='verified',adopted=True,output_sha256=digest(output))
                 persist()
@@ -198,8 +204,9 @@ def main():
         task_id = inputs.get('native_qualification_task_id', '')
         if task_id and inputs.get('native_qualification_action') != 'readback':
             raise NativeStopped('readback_required')
-        use_muse = inputs.get('qualify_muse_screen') in (True, 'true')
-        receipt=run(args.state, task_id=task_id or None, use_muse=use_muse)
+        use_screen_route = (inputs.get('qualify_screen_route') in (True, 'true')
+                            or inputs.get('qualify_muse_screen') in (True, 'true'))
+        receipt=run(args.state, task_id=task_id or None, use_screen_route=use_screen_route)
     except QualificationUnverified as error:
         print(json.dumps(error.summary, sort_keys=True))
         return 1

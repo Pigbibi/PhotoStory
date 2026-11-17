@@ -39,6 +39,45 @@ class CloudQualificationTests(unittest.TestCase):
                 self.assertNotIn('blue', request['objective'])
                 client.submit.assert_called_once()
 
+    def test_neutral_screen_binding_qualifies_custom_project_and_async_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binding = {
+                'enabled': True, 'project': 'CustomOrg/PhotoStoryFork',
+                'service_url': 'https://personal.acme.org', 'audience': 'https://personal.acme.org/mcp',
+                'adoption_age_seconds': 3600,
+                'routes': {s: {'mode': 'api', 'provider': 'custom-vision', 'profile': s,
+                               'model': 'gpt-4.1-mini', 'worker': 'cloud-worker'} for s in STAGES},
+            }
+            config = {
+                'GITHUB_REPOSITORY': 'CustomOrg/PhotoStoryFork',
+                'GITHUB_REF': 'refs/heads/main',
+                'GITHUB_WORKFLOW_REF': 'CustomOrg/PhotoStoryFork/.github/workflows/processor.yml@refs/heads/main',
+                'GITHUB_EVENT_NAME': 'workflow_dispatch',
+                'GITHUB_RUN_ATTEMPT': '1',
+                'GITHUB_RUN_ID': '12345',
+                'PHOTOSTORY_NATIVE_BINDING': json.dumps(binding),
+                'PHOTOSTORY_SCREEN_BINDING': json.dumps({
+                    'job_id': 'synthetic-job', 'provider': 'async-vision',
+                    'model': 'vision-v1', 'worker': 'fixture-worker', 'mode': 'api',
+                }),
+            }
+            client = Mock(resource='https://personal.acme.org')
+            client.submit.side_effect = lambda request, _: {
+                'id': 'original-task', 'owner': 'CustomOrg/PhotoStoryFork', 'provider': 'async-vision',
+                'request': request, 'revision': 1, 'status': 'completed',
+                'created': 990, 'updated': 995, 'deadline': 1590, 'worker': 'fixture-worker',
+                'attempt': 'one-attempt', 'output': {'color': 'blue'},
+            }
+            root = Path(tmp) / 'qualification'
+            with patch.dict(os.environ, config, clear=True):
+                receipt = qualification.run(root, use_screen_route=True, now=lambda: 1000,
+                                            client_factory=lambda *_: client)
+            self.assertEqual(receipt['phase'], 'verified')
+            self.assertEqual(receipt['project'], 'CustomOrg/PhotoStoryFork')
+            request = client.submit.call_args.args[0]
+            self.assertEqual((request['mode'], request['profile'], request['timeout_seconds']),
+                             ('api', 'async-screen', 600))
+
     def env(self):
         binding={'enabled':True,'project':'Pigbibi/PhotoStory','service_url':'https://personal.acme.org',
                  'audience':'https://personal.acme.org/mcp','adoption_age_seconds':3600,
