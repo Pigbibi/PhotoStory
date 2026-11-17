@@ -983,6 +983,33 @@ def test_muse_wakeup_restores_cloud_checkpoint_and_never_enters_publication(tmp_
     assert [(method,path) for method,path,_ in fixture.wire.calls] == [
         ('POST','/v1/tasks'), ('GET','/v1/tasks/'+task)]
 
+@pytest.mark.parametrize('muse_pilot', [False,True])
+def test_only_named_muse_pilot_can_scan_a_58_page_folder_in_one_lease(tmp_path,muse_pilot):
+    from inventory import Inventory
+    fixture=PendingBatchHarness(tmp_path,cloud=True)
+    fixture.source['progress']['phase']='scanning'
+    route={**fixture.ctx['routes']['screen'],'provider':'muse','profile':'muse-screen'}
+    pilot={'job_id':'job' if muse_pilot else 'different-job','route':route}
+    source_policy=hashlib.sha256((batch.SCREEN_PROMPT+batch.GROUP_PROMPT).encode()).hexdigest()
+    inv=Inventory(fixture.directory,'job',fixture.source,source_policy)
+    with inv.db:
+        inv.db.execute("INSERT INTO folders(id) VALUES('generated-folder')")
+    inv.close()
+    original_scan=Inventory.scan
+    pages=[]
+    def graph(url):
+        pages.append(url)
+        if len(pages)==58:
+            return {'value':[]}
+        return {'value':[],'@odata.nextLink':f'https://graph.microsoft.com/next/{len(pages)}'}
+    def scan(inventory,fetch,decode,**options):
+        return original_scan(inventory,graph,decode,**options)
+    with patch.object(Inventory,'scan',scan):
+        fixture.run(muse_screen=pilot)
+    assert len(pages)==(58 if muse_pilot else 50)
+    assert fixture.source['progress']['phase']==('processing' if muse_pilot else 'scanning')
+    assert fixture.wire.calls==[]
+
 
 @pytest.mark.parametrize('cloud', [False,True])
 @pytest.mark.parametrize('resume', [30,1800,3599])
