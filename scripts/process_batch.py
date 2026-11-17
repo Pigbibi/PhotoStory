@@ -717,7 +717,12 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None,
             call('/internal/checkpoint',{**auth,'progress':inventory.progress()})
             return
         inventory_operation = 'scan'
-        complete=True if pending_batch else inventory.scan(lambda url:graph(url,source['accessToken']),lambda item:candidate(item,source))
+        # Keep the pilot's known Camera Roll-sized scan within one invocation
+        # where possible. OneDrive may reject paging URLs from a previous run.
+        complete=True if pending_batch else inventory.scan(
+            lambda url:graph(url,source['accessToken']),lambda item:candidate(item,source),
+            page_budget=100 if muse_pilot else 50,
+        )
         if not pending_batch and (not complete or source.get('progress',{}).get('phase')=='scanning'):
             completion_started=True
             progress=inventory.progress()
