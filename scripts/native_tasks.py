@@ -17,9 +17,10 @@ from PIL import Image
 STAGES = {'screen', 'group', 'cross_review', 'labels', 'strict_review', 'publication'}
 MUSE_SCREEN_PROFILE = 'muse-screen'
 MUSE_SCREEN_TIMEOUT = 600
+MAX_SCREEN_TASKS = 17  # ceil(100 photos / 6 per screening task)
 # Existing batch graph: screen ceil(100/6), <=24 shortlist groups, cross+labels,
 # and <=8 strict reviews. This bounds work; it never creates additional calls.
-MAX_BATCH_TASKS = 17 + 24 + 1 + 1 + 8
+MAX_BATCH_TASKS = MAX_SCREEN_TASKS + 24 + 1 + 1 + 8
 TASK_STATUSES = {'queued', 'submitting', 'running', 'outcome_unknown', 'cancel_requested',
                  'completed', 'failed', 'invalid_output', 'cancelled'}
 TASK_ERROR_CODES = {'deadline_before_submission', 'deadline_exceeded', 'acceptance_unknown',
@@ -267,6 +268,53 @@ def _completed_receipt(context, value, record, schema, output_limit):
                  completed_at=completed, accepted_at=now)
 
 
+def restore_muse_screen_inputs(context, candidate_ids):
+    """Read the previews already bound to this batch's original Muse tasks."""
+    route = context['routes']['screen']
+    if route['provider'] != 'muse' or route['profile'] != MUSE_SCREEN_PROFILE:
+        raise NativeStopped('native_binding_changed')
+    path = _private_database(context)
+    with sqlite3.connect(path.as_uri()+'?mode=ro', uri=True) as db:
+        rows = db.execute(
+            "SELECT value FROM native_operations WHERE json_extract(value,'$.binding.operation_id')=? "
+            "AND json_extract(value,'$.binding.route.profile')=? ORDER BY rowid LIMIT ?",
+            (context['operation_id'], MUSE_SCREEN_PROFILE, MAX_SCREEN_TASKS+1),
+        ).fetchall()
+    if not 1 <= len(rows) <= MAX_SCREEN_TASKS:
+        raise NativeStopped('native_binding_changed')
+    previews, receipts = {}, {}
+    try:
+        for (raw,) in rows:
+            value = json.loads(raw)
+            binding, task_id = value['binding'], value['task_id']
+            if (binding['route'] != route or binding['resource'] != context['client'].resource
+                    or binding['project'] != context['project'] or binding['deadline'] != context['deadline']
+                    or not task_id or value['halt'] or value['cancel'] or task_id in receipts):
+                raise ValueError()
+            # The normal task path still applies expiry and persists any
+            # cancellation against this original task before stopping.
+            record = context['client'].get(task_id)
+            _record_identity(value, record)
+            material, = record['request']['materials']
+            records, images = material['records'], material['images']
+            ids = [item['id'] for item in records]
+            if (material['stage'] != 'screen' or not 1 <= len(ids) <= 6
+                    or ids != [image['id'] for image in images]
+                    or len(set(ids)) != len(ids) or not set(ids) <= candidate_ids or set(ids) & previews.keys()):
+                raise ValueError()
+            for image in images:
+                raw_preview = base64.b64decode(image['base64'], validate=True)
+                if image['mime'] != 'image/jpeg' or hashlib.sha256(raw_preview).hexdigest() != image['sha256']:
+                    raise ValueError()
+                previews[image['id']] = raw_preview
+            receipts[task_id] = record
+    except NativeStopped:
+        raise
+    except Exception:
+        raise NativeStopped('native_screen_readback_failed') from None
+    return previews, receipts
+
+
 def task_call(context, stage):
     """Use one generic submit/get/cancel task, never helper RPCs or CLI fallback."""
     def call(prompt, records, paths, schema, cwd):
@@ -406,7 +454,10 @@ def task_call(context, stage):
                             active()
                             record = client.submit(request, 'photostory:'+operation)
                         else:
-                            record = client.get(value['task_id'])
+                            restored = context.get('restored_screen_records', {}) if muse_screen else {}
+                            record = restored.get(value['task_id'])
+                            if record is None:
+                                record = client.get(value['task_id'])
                         _record_identity(value, record)
                         # Retain only fixed operational codes after identity validation.
                         # Qualification receipts need these even when adoption stops.

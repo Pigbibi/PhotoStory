@@ -86,7 +86,7 @@ test('native snapshot commits the same inventory pointer without releasing the r
  const resumed=await(await api('/internal/claim',{},true)).json();assert.equal(resumed.id,job.id);assert.notEqual(resumed.lease,job.lease);
 });
 
-for (const dispatchStatus of [204, 502]) {
+for (const dispatchStatus of [204, 302, 502]) {
 test(`signed Muse completion claims its parked job once after GitHub ${dispatchStatus}`, async t => {
  const {env,api,DB}=await setup(t);env.MEDIA_BUCKET=bucket();
  const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
@@ -99,6 +99,7 @@ test(`signed Muse completion claims its parked job once after GitHub ${dispatchS
  const dispatchEntered=Promise.withResolvers();
  const githubReply=Promise.withResolvers();
  t.mock.method(globalThis,'fetch',async (target,options)=>{
+   assert.equal(options.redirect,'manual');
    const credential=options.headers.Authorization;
    const url=new URL(target);
    posts.push({url,body:JSON.parse(options.body)});
