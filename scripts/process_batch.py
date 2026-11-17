@@ -607,7 +607,7 @@ def _resume_pending_batch(inventory, source, context, job_id, directory):
 
 
 def run(*, native_context=None, native_binding=None, native_client_factory=None, muse_screen=None, resume_screen=None):
-    from native_tasks import bootstrap_context, validate_context, with_muse_screen, NativePending, NativeStopped
+    from native_tasks import bootstrap_context, validate_context, with_muse_screen, restore_muse_screen_inputs, NativePending, NativeStopped
     try:
         if native_binding is not None:
             if native_context is not None:
@@ -780,6 +780,11 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None,
         native_context = _native_business_context(native_context, 'batch', {'job_id':job['id'], 'batch_id':batch_id})
         native_context = operation_context(native_context, native_context['operation_id'], state_root=Path(directory),
             persist=lambda: call('/internal/checkpoint', {**auth, 'progress':inventory.progress(), 'nativeCheckpoint':True}))
+        original_previews = {}
+        if muse_pilot and pending_batch:
+            stage = 'ai_gateway'
+            original_previews, native_context['restored_screen_records'] = restore_muse_screen_inputs(
+                native_context, {photo['id'] for photo in candidates})
         with tempfile.TemporaryDirectory(prefix="photostory-", dir=native_context['fixture_root']) as tmp:
             cwd = Path(tmp)
             from preselect import representatives
@@ -788,13 +793,16 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None,
             best_effort(history_match_page,call,inventory)
             stage = 'thumbnail'
             for photo in candidates:
-                image=thumbnail(photo,source['accessToken'])
+                image=original_previews[photo['id']] if photo['id'] in original_previews else thumbnail(photo,source['accessToken'])
                 digest=hashlib.sha256(image).hexdigest()
                 digests[photo['id']]=digest
                 visual_hashes[photo['id']]=dhash(image)
                 if not inventory.known_digest(digest):previews.append((photo,image))
             best_effort(history_proposals,call,inventory,visual_hashes)
             selected=representatives(previews,inventory.nearby_profiles)
+            if original_previews and [p['id'] for p,_,_ in selected[:len(original_previews)]] != list(original_previews):
+                stage = 'ai_gateway'
+                raise Stop('native_screen_selection_changed')
             profiles={p['id']:features for p,image,features in selected}
             outcomes={p['id']:'duplicate_burst' for p in candidates if p not in [v[0] for v in selected]}
             # Privacy screening still gates every representative; preselection

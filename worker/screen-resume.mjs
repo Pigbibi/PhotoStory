@@ -36,7 +36,9 @@ function post(endpoint, token, body) {
   };
   return fetch('https://api.github.com/' + endpoint, {
     method: 'POST', headers: {...headers, Authorization: 'Bearer ' + token}, body: JSON.stringify(body),
-    redirect: 'error', signal: AbortSignal.timeout(8000),
+    // Workers rejects "error" before sending the request. Treat a returned
+    // redirect as a non-success without forwarding the Authorization header.
+    redirect: 'manual', signal: AbortSignal.timeout(8000),
   });
 }
 
