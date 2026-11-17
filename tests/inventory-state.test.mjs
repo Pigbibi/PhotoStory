@@ -86,7 +86,8 @@ test('native snapshot commits the same inventory pointer without releasing the r
  const resumed=await(await api('/internal/claim',{},true)).json();assert.equal(resumed.id,job.id);assert.notEqual(resumed.lease,job.lease);
 });
 
-test('signed Muse completion wakes only the parked PhotoStory task once', async t => {
+for (const dispatchStatus of [204, 502]) {
+test(`signed Muse completion claims its parked job once after GitHub ${dispatchStatus}`, async t => {
  const {env,api,DB}=await setup(t);env.MEDIA_BUCKET=bucket();
  const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
  Object.assign(env,{
@@ -94,20 +95,25 @@ test('signed Muse completion wakes only the parked PhotoStory task once', async 
    SCREEN_RESUME_APP_ID:'1',SCREEN_RESUME_INSTALLATION_ID:'2',
    SCREEN_RESUME_APP_KEY:privateKey.export({type:'pkcs8',format:'pem'}),
  });
- const posts=[],background=[];
+ const posts=[];
+ const dispatchEntered=Promise.withResolvers();
+ const githubReply=Promise.withResolvers();
  t.mock.method(globalThis,'fetch',async (target,options)=>{
    const credential=options.headers.Authorization;
-   if (posts.length===0) {
+   const url=new URL(target);
+   posts.push({url,body:JSON.parse(options.body)});
+   if (url.pathname.endsWith('/access_tokens')) {
      const [header,claims,signature]=credential.slice('Bearer '.length).split('.');
      assert.ok(verify('RSA-SHA256',Buffer.from(header+'.'+claims),publicKey,Buffer.from(signature,'base64url')));
      const decoded=JSON.parse(Buffer.from(claims,'base64url'));
      assert.equal(decoded.iss,'1');
      assert.ok(decoded.exp-decoded.iat<=600);
-   } else {
-     assert.equal(credential,'Bearer synthetic-installation-token');
+     return posts.length===1?new Response(null,{status:503})
+       :Response.json({token:'synthetic-installation-token'},{status:201});
    }
-   posts.push({url:new URL(target),body:JSON.parse(options.body)});
-   return posts.length===1?Response.json({token:'synthetic-installation-token'},{status:201}):new Response(null,{status:204});
+   assert.equal(credential,'Bearer synthetic-installation-token');
+   dispatchEntered.resolve();
+   return githubReply.promise;
  });
  const taskId='01010101-0101-0101-0101-010101010101';
  const event={name:'task.terminal',event_id:5,task_id:taskId,revision:1,project:'Pigbibi/PhotoStory',status:'completed'};
@@ -116,7 +122,7 @@ test('signed Muse completion wakes only the parked PhotoStory task once', async 
    const mac=signature??createHmac('sha256',env.SCREEN_COMPLETION_SECRET).update(stamp+'.'+body).digest('hex');
    return worker.fetch(new Request('https://example.test/internal/screen-completed',{method:'POST',body,
      headers:{'X-Callback-Timestamp':String(stamp),'X-Callback-Signature':'sha256='+mac}}),
-   env,{waitUntil:promise=>background.push(promise)});
+   env,{});
  };
  assert.equal((await webhook(event,Math.floor(Date.now()/1000),'0'.repeat(64))).status,401);
  assert.equal((await webhook(event,Math.floor(Date.now()/1000)-600)).status,401);
@@ -135,21 +141,45 @@ test('signed Muse completion wakes only the parked PhotoStory task once', async 
  const wake=JSON.parse((await DB.prepare('SELECT body FROM jobs WHERE id=?').bind(job.id).first()).body).screenWait.wake;
  assert.equal(await (await api('/internal/claim',{resumeScreen:wake,pilotJob:job.id},true)).json(),null);
  assert.equal((await webhook({...event,revision:2})).status,503);
- assert.equal((await webhook()).status,202);
- assert.equal((await webhook()).status,200);
- await Promise.all(background);
- assert.equal(posts.length,2);
+ // The first mint failed, so the same signed event may retry safely.
+ assert.equal((await webhook()).status,503);
+ assert.equal(posts.length,1);
+ let acknowledged=false;
+ const delivery=webhook().then(response=>{
+   acknowledged=true;
+   return response;
+ });
+ await dispatchEntered.promise;
+ // While the first dispatch is outstanding a duplicate starts no new run.
+ assert.equal((await webhook()).status,503);
+ assert.equal(acknowledged,false);
+ githubReply.resolve(new Response(null,{status:dispatchStatus}));
+ assert.equal((await delivery).status,dispatchStatus===204?202:409);
+ assert.equal((await webhook()).status,dispatchStatus===204?200:409);
+ assert.equal(posts.length,3);
  assert.equal(posts[0].url.pathname,'/app/installations/2/access_tokens');
  assert.deepEqual(posts[0].body,{repositories:['PhotoStory'],permissions:{actions:'write'}});
- assert.equal(posts[1].url.pathname,'/repos/Pigbibi/PhotoStory/actions/workflows/processor.yml/dispatches');
- assert.deepEqual(posts[1].body,{ref:'main',inputs:{resume_screen:wake}});
+ assert.equal(posts[2].url.pathname,'/repos/Pigbibi/PhotoStory/actions/workflows/processor.yml/dispatches');
+ assert.deepEqual(posts[2].body,{ref:'main',inputs:{resume_screen:wake}});
  assert.equal(await (await api('/internal/claim',{resumeScreen:'1'.repeat(64),pilotJob:job.id},true)).json(),null);
  assert.equal(await (await api('/internal/claim',{resumeScreen:wake,pilotJob:'other-job'},true)).json(),null);
  const resumed=await(await api('/internal/claim',{resumeScreen:wake,pilotJob:job.id},true)).json();
  assert.equal(resumed.id,job.id);
  assert.notEqual(resumed.lease,job.lease);
  assert.equal(await (await api('/internal/claim',{resumeScreen:wake,pilotJob:job.id},true)).json(),null);
+ const staged=await(await upload(env,bytes,{'X-Job-Id':resumed.id,'X-Job-Lease':resumed.lease})).json();
+ const completion={jobId:resumed.id,lease:resumed.lease,inventoryRef:staged.ref,batchId:'batch',more:false,
+   progress:{phase:'complete',total:1,processed:1,analyzed:1,batches:1},
+   drafts:[{id:resumed.id+'-batch-landscape-0-1',title:'Scenery',caption:'For review',photos:[{id:'p'}]}],
+   photos:[{id:'p',safety:'allow',flags:[],jpeg:'/9j/'}],autoReviews:[],crossReviews:[]};
+ const completed=await api('/internal/complete',completion,true);
+ assert.equal(completed.status,200,completed.ok?undefined:await completed.text());
+ assert.equal((await api('/internal/complete',completion,true)).status,409);
+ const savedDrafts=(await DB.prepare('SELECT body FROM drafts').all()).results;
+ assert.equal(savedDrafts.length,1);
+ assert.equal(JSON.parse(savedDrafts[0].body).status,'draft');
 });
+}
 
 test('native snapshot rejects malformed flags and owner stop without pointer or lease changes',async t=>{
  const {env,api,DB}=await setup(t);env.MEDIA_BUCKET=bucket();
