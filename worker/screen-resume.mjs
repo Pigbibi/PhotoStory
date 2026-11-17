@@ -1,6 +1,7 @@
 import {failure, json} from './http.mjs';
 
-const project = 'Pigbibi/PhotoStory';
+const defaultProject = 'Pigbibi/PhotoStory';
+const projectPattern = /^[^/\s]+\/[^/\s]+$/;
 const terminal = new Set(['completed', 'failed', 'cancelled', 'invalid_output']);
 const bytes = new TextEncoder();
 export const screenWakePattern = /^[0-9a-f]{64}$/;
@@ -8,7 +9,21 @@ export const taskIdPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 
 const base64url = value => btoa(String.fromCharCode(...value)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 
-async function installationToken(e) {
+export function resolveProject(e) {
+  if (e?.PHOTOSTORY_PROJECT === undefined || e?.PHOTOSTORY_PROJECT === null) return defaultProject;
+  if (typeof e.PHOTOSTORY_PROJECT !== 'string') return null;
+  const target = e.PHOTOSTORY_PROJECT.trim();
+  if (!target) return defaultProject;
+  if (!projectPattern.test(target) || /[?#]/.test(target)) return null;
+  const [owner, repo] = target.split('/');
+  if (owner === '.' || owner === '..' || repo === '.' || repo === '..') return null;
+  return target;
+}
+
+async function installationToken(e, targetProject) {
+  const project = targetProject || resolveProject(e);
+  if (!project) throw new Error('screen_resume_project');
+  const repoName = project.split('/')[1];
   const pem = e.SCREEN_RESUME_APP_KEY.match(/^-----BEGIN PRIVATE KEY-----([\s\S]+)-----END PRIVATE KEY-----\s*$/);
   if (!pem) throw new Error('screen_resume_key');
   const privateKey = Uint8Array.from(atob(pem[1]), c => c.charCodeAt(0));
@@ -19,7 +34,7 @@ async function installationToken(e) {
   const input = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' + claims;
   const jwt = input + '.' + base64url(new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, bytes.encode(input))));
   const installation = await post(`app/installations/${e.SCREEN_RESUME_INSTALLATION_ID}/access_tokens`, jwt,
-    {repositories: ['PhotoStory'], permissions: {actions: 'write'}});
+    {repositories: [repoName], permissions: {actions: 'write'}});
   if (installation.status !== 201) {
     await installation.body?.cancel();
     throw new Error('screen_resume_auth');
@@ -42,14 +57,15 @@ function post(endpoint, token, body) {
   });
 }
 
-async function dispatch(e, {id, wake}) {
+async function dispatch(e, {id, wake}, targetProject) {
+  const project = targetProject || resolveProject(e);
   const record = (armed, state) => e.DB.prepare(`UPDATE jobs SET body=json_set(body,
       '$.screenWait.dispatched',?,'$.screenWait.dispatchState',?)
     WHERE id=? AND json_extract(body,'$.screenWait.wake')=?
       AND json_extract(body,'$.screenWait.dispatchState')='sending'`).bind(armed, state, id, wake).run();
   let token;
   try {
-    token = await installationToken(e);
+    token = await installationToken(e, project);
   } catch {
     // No dispatch was attempted. A redelivery may safely try again.
     await record(0, 'retryable');
@@ -76,10 +92,11 @@ async function dispatch(e, {id, wake}) {
 
 export async function resumeScreen(request, e, readBody) {
   const secret = e.SCREEN_COMPLETION_SECRET;
+  const targetProject = resolveProject(e);
   if (typeof secret !== 'string' || bytes.encode(secret).length < 32 ||
       !/^[1-9][0-9]*$/.test(e.SCREEN_RESUME_APP_ID || '') ||
       !/^[1-9][0-9]*$/.test(e.SCREEN_RESUME_INSTALLATION_ID || '') ||
-      !e.SCREEN_RESUME_APP_KEY)
+      !e.SCREEN_RESUME_APP_KEY || !targetProject)
     return failure('not_found', 404);
 
   const stamp = request.headers.get('X-Callback-Timestamp') || '';
@@ -96,7 +113,7 @@ export async function resumeScreen(request, e, readBody) {
   const signature = Uint8Array.from(mac.slice(7).match(/../g), n => Number.parseInt(n, 16));
   if (!await crypto.subtle.verify('HMAC', key, signature, signed)) return failure('unauthorized', 401);
   const event = JSON.parse(new TextDecoder().decode(body));
-  if (!event || event.name !== 'task.terminal' || event.project !== project ||
+  if (!event || event.name !== 'task.terminal' || event.project !== targetProject ||
       !Number.isSafeInteger(event.event_id) || event.event_id < 1 ||
       typeof event.task_id !== 'string' || !taskIdPattern.test(event.task_id) ||
       !Number.isSafeInteger(event.revision) || event.revision < 1 || !terminal.has(event.status))
@@ -109,7 +126,7 @@ export async function resumeScreen(request, e, readBody) {
       AND json_extract(body,'$.screenWait.taskId')=? AND json_extract(body,'$.screenWait.revision')=?
       AND json_extract(body,'$.screenWait.dispatched')=0
     RETURNING id, json_extract(body,'$.screenWait.wake') AS wake`).bind(event.task_id, event.revision).first();
-  if (row) return dispatch(e, row);
+  if (row) return dispatch(e, row, targetProject);
   const known = await e.DB.prepare(`SELECT status, json_extract(body,'$.screenWait.dispatched') AS dispatched,
     json_extract(body,'$.screenWait.dispatchState') AS dispatchState,
     json_extract(body,'$.stopRequested') AS stopped FROM jobs WHERE json_extract(body,'$.screenWait.taskId')=?

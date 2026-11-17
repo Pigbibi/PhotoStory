@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHmac, generateKeyPairSync, verify} from 'node:crypto';
 import worker from '../worker/index.mjs';
 import {cleanupInventories} from '../worker/inventory-state.mjs';
+import {resolveProject} from '../worker/screen-resume.mjs';
 import {setup} from './helpers/database.mjs';
 
 function bucket(){
@@ -197,4 +198,57 @@ test('native snapshot rejects malformed flags and owner stop without pointer or 
  assert.equal((await DB.prepare('SELECT status FROM jobs WHERE id=?').bind(job.id).first()).status,'running');
  assert.equal((await api('/internal/checkpoint',{...body,nativeCheckpoint:false},true)).status,200);
  assert.equal((await DB.prepare('SELECT status FROM jobs WHERE id=?').bind(job.id).first()).status,'cancelled');
+});
+
+test('screen-resume resolves PHOTOSTORY_PROJECT cleanly and rejects malformed values',()=>{
+ assert.equal(resolveProject({}),'Pigbibi/PhotoStory');
+ assert.equal(resolveProject({PHOTOSTORY_PROJECT:'   '}),'Pigbibi/PhotoStory');
+ assert.equal(resolveProject({PHOTOSTORY_PROJECT:' CustomOrg/PhotoStoryFork '}),'CustomOrg/PhotoStoryFork');
+ for(const bad of ['invalid','owner/','/repo','a/b/c','bad owner/repo','../repo','owner/..','owner/repo?x=1',123]){
+  assert.equal(resolveProject({PHOTOSTORY_PROJECT:bad}),null);
+ }
+});
+
+test('signed screen completion uses configured PHOTOSTORY_PROJECT across callback, token, and dispatch',async t=>{
+ const {env,api,DB}=await setup(t);env.MEDIA_BUCKET=bucket();
+ const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
+ Object.assign(env,{
+   PHOTOSTORY_PROJECT:' CustomOrg/PhotoStoryFork ',
+   SCREEN_COMPLETION_SECRET:'local-fixture-completion-key'.repeat(2),
+   SCREEN_RESUME_APP_ID:'1',SCREEN_RESUME_INSTALLATION_ID:'2',
+   SCREEN_RESUME_APP_KEY:privateKey.export({type:'pkcs8',format:'pem'}),
+ });
+ const posts=[];
+ t.mock.method(globalThis,'fetch',async (target,options)=>{
+   const url=new URL(target);
+   posts.push({url,body:JSON.parse(options.body)});
+   if(url.pathname.endsWith('/access_tokens'))return Response.json({token:'custom-inst-token'},{status:201});
+   return new Response(null,{status:204});
+ });
+ const taskId='02020202-0202-0202-0202-020202020202';
+ const bytes=new Uint8Array([80,75,3,4,9]);
+ await upload(env,bytes,{'X-Inventory-Seed':'1'});
+ await api('/api/jobs',{folder:'Photos',range:'all'});
+ const job=await(await api('/internal/claim',{},true)).json();
+ const saved=await(await upload(env,bytes,{'X-Job-Id':job.id,'X-Job-Lease':job.lease})).json();
+ const parked={jobId:job.id,lease:job.lease,progress:{phase:'processing',total:1,processed:0,analyzed:0,batches:0},inventoryRef:saved.ref,screenWait:{taskId,revision:1}};
+ assert.equal((await api('/internal/checkpoint',parked,true)).status,200);
+ const wake=JSON.parse((await DB.prepare('SELECT body FROM jobs WHERE id=?').bind(job.id).first()).body).screenWait.wake;
+ const webhook=async payload=>{
+   const stamp=Math.floor(Date.now()/1000);
+   const body=JSON.stringify(payload);
+   const mac=createHmac('sha256',env.SCREEN_COMPLETION_SECRET).update(stamp+'.'+body).digest('hex');
+   return worker.fetch(new Request('https://example.test/internal/screen-completed',{method:'POST',body,
+     headers:{'X-Callback-Timestamp':String(stamp),'X-Callback-Signature':'sha256='+mac}}),env,{});
+ };
+ const baseEvent={name:'task.terminal',event_id:6,task_id:taskId,revision:1,status:'completed'};
+ assert.equal((await webhook({...baseEvent,project:'Pigbibi/PhotoStory'})).status,400);
+ assert.equal((await webhook({...baseEvent,project:'CustomOrg/PhotoStoryFork'})).status,202);
+ assert.equal(posts.length,2);
+ assert.deepEqual(posts[0].body,{repositories:['PhotoStoryFork'],permissions:{actions:'write'}});
+ assert.equal(posts[1].url.pathname,'/repos/CustomOrg/PhotoStoryFork/actions/workflows/processor.yml/dispatches');
+ assert.deepEqual(posts[1].body,{ref:'main',inputs:{resume_screen:wake}});
+ env.PHOTOSTORY_PROJECT='malformed-project';
+ assert.equal((await webhook({...baseEvent,project:'malformed-project'})).status,404);
+ assert.equal(posts.length,2);
 });
