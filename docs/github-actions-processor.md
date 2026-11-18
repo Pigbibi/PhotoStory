@@ -35,7 +35,11 @@ Configure `PHOTOSTORY_URL` with your Worker origin, `PHOTOSTORY_BATCH_TOKEN` mat
 
 Each stage route defines `mode` (`agent` or `api`), `provider` (alphanumeric identifier), `model`, `profile` (matching the stage name), and `worker`. All six stages use one consistent route configuration per binding.
 
-Run `Process PhotoStory` manually on `main` with `cloud_native_qualification=true` to qualify one generated color-block image before real photos. If a run remains unverified, pass the saved task ID with `native_qualification_action=readback` to inspect without resubmitting.
+Before changing bindings, dispatch `Process PhotoStory` on `main` with `inspect_runtime=true` to read active job markers, inventory readiness, and current snapshot byte size without starting processing.
+
+Dispatch `Process PhotoStory` on `main` with `cloud_native_qualification=true` (and optional `qualification_stage` set to one stage or `all`) to qualify synthetic color-block and text inputs against production schemas before processing real photos.
+
+If a qualification run remains unverified, pass the saved task ID with `native_qualification_action=readback` and the matching `qualification_stage` to inspect without resubmitting.
 
 ## Async screen routing (`PHOTOSTORY_SCREEN_BINDING`)
 

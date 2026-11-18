@@ -33,7 +33,9 @@
 
 每个阶段路由包含 `mode`（`agent` 或 `api`）、`provider`（合法标识符）、`model`、`profile`（与阶段名一致）和 `worker`，全部六个阶段须采用一致的路由器配置。
 
-在 `main` 手动运行 `Process PhotoStory` 并勾选 `cloud_native_qualification=true`，可在接入真实照片前先验收一张生成色块图。若回执未验证，保留 task ID 并配合 `native_qualification_action=readback` 只读回查，不重提任务。
+切换绑定前，可在 `main` 手动运行 `Process PhotoStory` 并勾选 `inspect_runtime=true`，只读检查活动任务标记、库存就绪状态与当前快照字节数。
+
+在 `main` 手动运行 `Process PhotoStory` 并勾选 `cloud_native_qualification=true`（可选设置 `qualification_stage` 为单阶段或 `all`），可在接入真实照片前先以合成色块与文本验收各阶段输出格式。若回执未验证，保留原 task ID 并配合 `native_qualification_action=readback` 与对应 `qualification_stage` 只读回查，不重新提交任务。
 
 ## 异步筛选路由（`PHOTOSTORY_SCREEN_BINDING`）
 

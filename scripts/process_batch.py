@@ -695,7 +695,6 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None,
                                                    'checkpoint':publication_checkpoint(context)})
         preflight_publication(context)
         return native_review_gateway(context,stage='publication')
-
     with ExitStack() as cleanup_stack:
         if direct_client is not None:
             if work_root is not None:
@@ -730,7 +729,8 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None,
         stage = 'inventory'
         inventory_operation = 'source'
         try:
-            async_pilot = pilot_route is not None and job['id'] == pilot_route['job_id']
+            async_pilot = (pilot_route is not None and job['id'] == pilot_route['job_id']
+                           and (direct_client is not None or native_context['routes']['screen']['provider'] != 'muse'))
             if async_pilot:
                 native_context = with_screen_route(native_context, pilot_route['route'])
             elif resume_screen:

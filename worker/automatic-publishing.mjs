@@ -49,6 +49,8 @@ async function nativeCheckpoint(checkpoint,d,p,project='Pigbibi/PhotoStory'){
   !/^[0-9a-f]{64}$/.test(x.request_sha256||'')||!Number.isFinite(x.deadline)||x.deadline>p.expires/1000||
   typeof x.resource!=='string'||!['agent','api'].includes(x.route?.mode)||
   typeof x.route?.provider!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(x.route.provider)||
+  (x.route.profile!==undefined&&x.route.profile!=='publication')||
+  (x.route.provider==='muse'&&x.route.profile!=='publication')||
   ['intent','halt','cancel'].some(k=>typeof v[k]!=='boolean')||
   !(v.task_id===null||(typeof v.task_id==='string'&&/^[A-Za-z0-9_-]{1,200}$/.test(v.task_id)))||
   !(v.revision===null||(Number.isInteger(v.revision)&&v.revision>=1))||

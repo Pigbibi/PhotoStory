@@ -23,6 +23,7 @@ MUSE_SCREEN_PROFILE = 'muse-screen'
 ASYNC_SCREEN_PROFILES = {ASYNC_SCREEN_PROFILE, MUSE_SCREEN_PROFILE}
 ASYNC_SCREEN_TIMEOUT = 600
 MUSE_SCREEN_TIMEOUT = ASYNC_SCREEN_TIMEOUT
+MUSE_TASK_TIMEOUT = ASYNC_SCREEN_TIMEOUT
 MAX_SCREEN_TASKS = 17  # ceil(100 photos / 6 per screening task)
 # Existing batch graph: screen ceil(100/6), <=24 shortlist groups, cross+labels,
 # and <=8 strict reviews. This bounds work; it never creates additional calls.
@@ -363,9 +364,10 @@ def task_call(context, stage):
                                'base64': base64.b64encode(data).decode()})
             route = json.loads(packed(context['routes'][stage]))
             async_screen = stage == 'screen' and route['profile'] in ASYNC_SCREEN_PROFILES
+            timeout = ASYNC_SCREEN_TIMEOUT if (async_screen or route['provider'] == 'muse') else 60
             request = {'mode': route['mode'], 'model': route['model'], 'profile': route['profile'],
                        'objective': prompt, 'materials': [{'schema_version':'photostory.task-input.v1', 'stage': stage, 'records': records, 'images': images}],
-                       'output_schema': schema, 'timeout_seconds': ASYNC_SCREEN_TIMEOUT if async_screen else 60}
+                       'output_schema': schema, 'timeout_seconds': timeout}
             request_limit, output_limit = media_limits(context)
             if len(packed(request)) > request_limit:
                 raise ValueError()

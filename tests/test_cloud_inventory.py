@@ -29,6 +29,15 @@ class CloudInventoryTests(unittest.TestCase):
             client._request('GET')
             self.assertEqual(opened.call_args.args[0].get_header('User-agent'), USER_AGENT)
 
+    def test_runtime_status_reads_only_health_and_inventory_without_exposing_job_data(self):
+        client = CloudInventory('https://example.test', 'test')
+        health = io.BytesIO(b'{"warnings":["job_active"],"lastJob":{"id":"private-job"}}')
+        status = io.BytesIO(b'{"ready":true,"bytes":1234}')
+        with patch.object(client.opener, 'open', side_effect=[health, status]) as opened:
+            self.assertEqual(client.runtime_status(), {'job_active':True,'inventory_ready':True,'inventory_bytes':1234})
+        self.assertEqual([(call.args[0].method, call.args[0].selector) for call in opened.call_args_list],
+                         [('GET','/internal/health'), ('GET','/internal/inventory/status')])
+
     def test_processor_uploads_before_acknowledging_checkpoint(self):
         events = []
         cloud = MagicMock()

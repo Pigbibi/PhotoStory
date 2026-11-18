@@ -78,6 +78,57 @@ class CloudQualificationTests(unittest.TestCase):
             self.assertEqual((request['mode'], request['profile'], request['timeout_seconds']),
                              ('api', 'async-screen', 600))
 
+    def test_each_regular_muse_stage_uses_its_business_schema_and_bound_result(self):
+        from auto_review import FIELDS
+        from process_batch import LANGUAGE_NAMES
+
+        self.assertEqual(set(LANGUAGE_NAMES), set(qualification.qualification_contract(
+            {'routes': {'labels': {'provider': 'muse', 'profile': 'labels'}}}, 'labels'
+        )[1]['properties']['labels']['items']['properties']['translations']['properties']))
+        outputs = {
+            'screen': {'photos': [{'id': 'synthetic', 'decision': 'exclude', 'flags': [],
+                                   'landscape': False, 'contentKind': 'uncertain', 'peopleRole': 'none',
+                                   'compositionClear': False, 'aesthetic': 0, 'description': 'Blue block',
+                                   'light': 'unknown', 'scene': 'unknown', 'place': {
+                                       'city':'', 'landmark':'', 'evidence':'', 'confidence':'none'}}]},
+            'group': {'drafts': []},
+            'cross_review': {'checks': [{'draftId':'synthetic-draft', 'duplicateIds':[],
+                                          'captionGrounded':True, 'locationGrounded':True, 'copy':{
+                                              'title':'Sample', 'caption':'Color field', 'hashtags':'#color',
+                                              'reason':'Calibration', 'photos':[{'id':'synthetic','alt':'Blue'}]}}]},
+            'labels': {'labels': [{'id':'synthetic','translations': {
+                lang: {'title':'Color sample','reason':'Generated image'} for lang in LANGUAGE_NAMES}}]},
+            'strict_review': {field: field == 'needsHumanReview' for field in FIELDS},
+            'publication': {field: field == 'needsHumanReview' for field in FIELDS},
+        }
+        env = self.env()
+        binding = json.loads(env['PHOTOSTORY_NATIVE_BINDING'])
+        for route in binding['routes'].values():
+            route.update(provider='muse', model='synthetic-muse', worker='fixture-worker')
+        env['PHOTOSTORY_NATIVE_BINDING'] = json.dumps(binding)
+        for stage in sorted(STAGES):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, env, clear=True):
+                client = Mock(resource='https://personal.acme.org')
+                def record(request, key):
+                    return {'id':'synthetic-task', 'owner':'Pigbibi/PhotoStory', 'provider':'muse',
+                            'request':request, 'revision':1, 'status':'completed', 'created':990, 'updated':995,
+                            'deadline':1590, 'worker':'fixture-worker', 'attempt':'attempt-1', 'output':outputs[stage]}
+                client.submit.side_effect = record
+                receipt = qualification.run(Path(tmp)/'stage', stage=stage, require_muse=True,
+                                            now=lambda:1000, client_factory=lambda *_:client)
+                self.assertTrue(receipt['adopted'])
+                self.assertEqual(receipt['stage'], stage)
+                request = client.submit.call_args.args[0]
+                self.assertEqual((request['profile'], request['timeout_seconds']), (stage, 600))
+                self.assertEqual(request['materials'][0]['stage'], stage)
+                self.assertEqual(bool(request['materials'][0]['images']), stage != 'labels')
+                client.get.return_value = record(request, None)
+                verified = qualification.run(Path(tmp)/'read', stage=stage, task_id='synthetic-task',
+                                             now=lambda:1000, client_factory=lambda *_:client)
+                self.assertEqual(verified['phase'], 'completion_verified')
+                client.submit.assert_called_once()
+                client.get.assert_called_once_with('synthetic-task')
+
     def env(self):
         binding={'enabled':True,'project':'Pigbibi/PhotoStory','service_url':'https://personal.acme.org',
                  'audience':'https://personal.acme.org/mcp','adoption_age_seconds':3600,
