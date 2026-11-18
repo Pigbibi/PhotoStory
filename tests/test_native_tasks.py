@@ -117,6 +117,18 @@ def test_all_six_stages_accept_muse_provider(tmp_path):
         out = call('prompt', [{'id': 'p'}], [] if stage == 'labels' else [image], SCHEMA, tmp_path)
         assert out == {'ok': True}
     assert {r['provider'] for r in wire.records.values()} == {'muse'}
+    assert {r['request']['timeout_seconds'] for r in wire.records.values()} == {600}
+
+
+def test_regular_muse_screen_pending_does_not_park_for_a_pilot_webhook(tmp_path):
+    from native_tasks import NativePending
+    ctx, wire = context(tmp_path)
+    ctx['routes']['screen']['provider'] = 'muse'
+    wire.complete = False
+    with pytest.raises(NativePending) as pending:
+        batch.native_review_gateway(ctx, stage='screen')('prompt', [{'id':'p'}], [photo(tmp_path)], SCHEMA, tmp_path)
+    assert pending.value.screen_wait is None
+
 
 
 def test_muse_screen_resumes_original_task_while_group_keeps_60_seconds(tmp_path):
@@ -1428,7 +1440,7 @@ def test_new_task_age_policy_does_not_reinterpret_legacy_receipts(tmp_path):
     assert len(wire.calls)==count
 
 
-@pytest.mark.parametrize('provider', ['dot', 'grokbot'])
+@pytest.mark.parametrize('provider', ['dot', 'grokbot', 'muse'])
 def test_workflow_binding_accepts_one_explicit_provider(tmp_path, provider):
     config = workflow_config()
     for route in config['routes'].values():

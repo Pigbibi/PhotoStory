@@ -693,7 +693,8 @@ def run(*, native_context=None, native_binding=None, native_client_factory=None,
     stage = 'inventory'
     inventory_operation = 'source'
     try:
-        muse_pilot = muse_screen is not None and job['id'] == muse_screen['job_id']
+        muse_pilot = (muse_screen is not None and job['id'] == muse_screen['job_id']
+                      and native_context['routes']['screen']['provider'] != 'muse')
         if muse_pilot:
             native_context = with_muse_screen(native_context, muse_screen['route'])
         elif resume_screen:
@@ -944,7 +945,7 @@ def workflow_binding(fixture_root, state_root, *, now=None):
         models, workers, providers = set(), set(), set()
         for stage, route in config['routes'].items():
             if (not isinstance(route,dict) or set(route) != {'mode','provider','model','profile','worker'}
-                    or route['mode'] != 'agent' or route['provider'] not in {'dot', 'grokbot'}
+                    or route['mode'] != 'agent' or route['provider'] not in {'dot', 'grokbot', 'muse'}
                     or route['profile'] != stage or not isinstance(route['worker'],str)
                     or not 1 <= len(route['worker']) <= 200
                     or not isinstance(route['model'],str) or not 1 <= len(route['model']) <= 200):

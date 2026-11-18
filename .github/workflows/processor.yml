@@ -2,6 +2,10 @@ name: Process PhotoStory
 on:
   workflow_dispatch:
     inputs:
+      inspect_runtime:
+        description: Read current job activity and inventory size only
+        type: boolean
+        default: false
       travel_backfill:
         description: Fill private travel hints for already-approved drafts without scanning
         type: boolean
@@ -10,6 +14,11 @@ on:
         description: Qualify one generated image against the current native binding
         type: boolean
         default: false
+      qualification_stage:
+        description: Stage for cloud qualification, or all six Muse stages in sequence
+        type: choice
+        options: [screen, group, cross_review, labels, strict_review, publication, all]
+        default: screen
       qualify_muse_screen:
         description: Use the configured Muse screen route for the generated image
         type: boolean
@@ -40,8 +49,23 @@ concurrency:
   group: photostory-processor
   cancel-in-progress: false
 jobs:
+  inspect_runtime:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.inspect_runtime == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read current job activity and inventory size
+        run: python3 scripts/cloud_inventory.py runtime-status
+        env:
+          PHOTOSTORY_URL: ${{ vars.PHOTOSTORY_URL }}
+          PHOTOSTORY_BATCH_TOKEN: ${{ secrets.PHOTOSTORY_BATCH_TOKEN }}
   process:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PHOTOSTORY_PROCESSOR_ENABLED == 'true') && inputs.native_qualification != true && inputs.cloud_native_qualification != true && inputs.qualify_muse_screen != true && (inputs.resume_screen == '' || (github.event_name == 'workflow_dispatch' && inputs.travel_backfill != true))
+    if: inputs.inspect_runtime != true && github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PHOTOSTORY_PROCESSOR_ENABLED == 'true') && inputs.native_qualification != true && inputs.cloud_native_qualification != true && (inputs.qualification_stage == '' || inputs.qualification_stage == 'screen') && inputs.qualify_muse_screen != true && (inputs.resume_screen == '' || (github.event_name == 'workflow_dispatch' && inputs.travel_backfill != true))
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -69,7 +93,12 @@ jobs:
           PHOTOSTORY_STATE_DIR: ${{ runner.temp }}/photostory-state
           PHOTOSTORY_RESUME_SCREEN: ${{ inputs.resume_screen }}
   cloud_native_qualification:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.cloud_native_qualification == true && inputs.native_qualification != true && inputs.travel_backfill != true && inputs.resume_screen == ''
+    if: inputs.inspect_runtime != true && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.cloud_native_qualification == true && inputs.native_qualification != true && inputs.travel_backfill != true && inputs.resume_screen == ''
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        stage: ${{ fromJSON(inputs.qualification_stage == 'all' && '["screen","group","cross_review","labels","strict_review","publication"]' || format('["{0}"]', inputs.qualification_stage || 'screen')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -80,23 +109,24 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -r scripts/requirements.txt
-      - name: Qualify only one generated image with the current native caller
+      - name: Verify the stage with generated evidence
         run: python scripts/qualify_cloud_native.py --state "$RUNNER_TEMP/photostory-cloud-qualification"
         env:
+          QUALIFICATION_STAGE: ${{ matrix.stage }}
           PHOTOSTORY_NATIVE_BINDING: ${{ secrets.PHOTOSTORY_NATIVE_BINDING }}
           PHOTOSTORY_MUSE_SCREEN_BINDING: ${{ secrets.PHOTOSTORY_MUSE_SCREEN_BINDING }}
       - name: Retain the sanitized original task receipt
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: cloud-native-qualification-receipt
+          name: ${{ (inputs.qualification_stage == 'all' || matrix.stage != 'screen') && format('cloud-native-qualification-receipt-{0}', matrix.stage) || 'cloud-native-qualification-receipt' }}
           path: ${{ runner.temp }}/photostory-cloud-qualification/receipt.json
           retention-days: 7
           if-no-files-found: error
 
 
   native_qualification:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.native_qualification == true && inputs.qualify_muse_screen != true && inputs.resume_screen == ''
+    if: inputs.inspect_runtime != true && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.native_qualification == true && inputs.qualify_muse_screen != true && inputs.resume_screen == ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

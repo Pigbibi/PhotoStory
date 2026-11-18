@@ -43,7 +43,7 @@ async function nativeCheckpoint(checkpoint,d,p){
  const id=await hash(JSON.stringify([operation,'publication',d.photos.map(x=>x.id).sort()]));
  if(checkpoint.operation!==id||x?.project!=='Pigbibi/PhotoStory'||x.operation_id!==operation||
   !/^[0-9a-f]{64}$/.test(x.request_sha256||'')||!Number.isFinite(x.deadline)||x.deadline>p.expires/1000||
-  typeof x.resource!=='string'||x.route?.mode!=='agent'||!['dot','grok'].includes(x.route.provider)||
+  typeof x.resource!=='string'||x.route?.mode!=='agent'||(!['dot','grok'].includes(x.route.provider)&&!(x.route.provider==='muse'&&x.route.profile==='publication'))||
   ['intent','halt','cancel'].some(k=>typeof v[k]!=='boolean')||
   !(v.task_id===null||(typeof v.task_id==='string'&&/^[A-Za-z0-9_-]{1,200}$/.test(v.task_id)))||
   !(v.revision===null||(Number.isInteger(v.revision)&&v.revision>=1))||

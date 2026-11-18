@@ -116,14 +116,26 @@ class CloudInventory:
                 raise ValueError("inventory_response_too_large")
             return raw, response.headers.get("X-Inventory-Sha256")
 
-    def require_seed(self):
-        request = urllib.request.Request(self.url + "/status", method="GET",
-                                         headers={"Authorization": "Bearer " + self.token,
-                                                  "User-Agent": USER_AGENT})
+    def _read_status(self, url):
+        request = urllib.request.Request(url, method="GET", headers={
+            "Authorization": "Bearer " + self.token, "User-Agent": USER_AGENT})
         with self.opener.open(request, timeout=45) as response:
-            status = json.load(response)
-        if status.get("ready") is not True:
+            return json.load(response)
+
+    def require_seed(self):
+        if self._read_status(self.url + "/status").get("ready") is not True:
             raise ValueError("inventory_seed_required")
+
+    def runtime_status(self):
+        health = self._read_status(self.url.rsplit("/", 1)[0] + "/health")
+        inventory = self._read_status(self.url + "/status")
+        warnings = health.get("warnings")
+        ready = inventory.get("ready")
+        size = inventory.get("bytes") if ready else 0
+        if (not isinstance(warnings, list) or not all(isinstance(code, str) for code in warnings)
+                or type(ready) is not bool or type(size) is not int or size < 0):
+            raise ValueError("invalid_runtime_status")
+        return {"job_active": "job_active" in warnings, "inventory_ready": ready, "inventory_bytes": size}
 
     def load(self, directory, job_id, lease):
         raw, digest = self._request("GET", job_id=job_id, lease=lease)
@@ -152,7 +164,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["seed", "status"])
+    parser.add_argument("command", choices=["seed", "status", "runtime-status"])
     parser.add_argument("--directory")
     args = parser.parse_args()
     client = CloudInventory(os.environ["PHOTOSTORY_URL"], os.environ["PHOTOSTORY_BATCH_TOKEN"])
@@ -161,6 +173,11 @@ if __name__ == "__main__":
             parser.error("seed requires an absolute --directory")
         client.seed(args.directory)
         print("Cloudflare inventory seeded.")
+    elif args.command == "runtime-status":
+        try:
+            print(json.dumps(client.runtime_status()))
+        except Exception:
+            raise SystemExit("Runtime status unavailable.") from None
     else:
         client.require_seed()
         print("Cloudflare inventory ready.")
