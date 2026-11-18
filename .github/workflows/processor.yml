@@ -2,6 +2,10 @@ name: Process PhotoStory
 on:
   workflow_dispatch:
     inputs:
+      inspect_runtime:
+        description: Read current job activity and inventory size only
+        type: boolean
+        default: false
       travel_backfill:
         description: Fill private travel hints for already-approved drafts without scanning
         type: boolean
@@ -45,8 +49,23 @@ concurrency:
   group: photostory-processor
   cancel-in-progress: false
 jobs:
+  inspect_runtime:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.inspect_runtime == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read current job activity and inventory size
+        run: python3 scripts/cloud_inventory.py runtime-status
+        env:
+          PHOTOSTORY_URL: ${{ vars.PHOTOSTORY_URL }}
+          PHOTOSTORY_BATCH_TOKEN: ${{ secrets.PHOTOSTORY_BATCH_TOKEN }}
   process:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PHOTOSTORY_PROCESSOR_ENABLED == 'true') && inputs.native_qualification != true && inputs.cloud_native_qualification != true && (inputs.qualification_stage == '' || inputs.qualification_stage == 'screen') && inputs.qualify_muse_screen != true && (inputs.resume_screen == '' || (github.event_name == 'workflow_dispatch' && inputs.travel_backfill != true))
+    if: inputs.inspect_runtime != true && github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PHOTOSTORY_PROCESSOR_ENABLED == 'true') && inputs.native_qualification != true && inputs.cloud_native_qualification != true && (inputs.qualification_stage == '' || inputs.qualification_stage == 'screen') && inputs.qualify_muse_screen != true && (inputs.resume_screen == '' || (github.event_name == 'workflow_dispatch' && inputs.travel_backfill != true))
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -74,7 +93,7 @@ jobs:
           PHOTOSTORY_STATE_DIR: ${{ runner.temp }}/photostory-state
           PHOTOSTORY_RESUME_SCREEN: ${{ inputs.resume_screen }}
   cloud_native_qualification:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.cloud_native_qualification == true && inputs.native_qualification != true && inputs.travel_backfill != true && inputs.resume_screen == ''
+    if: inputs.inspect_runtime != true && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.cloud_native_qualification == true && inputs.native_qualification != true && inputs.travel_backfill != true && inputs.resume_screen == ''
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -107,7 +126,7 @@ jobs:
 
 
   native_qualification:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.native_qualification == true && inputs.qualify_muse_screen != true && inputs.resume_screen == ''
+    if: inputs.inspect_runtime != true && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.native_qualification == true && inputs.qualify_muse_screen != true && inputs.resume_screen == ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

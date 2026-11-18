@@ -19,6 +19,8 @@
 
 服务端须为各阶段 profile 配置精确的 provider/model 路由，并完成调用方和 worker 准入。GrokBot 还需要真实 Routine HTTPS 入口与 `AI_SERVICE_GROKBOT_WEBHOOK_KEY`。Muse 宿主按 180 秒心跳领取该项目任务，六个 profile 的服务端任务时限均为 600 秒。采纳时限从原任务创建时起算，重启后继续核对同一任务。
 
+切换绑定前，在 main 手动运行 `Process PhotoStory` 并选择 `inspect_runtime=true`，读取活动任务标记、库存就绪状态和当前快照的字节数。
+
 在 main 手动运行 `Process PhotoStory`，选择 `cloud_native_qualification=true` 和 `qualification_stage=all`。六个阶段串行提交合成材料，各自使用生产 profile 和对应的输出格式，独立记录领取、完成和结果采纳。图片来自生成的色块，标签翻译仅使用合成文字。验证不访问 OneDrive 或草稿，不创建待发布对象。每个阶段的回执保存在以阶段名结尾的 artifact 中。
 
 若回执未验证，保留原 task ID。读取同一任务时仍选择 `cloud_native_qualification=true`，将 `native_qualification_task_id` 设为原 ID、`qualification_stage` 设为对应的单个阶段、`native_qualification_action` 设为 `readback`，`native_qualification` 保持 false。读回仅 GET 原任务，核对固定合成请求、provider、worker 和结果格式，不重新提交或取消。`completion_verified` 只证明任务按时完成，`adopted` 仍为 false；不会将过期结果采纳为业务输出。
