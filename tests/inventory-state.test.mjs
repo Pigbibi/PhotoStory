@@ -225,7 +225,7 @@ test('signed screen completion uses configured PHOTOSTORY_PROJECT across callbac
    if(url.pathname.endsWith('/access_tokens'))return Response.json({token:'custom-inst-token'},{status:201});
    return new Response(null,{status:204});
  });
- const taskId='02020202-0202-0202-0202-020202020202';
+ const taskId='task_123-non-uuid_id';
  const bytes=new Uint8Array([80,75,3,4,9]);
  await upload(env,bytes,{'X-Inventory-Seed':'1'});
  await api('/api/jobs',{folder:'Photos',range:'all'});

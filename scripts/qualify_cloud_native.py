@@ -24,6 +24,7 @@ SCREEN_SCHEMA = {'type': 'object', 'additionalProperties': False, 'required': ['
                  'properties': {'color': {'enum': ['red', 'green', 'blue']}}}
 MUSE_PROMPT = SCREEN_PROMPT
 MUSE_SCHEMA = SCREEN_SCHEMA
+LEGACY_SMOKE_PROVIDERS = {'dot', 'grok', 'grokbot'}
 FAILURE_REASONS = {'task_expired_before_claim', 'task_expired_after_claim',
                    'task_cancelled_before_claim', 'task_cancelled_after_claim',
                    'task_failed', 'task_invalid_output', 'task_outcome_unknown',
@@ -74,20 +75,25 @@ def failure_reason(value, timestamp):
             'cancel_requested': 'task_pending'}.get(status, 'qualification_unverified')
 
 
-def qualification_contract(context, stage='screen'):
+def _uses_business_contract(route, stage, *, business_stage=False):
+    return business_stage or stage != 'screen' or route['provider'] not in LEGACY_SMOKE_PROVIDERS
+
+
+def qualification_contract(context, stage='screen', *, business_stage=False):
     route = context['routes'][stage]
     records = [{'id': 'synthetic'}]
     if route['profile'] in ASYNC_SCREEN_PROFILES:
         return SCREEN_PROMPT, SCREEN_SCHEMA, ASYNC_SCREEN_TIMEOUT, records, True
-    if route['provider'] != 'muse':
+    if not _uses_business_contract(route, stage, business_stage=business_stage):
         return PROMPT, SCHEMA, 60, records, True
+    timeout = ASYNC_SCREEN_TIMEOUT if route['provider'] == 'muse' else 60
     from auto_review import SCHEMA as final_schema
     from cross_review import SCHEMA as cross_schema
     from process_batch import SCREEN_SCHEMA as batch_screen_schema, GROUP_SCHEMA
     from translate_labels import PROMPT as labels_prompt, SCHEMA as labels_schema
     prefix = 'Synthetic qualification only. No tools, publishing or external actions. '
     if stage == 'labels':
-        return labels_prompt, labels_schema, ASYNC_SCREEN_TIMEOUT, [
+        return labels_prompt, labels_schema, timeout, [
             {'id': 'synthetic', 'title': 'Color sample', 'reason': 'A generated test image.'}], False
     if stage == 'screen':
         prompt = 'Screen the attached generated color block for outdoor scenery. Describe its dominant color in English.'
@@ -105,15 +111,15 @@ def qualification_contract(context, stage='screen'):
         prompt = ('Review this proposed outdoor travel post depicting a mountain peak. '
                   'If its image does not support that caption, require human review.')
         schema = final_schema
-    return prefix + prompt, schema, ASYNC_SCREEN_TIMEOUT, records, True
+    return prefix + prompt, schema, timeout, records, True
 
 
-def check_fixture(stage, route, output):
+def check_fixture(stage, route, output, *, business_stage=False):
     if route['profile'] in ASYNC_SCREEN_PROFILES:
         if output != {'color': 'blue'}:
             raise NativeStopped('qualification_fixture_result')
         return
-    if route['provider'] != 'muse':
+    if not _uses_business_contract(route, stage, business_stage=business_stage):
         return
     if stage == 'screen':
         photos = output['photos']
@@ -136,12 +142,13 @@ def check_fixture(stage, route, output):
         raise NativeStopped('qualification_fixture_result')
 
 
-def read_task(context, task_id, stage='screen'):
+def read_task(context, task_id, stage='screen', *, business_stage=False):
     """Read the same synthetic task; never adopt late output or submit more work."""
     if not isinstance(task_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', task_id):
         raise NativeStopped('qualification_identity_changed')
     route = context['routes'][stage]
-    prompt, schema, timeout, records, has_image = qualification_contract(context, stage)
+    prompt, schema, timeout, records, has_image = qualification_contract(
+        context, stage, business_stage=business_stage)
     images = [{'id': 'synthetic', 'mime': 'image/jpeg', 'sha256': IMAGE_SHA256,
                'base64': IMAGE_BASE64}] if has_image else []
     request = {'mode': route['mode'], 'model': route['model'], 'profile': route['profile'],
@@ -164,7 +171,7 @@ def read_task(context, task_id, stage='screen'):
                 or not 0 <= created <= updated < deadline or updated > context['now']()):
             raise NativeStopped('qualification_identity_changed')
         Draft202012Validator(schema).validate(record.get('output'))
-        check_fixture(stage, route, record['output'])
+        check_fixture(stage, route, record['output'], business_stage=business_stage)
     result = {'stage': stage, 'phase': 'completion_verified' if verified else 'unverified',
               'task_status': status, 'provider': route['provider'], 'adopted': False,
               'synthetic_only': True, 'business_access': False, 'read_only': True,
@@ -179,7 +186,8 @@ def read_task(context, task_id, stage='screen'):
 
 
 def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_factory=NativeTaskClient,
-        task_id=None, use_screen_route=False, use_muse=False, stage='screen', require_muse=False):
+        task_id=None, use_screen_route=False, use_muse=False, stage='screen',
+        business_stage=False, require_muse=False):
     project = configured_project(environ)
     expected = {'GITHUB_REPOSITORY': project, 'GITHUB_REF': 'refs/heads/main',
                 'GITHUB_WORKFLOW_REF': f'{project}/.github/workflows/processor.yml@refs/heads/main',
@@ -188,6 +196,7 @@ def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_fac
     if any(environ.get(k) != v for k, v in expected.items()) or not occurrence.isdecimal():
         raise NativeStopped('main_first_attempt_required')
     use_async_screen = use_screen_route or use_muse
+    use_business = business_stage or require_muse
     if stage not in STAGES or (use_async_screen and stage != 'screen'):
         raise NativeStopped('qualification_stage_invalid')
     root.mkdir(mode=0o700, parents=False, exist_ok=False)
@@ -200,8 +209,6 @@ def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_fac
             raise NativeStopped('native_binding_required')
         binding = with_screen_route(binding, pilot['route'])
     route = binding['routes'][stage]
-    if require_muse and route['provider'] != 'muse':
-        raise NativeStopped('qualification_muse_binding_required')
     binding.update(operation_id='photostory-cloud-qualification:'+occurrence, task_limit=1,
                    deadline=now()+(ASYNC_SCREEN_TIMEOUT+30 if (use_async_screen or route['provider'] == 'muse') else 120))
     receipt = {'project': project, 'occurrence': occurrence,
@@ -231,9 +238,10 @@ def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_fac
 
     binding['persist']=persist
     context=bootstrap_context(binding,client_factory=client_factory)
-    prompt, schema, timeout, records, has_image = qualification_contract(context, stage)
+    prompt, schema, timeout, records, has_image = qualification_contract(
+        context, stage, business_stage=use_business)
     if task_id is not None:
-        result = read_task(context, task_id, stage)
+        result = read_task(context, task_id, stage, business_stage=use_business)
         (root/'receipt.json').write_text(json.dumps(result, sort_keys=True)+'\n')
         (root/'receipt.json').chmod(0o600)
         return result
@@ -243,7 +251,7 @@ def run(root, *, environ=os.environ, sleep=time.sleep, now=time.time, client_fac
         for _ in range(timeout // 5 + 1):
             try:
                 output=call(prompt,records,[image.resolve()] if has_image else [],schema,root)
-                check_fixture(stage, route, output)
+                check_fixture(stage, route, output, business_stage=use_business)
                 receipt.update(phase='verified',adopted=True,output_sha256=digest(output))
                 persist()
                 return receipt
@@ -274,7 +282,7 @@ def main():
         if requested == 'all' and (task_id or use_screen_route):
             raise NativeStopped('qualification_stage_invalid')
         receipt=run(args.state, task_id=task_id or None, use_screen_route=use_screen_route,
-                    stage=stage, require_muse=requested == 'all' or stage != 'screen')
+                    stage=stage, business_stage=requested == 'all' or stage != 'screen')
     except QualificationUnverified as error:
         print(json.dumps(error.summary, sort_keys=True))
         return 1

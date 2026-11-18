@@ -1513,3 +1513,29 @@ def test_named_grokbot_completes_existing_stages_without_legacy_provider(tmp_pat
     with pytest.raises(NativeStopped):
         batch.native_review_gateway(ctx, stage='screen')(
             'different synthetic prompt', [{'id': 'synthetic-photo'}], [image], SCHEMA, tmp_path)
+
+
+def test_screen_binding_overrides_muse_base_route_and_resumes_cleanly(tmp_path):
+    fixture = PendingBatchHarness(tmp_path, cloud=True)
+    for route in fixture.ctx['routes'].values():
+        route.update(provider='muse', model='base-muse', worker='muse-worker')
+    fixture.wire.routes = dict(fixture.ctx['routes'])
+    override = {
+        'mode': 'api', 'provider': 'vision-gw', 'profile': 'async-screen',
+        'model': 'vision-v2', 'worker': 'async-worker',
+    }
+    fixture.wire.routes['async-screen'] = override
+    fixture.wire.output = lambda request: {'photos': [{
+        'id': 'p', 'decision': 'allow', 'flags': [], 'landscape': True, 'aesthetic': 8,
+        'description': 'Synthetic scenery', 'peopleRole': 'none', 'compositionClear': True,
+        'contentKind': 'permanent_scenery', 'light': 'day', 'scene': 'architecture',
+        'place': {'city': '', 'landmark': '', 'evidence': '', 'confidence': 'none'},
+    }]}
+    pilot = {'job_id': 'job', 'route': override}
+    fixture.run(screen_binding_config=pilot)
+    task, = fixture.wire.records
+    assert fixture.wire.records[task]['provider'] == 'vision-gw'
+    assert fixture.calls[-1][1]['screenWait'] == {'taskId': task, 'revision': 1}
+    fixture.timely_result(resume=30)
+    fixture.run(screen_binding_config=pilot, resume_screen='a' * 64)
+    assert len(fixture.completed) == 1

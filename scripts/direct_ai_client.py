@@ -21,6 +21,9 @@ DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini'
 DEFAULT_ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
 ANTHROPIC_VERSION = '2023-06-01'
+ANTHROPIC_DEFAULT_MAX_TOKENS = 8192
+ANTHROPIC_LABELS_MAX_TOKENS = 16384
+ANTHROPIC_LABELS_CHUNK_SIZE = 2
 TOOL_NAME = 'record_result'
 
 MAX_PROMPT_BYTES = 128_000
@@ -296,8 +299,7 @@ class AnthropicDirectClient(_DirectAIClient):
         super().__init__(api_key=api_key, model=model, endpoint=endpoint,
                          opener=opener, timeout=timeout)
 
-    def invoke(self, stage, prompt, records, paths, schema, cwd):
-        images = _validate_inputs(stage, prompt, records, paths, schema, cwd)
+    def _invoke_single(self, prompt, records, images, schema, max_tokens):
         content = [{'type': 'text', 'text': _user_text(prompt, records)}]
         for image in images:
             content.append({
@@ -310,7 +312,7 @@ class AnthropicDirectClient(_DirectAIClient):
             })
         payload = {
             'model': self.model,
-            'max_tokens': 4096,
+            'max_tokens': max_tokens,
             'tools': [{
                 'name': TOOL_NAME,
                 'description': 'Record the structured JSON output matching the schema.',
@@ -339,6 +341,20 @@ class AnthropicDirectClient(_DirectAIClient):
         if len(tool_uses) != 1 or tool_uses[0].get('name') != TOOL_NAME:
             raise DirectAIError('gateway_failed', reason='invalid_json')
         return _validate_output(tool_uses[0].get('input'), schema)
+
+    def invoke(self, stage, prompt, records, paths, schema, cwd):
+        images = _validate_inputs(stage, prompt, records, paths, schema, cwd)
+        max_tokens = ANTHROPIC_LABELS_MAX_TOKENS if stage == 'labels' else ANTHROPIC_DEFAULT_MAX_TOKENS
+        if stage == 'labels' and not images and len(records) > ANTHROPIC_LABELS_CHUNK_SIZE:
+            combined = []
+            for idx in range(0, len(records), ANTHROPIC_LABELS_CHUNK_SIZE):
+                part = self._invoke_single(prompt, records[idx:idx + ANTHROPIC_LABELS_CHUNK_SIZE], [], schema, max_tokens)
+                labels = part.get('labels')
+                if not isinstance(labels, list):
+                    raise DirectAIError('gateway_failed', reason='schema_validation_failed')
+                combined.extend(labels)
+            return _validate_output({'labels': combined}, schema)
+        return self._invoke_single(prompt, records, images, schema, max_tokens)
 
 
 def direct_client_from_env(environ=None, *, opener=None):

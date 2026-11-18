@@ -5,7 +5,7 @@ const projectPattern = /^[^/\s]+\/[^/\s]+$/;
 const terminal = new Set(['completed', 'failed', 'cancelled', 'invalid_output']);
 const bytes = new TextEncoder();
 export const screenWakePattern = /^[0-9a-f]{64}$/;
-export const taskIdPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+export const taskIdPattern = /^[A-Za-z0-9_-]{1,200}$/;
 
 const base64url = value => btoa(String.fromCharCode(...value)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 

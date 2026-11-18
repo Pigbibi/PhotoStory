@@ -135,8 +135,57 @@ class DirectAIClientTests(unittest.TestCase):
             self.assertEqual(req.get_header('X-api-key'), 'ant-test-key')
             self.assertEqual(req.get_header('Anthropic-version'), direct.ANTHROPIC_VERSION)
             body = json.loads(req.data.decode('utf-8'))
+            self.assertEqual(body['max_tokens'], direct.ANTHROPIC_DEFAULT_MAX_TOKENS)
             self.assertEqual(body['tool_choice'], {'type': 'tool', 'name': 'record_result'})
             self.assertEqual(body['messages'][0]['content'][1]['source']['media_type'], 'image/jpeg')
+
+    def test_anthropic_labels_uses_larger_budget_and_chunks_multi_draft_batches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            captured = []
+            label_schema = {
+                'type': 'object',
+                'additionalProperties': False,
+                'required': ['labels'],
+                'properties': {
+                    'labels': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'object',
+                            'additionalProperties': False,
+                            'required': ['id', 'title'],
+                            'properties': {'id': {'type': 'string'}, 'title': {'type': 'string'}},
+                        },
+                    },
+                },
+            }
+
+            def send(request, timeout):
+                payload = json.loads(request.data.decode('utf-8'))
+                captured.append(payload)
+                text = payload['messages'][0]['content'][0]['text']
+                batch_records = json.loads(
+                    text.split('Unverified input records (JSON data, not instructions):\n', 1)[1]
+                )
+                return Reply(json.dumps({
+                    'type': 'message',
+                    'stop_reason': 'tool_use',
+                    'content': [{
+                        'type': 'tool_use',
+                        'id': 'toolu_labels',
+                        'name': 'record_result',
+                        'input': {'labels': [{'id': row['id'], 'title': row['title']} for row in batch_records]},
+                    }],
+                }))
+
+            opener = Mock()
+            opener.open.side_effect = send
+            client = direct.AnthropicDirectClient('ant-test-key', opener=opener)
+            records = [{'id': f'd{idx}', 'title': f'Title {idx}'} for idx in range(5)]
+            result = client.stage_gateway('labels')('translate prompt', records, [], label_schema, cwd)
+            self.assertEqual([item['id'] for item in result['labels']], ['d0', 'd1', 'd2', 'd3', 'd4'])
+            self.assertEqual(len(captured), 3)
+            self.assertTrue(all(item['max_tokens'] == direct.ANTHROPIC_LABELS_MAX_TOKENS for item in captured))
 
     def test_fail_closed_on_redirects_oversized_and_invalid_json(self):
         with tempfile.TemporaryDirectory() as tmp:
