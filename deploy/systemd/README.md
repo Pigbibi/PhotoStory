@@ -1,14 +1,17 @@
 # Isolated Linux processor
 
 These units separate the trusted OneDrive scanner (`photostory`) from the model
-(`photostory-ai`). They require systemd 255 or newer, Python 3.12, a separately
-installed Codex CLI supporting the flags in `runtime/bin/codex`, and (only for `aigateway-cli` mode) a compatible
-local gateway at `/opt/codex-gateway`. The gateway is supplied by the deployer;
-this public repository contains no private gateway code or credentials.
+(`photostory-ai`). They require systemd 255 or newer, Python 3.12, and a
+separately installed Codex CLI supporting the flags in `runtime/bin/codex`.
+
+Only `aigateway-cli` mode uses a compatible local gateway at
+`/opt/codex-gateway`. The gateway is supplied by the deployer; this public
+repository contains no private gateway code or credentials.
 
 Use a shared system group `photostory-bridge` and two system users without login
 shells. Install the repository's `scripts`, `runtime`, and `deploy` directories
 under `/opt/photostory/app`, owned by root and not writable by either service user.
+
 Keep a release marker beside those directories so the installed code can be
 matched to the source revision without storing credentials or photo metadata.
 From a clean checkout, create it before copying the deployment files:
@@ -57,34 +60,41 @@ sharing token rotation state. The account still shares its subscription limits.
 
 Validate the units with `systemd-analyze verify`, and `photostory.sudoers` with
 `visudo -cf`. Install the units under `/etc/systemd/system` and the sudoers file
-as root-owned 0440 under `/etc/sudoers.d/photostory`. Reload systemd. The sudoers
-entry permits the scanner to start **only** the fixed AI unit; the AI user has no
-such privilege. Do not add wildcard arguments or allow arbitrary transient units.
+as root-owned 0440 under `/etc/sudoers.d/photostory`. Reload systemd.
+
+The sudoers entry permits the scanner to start **only** the fixed AI unit; the AI
+user has no such privilege. Do not add wildcard arguments or allow arbitrary
+transient units.
 
 After verifying isolation and Codex login, create one job in the website, then run
 `sudo systemctl start photostory-batch.service`. One invocation handles one bounded
 metadata scan or AI batch. Keep `/var/lib/photostory` (the SQLite inventory/cache)
 private and persistent across steps and upgrades.
+
 For automatic continuation, install `photostory-batch.timer` alongside the units,
 reload systemd and run `sudo systemctl enable --now photostory-batch.timer`. It
-polls after the previous service invocation finishes. The processor creates a new
-job only when the owner enables a due weekly/monthly schedule; it never retries a
-failed job. Stop the timer before upgrading active runtime code and allow the
-current batch to finish.
+polls after the previous service invocation finishes.
+
+The processor creates a new job only when the owner enables a due weekly/monthly
+schedule; it never retries a failed job. Stop the timer before upgrading active
+runtime code and allow the current batch to finish.
 
 For daily stale-file cleanup, install `photostory-cleanup.service` and `.timer`,
 validate the units, reload systemd, then enable `photostory-cleanup.timer`. Its
 04:20 Asia/Shanghai check is separate from the Worker's 04:00 recycle-bin cleanup.
+
 The root cleanup unit consumes the existing restricted environment file, checks
 the website's cleanup switch, and skips active work. It removes only PhotoStory's
 fixed temporary targets older than 24 hours, not original photos, inventories,
-other services or persistent Codex login files. It writes a root-owned 0640 status
-report readable by `photostory-bridge`; the next scanner tick uploads sanitized
-counts/status. No new credentials or broader sudoers entry are required.
+other services or persistent Codex login files.
+
+It writes a root-owned 0640 status report readable by `photostory-bridge`; the
+next scanner tick uploads sanitized counts/status. No new credentials or broader
+sudoers entry are required.
 
 On upgrade, run the additive `photo_gc` table definition from `worker/schema.sql`
 before deploying this Worker. Review drafts remain indefinitely; discarded drafts
-are recoverable for 30 days. See [lifecycle behavior](../../docs/lifecycle.zh-CN.md).
+are recoverable for 30 days. See [lifecycle behavior](../../docs/lifecycle.md).
 
 ## Boundaries and verification
 
@@ -119,14 +129,17 @@ are recoverable for 30 days. See [lifecycle behavior](../../docs/lifecycle.zh-CN
 An administrator may add a **private** systemd drop-in with
 `Environment=PHOTOSTORY_AI_MODE=aigateway-cli` and
 `LoadCredential=codex-auth:/ABSOLUTE/PATH/TO/EXISTING/auth.json`.
-Systemd reads that file without changing its ownership or permissions. The runner
-creates a per-call private auth snapshot containing the current access/identity
-tokens, an empty refresh token, and no unrelated fields. That snapshot is removed
-with the working directory. The original service remains responsible for its
-login and refresh lifecycle. A token with less than 650 seconds remaining fails
-before model invocation; PhotoStory never refreshes or rewrites the shared login.
-The systemd credential itself exists only for the AI unit lifetime and is visible
-to the trusted client runtime, whose model tools are disabled.
+Systemd reads that file without changing its ownership or permissions.
+
+The runner creates a per-call private auth snapshot containing the current
+access/identity tokens, an empty refresh token, and no unrelated fields. That
+snapshot is removed with the working directory, while the original service
+remains responsible for its login and refresh lifecycle.
+
+A token with less than 650 seconds remaining fails before model invocation;
+PhotoStory never refreshes or rewrites the shared login. The systemd credential
+exists only for the AI unit lifetime and is visible to the trusted client
+runtime, whose model tools are disabled.
 
 This option requires a current ChatGPT OAuth login in the expected Codex format;
 it does not support arbitrary gateway API keys. Test a harmless image before
@@ -136,7 +149,8 @@ copying refresh tokens or bypassing authentication.
 
 If the existing gateway source is owner-only, do not widen access to its whole
 installation. Install just its launcher and Python implementation into a private,
-root-owned code directory readable by `photostory-bridge`; bind that directory
-read-only into the AI unit and set `PHOTOSTORY_GATEWAY_PATH` to its launcher.
-This path is administrator configuration, never model input. Keep private gateway
-code outside the public PhotoStory checkout, and track upgrades separately.
+root-owned code directory readable by `photostory-bridge`.
+
+Bind that directory read-only into the AI unit and set `PHOTOSTORY_GATEWAY_PATH`
+to its launcher. Keep private gateway code outside the public PhotoStory
+checkout, and track upgrades separately.

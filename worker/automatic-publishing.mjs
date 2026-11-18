@@ -36,14 +36,21 @@ export function eligible(d,s,now=Date.now()){
 }
 // Every machine operation is checked against current owner settings. The batch
 // credential is trusted to submit AI evidence, but cannot enable this mode.
-async function nativeCheckpoint(checkpoint,d,p){
+function configuredProject(e){
+ const project=e?.PHOTOSTORY_PROJECT||e?.GITHUB_REPOSITORY||'Pigbibi/PhotoStory';
+ return typeof project==='string'&&/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(project)?project:'Pigbibi/PhotoStory';
+}
+async function nativeCheckpoint(checkpoint,d,p,project='Pigbibi/PhotoStory'){
  if(!checkpoint||Object.keys(checkpoint).sort().join()!=='operation,value'||JSON.stringify(checkpoint).length>16384)fail();
  const v=checkpoint.value,x=v?.binding;
- const operation='photostory:'+await hash(JSON.stringify(['Pigbibi/PhotoStory','publication',{draftId:d.id,publicationId:p.id,version:d.version}]));
+ const operation='photostory:'+await hash(JSON.stringify([project,'publication',{draftId:d.id,publicationId:p.id,version:d.version}]));
  const id=await hash(JSON.stringify([operation,'publication',d.photos.map(x=>x.id).sort()]));
- if(checkpoint.operation!==id||x?.project!=='Pigbibi/PhotoStory'||x.operation_id!==operation||
+ if(checkpoint.operation!==id||x?.project!==project||x.operation_id!==operation||
   !/^[0-9a-f]{64}$/.test(x.request_sha256||'')||!Number.isFinite(x.deadline)||x.deadline>p.expires/1000||
-  typeof x.resource!=='string'||x.route?.mode!=='agent'||(!['dot','grok'].includes(x.route.provider)&&!(x.route.provider==='muse'&&x.route.profile==='publication'))||
+  typeof x.resource!=='string'||!['agent','api'].includes(x.route?.mode)||
+  typeof x.route?.provider!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(x.route.provider)||
+  (x.route.profile!==undefined&&x.route.profile!=='publication')||
+  (x.route.provider==='muse'&&x.route.profile!=='publication')||
   ['intent','halt','cancel'].some(k=>typeof v[k]!=='boolean')||
   !(v.task_id===null||(typeof v.task_id==='string'&&/^[A-Za-z0-9_-]{1,200}$/.test(v.task_id)))||
   !(v.revision===null||(Number.isInteger(v.revision)&&v.revision>=1))||
@@ -84,7 +91,7 @@ export async function automatic(e,b){
   if(waitingNative){
    const d=await reviewedDraft(e,waitingNative.draft_id,waitingNative.version),body=JSON.parse(waitingNative.body);
    if(!claimedEligible(d,s)||body.autoPublishSince!==s.autoPublishSince||body.userId!==s.autoPublishUserId)return null;
-   const checkpoint=await nativeCheckpoint(body.nativeReview,d,waitingNative);
+   const checkpoint=await nativeCheckpoint(body.nativeReview,d,waitingNative,configuredProject(e));
    return {draft:d,publication:await publishing.view(e,d.id),nativeCheckpoint:checkpoint};
   }
   // Only an explicit owner recovery can reclaim a prepared automatic post.
@@ -120,7 +127,7 @@ export async function automatic(e,b){
  if(b.action==='advance')return publishing.advance(e,d.id,p.id);
  if(p.status!=='prepared'||p.expires<=Date.now()||body.autoBlocked)fail();
  if(b.action==='native_checkpoint'){
-  const next=await nativeCheckpoint(b.checkpoint,d,p),old=body.nativeReview;
+  const next=await nativeCheckpoint(b.checkpoint,d,p,configuredProject(e)),old=body.nativeReview;
   if(old){
    // cancel=true/halt=false reserves the one sender before its RPC. An
    // identical stale copy must stop, including after a lost acknowledgement.

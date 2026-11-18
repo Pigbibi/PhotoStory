@@ -55,26 +55,31 @@ PhotoStory 是单所有者工作流，不是多租户产品。一个部署实例
 ```text
 浏览器 → Cloudflare Worker + D1 + 私有 R2
                          ↕ 机器凭据接口
-                 GitHub Actions 处理器 → PersonalAIService tasks
-                         ↕                    ↕
-                      OneDrive            Dot / GrokBot
+                 GitHub Actions 处理器 → OpenAI / Anthropic 官方 API
+                                         或通用 OIDC 任务网关
+                         ↕
+                      OneDrive
 ```
 
 Worker 管理登录、OAuth、设置、草稿、审核和发布状态；GitHub Actions 运行有限扫描，
-从 R2 恢复私有 SQLite 库存，通过 GitHub OIDC 向 PersonalAIService 提交原生任务。
-私有 `PHOTOSTORY_NATIVE_BINDING` 为全部六个阶段指定同一个已准入的 provider、
-model 和 worker。支持 Dot 与独立的 `grokbot`；增加名称不会启用服务或授予权限。
+从 R2 恢复私有 SQLite 库存，并通过直接 OpenAI / Anthropic HTTPS API 或显式 OIDC
+任务网关（`AI_TASK_GATEWAY_URL`）运行 AI 审片。
+
+使用任务网关时，`PHOTOSTORY_NATIVE_BINDING` 为全部六个阶段指定一致的 `agent` 或
+`api` 路由配置（`provider`、`model` 与 `worker`）。仅当 `AI_TASK_GATEWAY_URL` 与
+`PHOTOSTORY_NATIVE_BINDING` 均未配置时，才直接使用 API Key 后端。
+
 AI 运行环境拿不到 OneDrive refresh token、Worker Secret 或 Instagram 发布权限。
 处理器只接收已去 EXIF 的预览，不会删除 OneDrive 原图。
 
-Actions 处理器无需 Codex CLI 或 VPS 网关。保留的 `run_isolated_ai.py` 和 systemd
+Actions 处理器无需本地 CLI 或 VPS 网关。保留的 `run_isolated_ai.py` 和 systemd
 CLI 配置已弃用。现役路径见[处理器配置](docs/github-actions-processor.zh-CN.md)。
 
 ## 快速部署
 
 需要 Node.js 与 npm、Python 3 与 Pillow、Cloudflare 账号、GitHub OAuth App、支持
-个人 Microsoft 账号的 Entra 应用、私有 R2 bucket，以及 PersonalAIService 已准入的
-原生任务绑定和可用的 Dot 或 GrokBot worker。
+个人 Microsoft 账号的 Entra 应用与私有 R2 bucket。AI 后端可选择直接配置
+`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`，或接入 `AI_TASK_GATEWAY_URL` 与 `PHOTOSTORY_NATIVE_BINDING`。
 
 ```sh
 npm ci
@@ -114,8 +119,10 @@ npm run deploy
 | `BATCH_TOKEN` | Worker Secret | 验证处理器 |
 | `PHOTOSTORY_BATCH_TOKEN` | GitHub Actions Secret | 与 Worker 相同的机器凭据 |
 | `PHOTOSTORY_URL` | GitHub Actions 变量 | 你的站点地址 |
-| `PHOTOSTORY_NATIVE_BINDING` | GitHub Actions Secret | 原生服务入口、audience 和各阶段的精确路由 |
-| `PHOTOSTORY_MUSE_SCREEN_BINDING` | 可选 GitHub Actions Secret | 指定一个由 Muse 筛选、按规则生成待人工审核草稿的试点任务 |
+| `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` | 可选 GitHub Actions Secret | 未设置 `AI_TASK_GATEWAY_URL` 时直接调用 OpenAI 或 Anthropic API |
+| `PHOTOSTORY_OPENAI_MODEL`、`PHOTOSTORY_ANTHROPIC_MODEL`、`PHOTOSTORY_AI_PROVIDER` | 可选 GitHub Actions 变量 | 覆盖默认直连模型或指定 `openai` / `anthropic` |
+| `AI_TASK_GATEWAY_URL`、`PHOTOSTORY_NATIVE_BINDING` | 可选 GitHub Actions 变量 / Secret | 通用 OIDC 任务网关入口、audience 与各阶段精确路由 |
+| `PHOTOSTORY_SCREEN_BINDING` | 可选 GitHub Actions Secret | 指定异步筛选路由与规则草稿的批量任务配置 |
 
 在你的 OAuth 应用中登记：
 
@@ -125,8 +132,8 @@ https://你的站点/auth/microsoft/callback
 ```
 
 GitHub 登录不申请仓库权限。Microsoft 授权申请读取和离线访问，具体文件夹和日期
-范围由处理器执行。Actions 设置见[处理器迁移指南](docs/github-actions-processor.zh-CN.md)；
-[AI 与 VPS 配置](docs/ai-setup.zh-CN.md) 记录已弃用的 CLI 路径。
+范围由处理器执行。Actions 设置见[处理器配置](docs/github-actions-processor.zh-CN.md)；
+[AI 与处理器配置](docs/ai-setup.zh-CN.md) 同时保留了已弃用的 CLI 路径说明。
 
 云端合成验证未通过时，保留 task ID，通过处理器已有的 `native_qualification_task_id` 和 `native_qualification_action=readback` 输入读取原任务，并保持 `cloud_native_qualification=true`。读回不会重新提交；完成验证也不会将过期结果采纳为业务输出。
 

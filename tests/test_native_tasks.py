@@ -263,7 +263,7 @@ def test_stop_cancels_original_task_once_and_never_reports_it_stopped_early(tmp_
     assert wire.records[task_id]['status'] == 'cancelled'
 
 
-@pytest.mark.parametrize('field,value', [('owner','QuantStrategyLab/QuantAIService'), ('provider','wrong'), ('revision',True), ('worker','wrong-worker'), ('output',{'ok':False})])
+@pytest.mark.parametrize('field,value', [('owner','OtherOwner/OtherRepo'), ('provider','wrong'), ('revision',True), ('worker','wrong-worker'), ('output',{'ok':False})])
 def test_wrong_binding_or_schema_never_consumes_result(tmp_path, field, value):
     from native_tasks import NativeStopped
     ctx, wire = context(tmp_path)
@@ -649,8 +649,8 @@ def test_run_without_enabled_binding_never_bootstraps_or_touches_business(disabl
 def test_bootstrap_rejects_incomplete_binding_before_client_or_task(tmp_path,invalid):
     from native_tasks import bootstrap_context,NativeStopped
     ctx,wire=context(tmp_path);binding=bootstrap_binding(ctx);factory=MagicMock()
-    if invalid=='project':binding['project']='other/PhotoStory'
-    if invalid=='provider':binding['routes']['screen']['provider']='api'
+    if invalid=='project':binding['project']='invalid-project-slug'
+    if invalid=='provider':binding['routes']['screen']['provider']='../bad'
     if invalid=='missing_stage':binding['routes'].pop('publication')
     if invalid=='worker':binding['routes']['screen']['worker']=''
     if invalid=='mcp_base':binding['service_url']+='/mcp'
@@ -1190,7 +1190,7 @@ def test_workflow_binding_requires_exact_single_handler_before_client_or_busines
     config=workflow_config()
     if invalid=='disabled':config['enabled']=False
     if invalid=='extra':config['token']='not-allowed'
-    if invalid=='project':config['project']='QuantStrategyLab/QuantAIService'
+    if invalid=='project':config['project']='OtherOwner/OtherRepo'
     if invalid=='ttl':config['timeout_seconds']=600
     if invalid=='mixed_provider':config['routes']['cross_review']['provider']='grok'
     if invalid=='mixed_grokbot':config['routes']['cross_review']['provider']='grokbot'
@@ -1254,7 +1254,7 @@ def test_public_http_factory_reuses_existing_ledger_and_consumer(tmp_path,mode):
     if mode in {'pending_resume','cancel','expiry'}:wire.complete=False
     if mode=='unknown':wire.lose=True
     if mode=='wrong_revision':wire.mutate=lambda r:{**r,'revision':True}
-    if mode=='wrong_project':wire.mutate=lambda r:{**r,'owner':'QuantStrategyLab/QuantAIService'}
+    if mode=='wrong_project':wire.mutate=lambda r:{**r,'owner':'OtherOwner/OtherRepo'}
     if mode=='wrong_provider':wire.mutate=lambda r:{**r,'provider':'grok'}
     if mode=='invalid_output':wire.output=lambda r:{'ok':False}
     call=lambda:batch.native_review_gateway(ctx,stage='labels')('generated',[{'id':'p'}],[],SCHEMA,tmp_path)
@@ -1456,9 +1456,45 @@ def test_grokbot_context_preserves_provider_identity(tmp_path):
     for route in ctx['routes'].values():
         route['provider'] = 'grokbot'
     validate_context(ctx)
-    ctx['routes']['screen']['provider'] = 'unknown-provider'
+    ctx['routes']['screen']['provider'] = 'invalid/provider'
     with pytest.raises(NativeStopped):
         validate_context(ctx)
+
+
+def test_generic_oss_project_provider_mode_and_neutral_screen_binding(tmp_path):
+    from native_tasks import validate_context
+    ctx, wire = context(tmp_path)
+    ctx['project'] = 'custom-org/photostory-oss'
+    wire.project = 'custom-org/photostory-oss'
+    for stage, route in ctx['routes'].items():
+        route.update(mode='api', provider='custom-provider.v1')
+    validate_context(ctx)
+    wire.routes = dict(ctx['routes'])
+    image = photo(tmp_path)
+    assert batch.native_review_gateway(ctx, stage='screen')(
+        'prompt', [{'id': 'p1'}], [image], SCHEMA, tmp_path,
+    ) == {'ok': True}
+
+    config = workflow_config()
+    config['project'] = 'custom-org/photostory-oss'
+    for route in config['routes'].values():
+        route.update(mode='api', provider='openai-gateway', worker='gw-worker', model='gpt-4.1-mini')
+    screen_cfg = {'job_id': 'job-42', 'model': 'gpt-4.1', 'worker': 'screen-w', 'provider': 'vision-gw'}
+    with patch.dict('os.environ', {
+        'GITHUB_REPOSITORY': 'custom-org/photostory-oss',
+        'PHOTOSTORY_NATIVE_BINDING': json.dumps(config),
+        'PHOTOSTORY_SCREEN_BINDING': json.dumps(screen_cfg),
+    }, clear=True):
+        binding = batch.workflow_binding(tmp_path, tmp_path, now=lambda: 100)
+        pilot = batch.screen_binding()
+    assert binding['project'] == 'custom-org/photostory-oss'
+    assert pilot == {
+        'job_id': 'job-42',
+        'route': {
+            'mode': 'agent', 'provider': 'vision-gw', 'profile': 'async-screen',
+            'model': 'gpt-4.1', 'worker': 'screen-w',
+        },
+    }
 
 
 def test_named_grokbot_completes_existing_stages_without_legacy_provider(tmp_path):
@@ -1477,3 +1513,29 @@ def test_named_grokbot_completes_existing_stages_without_legacy_provider(tmp_pat
     with pytest.raises(NativeStopped):
         batch.native_review_gateway(ctx, stage='screen')(
             'different synthetic prompt', [{'id': 'synthetic-photo'}], [image], SCHEMA, tmp_path)
+
+
+def test_screen_binding_overrides_muse_base_route_and_resumes_cleanly(tmp_path):
+    fixture = PendingBatchHarness(tmp_path, cloud=True)
+    for route in fixture.ctx['routes'].values():
+        route.update(provider='muse', model='base-muse', worker='muse-worker')
+    fixture.wire.routes = dict(fixture.ctx['routes'])
+    override = {
+        'mode': 'api', 'provider': 'vision-gw', 'profile': 'async-screen',
+        'model': 'vision-v2', 'worker': 'async-worker',
+    }
+    fixture.wire.routes['async-screen'] = override
+    fixture.wire.output = lambda request: {'photos': [{
+        'id': 'p', 'decision': 'allow', 'flags': [], 'landscape': True, 'aesthetic': 8,
+        'description': 'Synthetic scenery', 'peopleRole': 'none', 'compositionClear': True,
+        'contentKind': 'permanent_scenery', 'light': 'day', 'scene': 'architecture',
+        'place': {'city': '', 'landmark': '', 'evidence': '', 'confidence': 'none'},
+    }]}
+    pilot = {'job_id': 'job', 'route': override}
+    fixture.run(screen_binding_config=pilot)
+    task, = fixture.wire.records
+    assert fixture.wire.records[task]['provider'] == 'vision-gw'
+    assert fixture.calls[-1][1]['screenWait'] == {'taskId': task, 'revision': 1}
+    fixture.timely_result(resume=30)
+    fixture.run(screen_binding_config=pilot, resume_screen='a' * 64)
+    assert len(fixture.completed) == 1

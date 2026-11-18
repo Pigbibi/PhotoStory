@@ -254,7 +254,7 @@ test('native checkpoint identity drift, expiry and original owner/uncertain gate
  Object.assign(checkpoint.value,{task_id:'synthetic-task',revision:1,task_deadline:Date.now()/1000+60});
  await automatic(env,{...auth,action:'native_checkpoint',checkpoint});
  for(const mutate of [x=>x.value.task_id='different',x=>x.value.binding.route.worker='different',
-  x=>x.value.binding.request_sha256='b'.repeat(64),x=>x.value.binding.project='QuantStrategyLab/QuantRuntimeSettings']){
+  x=>x.value.binding.request_sha256='b'.repeat(64),x=>x.value.binding.project='OtherOwner/OtherRepo']){
   const wrong=structuredClone(checkpoint);mutate(wrong);
   await assert.rejects(automatic(env,{...auth,action:'native_checkpoint',checkpoint:wrong}),/publication_conflict/);
  }
