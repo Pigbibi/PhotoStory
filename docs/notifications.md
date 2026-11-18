@@ -41,13 +41,16 @@ never expose tokens or raw provider responses while diagnosing it.
 The VPS maintenance timer must remain online for scheduled scans, token renewal,
 temporary-file cleanup and automatic mode. A timer outage is not currently an
 offline notification; it must be detected through the deployment's own service
-monitoring. The machine-authenticated `GET /internal/health` endpoint is the
-sanitized read-only status contract for that monitor. It returns fixed warning
+monitoring.
+
+The machine-authenticated `GET /internal/health` endpoint is the sanitized
+read-only status contract for that monitor. It returns fixed warning
 categories, schedule/job/storage state, token expiry metadata and publication
 issue state; it never returns folders, captions, photo IDs, provider URLs or
-credentials. A monitor should alert on `ok=false` and retain only the category
-and timestamp. The endpoint does not publish, refresh credentials, retry jobs or
-mutate state.
+credentials.
+
+A monitor should alert on `ok=false` and retain only the category and timestamp.
+The endpoint does not publish, refresh credentials, retry jobs or mutate state.
 
 When approved owner-scheduled drafts have no saved publishing day and hour, health
 reports `owner_publish_schedule_missing`. The owner must set both values in the

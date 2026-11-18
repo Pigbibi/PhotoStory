@@ -14,6 +14,192 @@ from native_tasks import NativeStopped, STAGES
 
 
 class CloudQualificationTests(unittest.TestCase):
+    def test_muse_generated_image_compares_the_observed_color(self):
+        for color in ('blue', 'red'):
+            with self.subTest(color=color), tempfile.TemporaryDirectory() as tmp:
+                config = self.env() | {'PHOTOSTORY_MUSE_SCREEN_BINDING': json.dumps({
+                    'job_id': 'synthetic-job', 'model': 'synthetic-muse', 'worker': 'fixture-worker'})}
+                client = Mock(resource='https://personal.acme.org')
+                client.submit.side_effect = lambda request, _: {
+                    'id': 'original-task', 'owner': 'Pigbibi/PhotoStory', 'provider': 'muse',
+                    'request': request, 'revision': 1, 'status': 'completed',
+                    'created': 990, 'updated': 995, 'deadline': 1590, 'worker': 'fixture-worker',
+                    'attempt': 'one-attempt', 'output': {'color': color},
+                }
+                root = Path(tmp)/'qualification'
+                with patch.dict(os.environ, config, clear=True):
+                    kwargs = {'use_muse': True, 'now': lambda: 1000, 'client_factory': lambda *_: client}
+                    if color == 'blue':
+                        self.assertEqual(qualification.run(root, **kwargs)['phase'], 'verified')
+                    else:
+                        with self.assertRaises(qualification.QualificationUnverified):
+                            qualification.run(root, **kwargs)
+                request = client.submit.call_args.args[0]
+                self.assertEqual((request['profile'], request['timeout_seconds']), ('muse-screen', 600))
+                self.assertNotIn('blue', request['objective'])
+                client.submit.assert_called_once()
+
+    def test_neutral_screen_binding_qualifies_custom_project_and_async_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binding = {
+                'enabled': True, 'project': 'CustomOrg/PhotoStoryFork',
+                'service_url': 'https://personal.acme.org', 'audience': 'https://personal.acme.org/mcp',
+                'adoption_age_seconds': 3600,
+                'routes': {s: {'mode': 'api', 'provider': 'custom-vision', 'profile': s,
+                               'model': 'gpt-4.1-mini', 'worker': 'cloud-worker'} for s in STAGES},
+            }
+            config = {
+                'GITHUB_REPOSITORY': 'CustomOrg/PhotoStoryFork',
+                'GITHUB_REF': 'refs/heads/main',
+                'GITHUB_WORKFLOW_REF': 'CustomOrg/PhotoStoryFork/.github/workflows/processor.yml@refs/heads/main',
+                'GITHUB_EVENT_NAME': 'workflow_dispatch',
+                'GITHUB_RUN_ATTEMPT': '1',
+                'GITHUB_RUN_ID': '12345',
+                'PHOTOSTORY_NATIVE_BINDING': json.dumps(binding),
+                'PHOTOSTORY_SCREEN_BINDING': json.dumps({
+                    'job_id': 'synthetic-job', 'provider': 'async-vision',
+                    'model': 'vision-v1', 'worker': 'fixture-worker', 'mode': 'api',
+                }),
+            }
+            client = Mock(resource='https://personal.acme.org')
+            client.submit.side_effect = lambda request, _: {
+                'id': 'original-task', 'owner': 'CustomOrg/PhotoStoryFork', 'provider': 'async-vision',
+                'request': request, 'revision': 1, 'status': 'completed',
+                'created': 990, 'updated': 995, 'deadline': 1590, 'worker': 'fixture-worker',
+                'attempt': 'one-attempt', 'output': {'color': 'blue'},
+            }
+            root = Path(tmp) / 'qualification'
+            with patch.dict(os.environ, config, clear=True):
+                receipt = qualification.run(root, use_screen_route=True, now=lambda: 1000,
+                                            client_factory=lambda *_: client)
+            self.assertEqual(receipt['phase'], 'verified')
+            self.assertEqual(receipt['project'], 'CustomOrg/PhotoStoryFork')
+            request = client.submit.call_args.args[0]
+            self.assertEqual((request['mode'], request['profile'], request['timeout_seconds']),
+                             ('api', 'async-screen', 600))
+
+    def test_each_regular_muse_stage_uses_its_business_schema_and_bound_result(self):
+        from auto_review import FIELDS
+        from process_batch import LANGUAGE_NAMES
+
+        self.assertEqual(set(LANGUAGE_NAMES), set(qualification.qualification_contract(
+            {'routes': {'labels': {'provider': 'muse', 'profile': 'labels'}}}, 'labels'
+        )[1]['properties']['labels']['items']['properties']['translations']['properties']))
+        outputs = {
+            'screen': {'photos': [{'id': 'synthetic', 'decision': 'exclude', 'flags': [],
+                                   'landscape': False, 'contentKind': 'uncertain', 'peopleRole': 'none',
+                                   'compositionClear': False, 'aesthetic': 0, 'description': 'Blue block',
+                                   'light': 'unknown', 'scene': 'unknown', 'place': {
+                                       'city':'', 'landmark':'', 'evidence':'', 'confidence':'none'}}]},
+            'group': {'drafts': []},
+            'cross_review': {'checks': [{'draftId':'synthetic-draft', 'duplicateIds':[],
+                                          'captionGrounded':True, 'locationGrounded':True, 'copy':{
+                                              'title':'Sample', 'caption':'Color field', 'hashtags':'#color',
+                                              'reason':'Calibration', 'photos':[{'id':'synthetic','alt':'Blue'}]}}]},
+            'labels': {'labels': [{'id':'synthetic','translations': {
+                lang: {'title':'Color sample','reason':'Generated image'} for lang in LANGUAGE_NAMES}}]},
+            'strict_review': {field: field == 'needsHumanReview' for field in FIELDS},
+            'publication': {field: field == 'needsHumanReview' for field in FIELDS},
+        }
+        env = self.env()
+        binding = json.loads(env['PHOTOSTORY_NATIVE_BINDING'])
+        for route in binding['routes'].values():
+            route.update(provider='muse', model='synthetic-muse', worker='fixture-worker')
+        env['PHOTOSTORY_NATIVE_BINDING'] = json.dumps(binding)
+        for stage in sorted(STAGES):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, env, clear=True):
+                client = Mock(resource='https://personal.acme.org')
+                def record(request, key):
+                    return {'id':'synthetic-task', 'owner':'Pigbibi/PhotoStory', 'provider':'muse',
+                            'request':request, 'revision':1, 'status':'completed', 'created':990, 'updated':995,
+                            'deadline':1590, 'worker':'fixture-worker', 'attempt':'attempt-1', 'output':outputs[stage]}
+                client.submit.side_effect = record
+                receipt = qualification.run(Path(tmp)/'stage', stage=stage, require_muse=True,
+                                            now=lambda:1000, client_factory=lambda *_:client)
+                self.assertTrue(receipt['adopted'])
+                self.assertEqual(receipt['stage'], stage)
+                request = client.submit.call_args.args[0]
+                self.assertEqual((request['profile'], request['timeout_seconds']), (stage, 600))
+                self.assertEqual(request['materials'][0]['stage'], stage)
+                self.assertEqual(bool(request['materials'][0]['images']), stage != 'labels')
+                client.get.return_value = record(request, None)
+                verified = qualification.run(Path(tmp)/'read', stage=stage, task_id='synthetic-task',
+                                             now=lambda:1000, client_factory=lambda *_:client)
+                self.assertEqual(verified['phase'], 'completion_verified')
+                client.submit.assert_called_once()
+                client.get.assert_called_once_with('synthetic-task')
+
+    def test_generic_api_gateway_qualifies_all_six_business_stages_and_readback(self):
+        from auto_review import FIELDS
+        from process_batch import LANGUAGE_NAMES
+
+        outputs = {
+            'screen': {'photos': [{'id': 'synthetic', 'decision': 'exclude', 'flags': [],
+                                   'landscape': False, 'contentKind': 'uncertain', 'peopleRole': 'none',
+                                   'compositionClear': False, 'aesthetic': 0, 'description': 'Blue block',
+                                   'light': 'unknown', 'scene': 'unknown', 'place': {
+                                       'city': '', 'landmark': '', 'evidence': '', 'confidence': 'none'}}]},
+            'group': {'drafts': []},
+            'cross_review': {'checks': [{'draftId': 'synthetic-draft', 'duplicateIds': [],
+                                          'captionGrounded': True, 'locationGrounded': True, 'copy': {
+                                              'title': 'Sample', 'caption': 'Color field', 'hashtags': '#color',
+                                              'reason': 'Calibration', 'photos': [{'id': 'synthetic', 'alt': 'Blue'}]}}]},
+            'labels': {'labels': [{'id': 'synthetic', 'translations': {
+                lang: {'title': 'Color sample', 'reason': 'Generated image'} for lang in LANGUAGE_NAMES}}]},
+            'strict_review': {field: field == 'needsHumanReview' for field in FIELDS},
+            'publication': {field: field == 'needsHumanReview' for field in FIELDS},
+        }
+        binding = {
+            'enabled': True, 'project': 'CustomOrg/PhotoStoryFork',
+            'service_url': 'https://gateway.acme.org', 'audience': 'https://gateway.acme.org/mcp',
+            'adoption_age_seconds': 3600,
+            'routes': {s: {'mode': 'api', 'provider': 'openai-gateway', 'profile': s,
+                           'model': 'gpt-4.1-mini', 'worker': 'api-worker'} for s in STAGES},
+        }
+        env = {
+            'GITHUB_REPOSITORY': 'CustomOrg/PhotoStoryFork',
+            'GITHUB_REF': 'refs/heads/main',
+            'GITHUB_WORKFLOW_REF': 'CustomOrg/PhotoStoryFork/.github/workflows/processor.yml@refs/heads/main',
+            'GITHUB_EVENT_NAME': 'workflow_dispatch',
+            'GITHUB_RUN_ATTEMPT': '1',
+            'GITHUB_RUN_ID': '12345',
+            'PHOTOSTORY_NATIVE_BINDING': json.dumps(binding),
+        }
+        for stage in sorted(STAGES):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as tmp:
+                client = Mock(resource='https://gateway.acme.org')
+
+                def record(request, _key, current_stage=stage):
+                    return {'id': 'task_generic_1', 'owner': 'CustomOrg/PhotoStoryFork',
+                            'provider': 'openai-gateway', 'request': request, 'revision': 1,
+                            'status': 'completed', 'created': 990, 'updated': 995, 'deadline': 1050,
+                            'worker': 'api-worker', 'attempt': 'attempt-1', 'output': outputs[current_stage]}
+
+                client.submit.side_effect = record
+                with patch.dict(os.environ, env, clear=True):
+                    receipt = qualification.run(Path(tmp) / 'stage', stage=stage, business_stage=True,
+                                                now=lambda: 1000, client_factory=lambda *_: client)
+                    self.assertEqual(receipt['phase'], 'verified')
+                    self.assertEqual(receipt['provider'], 'openai-gateway')
+                    request = client.submit.call_args.args[0]
+                    self.assertEqual((request['mode'], request['profile'], request['timeout_seconds']),
+                                     ('api', stage, 60))
+                    client.get.return_value = record(request, None)
+                    verified = qualification.run(Path(tmp) / 'read', stage=stage, task_id='task_generic_1',
+                                                 now=lambda: 1000, client_factory=lambda *_: client)
+                    self.assertEqual(verified['phase'], 'completion_verified')
+
+        with tempfile.TemporaryDirectory() as tmp:
+            event = Path(tmp) / 'event.json'
+            event.write_text(json.dumps({'inputs': {'qualification_stage': 'all'}}))
+            out = io.StringIO()
+            with patch.dict(os.environ, {'GITHUB_EVENT_PATH': str(event), 'QUALIFICATION_STAGE': 'group'}, clear=True), \
+                 patch.object(sys, 'argv', ['qualify', '--state', str(Path(tmp) / 'state')]), \
+                 patch.object(qualification, 'run', return_value={'phase': 'verified', 'stage': 'group'}) as mock_run, \
+                 redirect_stdout(out):
+                self.assertEqual(qualification.main(), 0)
+            self.assertTrue(mock_run.call_args.kwargs['business_stage'])
+
     def env(self):
         binding={'enabled':True,'project':'Pigbibi/PhotoStory','service_url':'https://personal.acme.org',
                  'audience':'https://personal.acme.org/mcp','adoption_age_seconds':3600,

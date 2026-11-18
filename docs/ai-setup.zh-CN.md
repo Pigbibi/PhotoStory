@@ -1,10 +1,13 @@
-# AI 与 VPS 配置
+# AI 与处理器配置
 
-本文记录已弃用的 VPS CLI 安装。当前 Actions 使用 [PersonalAIService 原生任务](github-actions-processor.zh-CN.md)，不需要安装 Codex CLI 或网关。
+[English](ai-setup.md) | 简体中文
 
-PhotoStory 将网站、照片读取器和 AI 运行环境分开部署。网站管理登录、授权、任务与
-人工审核；读取器从 OneDrive 取得有限范围的预览；AI 只负责筛选、分组、文案和可选
-严格复核。公开仓库不提供任何人的账号、密钥、照片或网关。
+GitHub Actions 现役路径支持两种开源 AI 接入方式（见 [Actions 处理器配置](github-actions-processor.zh-CN.md)），无需部署 VPS 网关或本地 CLI：
+
+1. **直接调用 OpenAI / Anthropic HTTPS API**：未配置 `AI_TASK_GATEWAY_URL` 和 `PHOTOSTORY_NATIVE_BINDING` 时，设置 `OPENAI_API_KEY`（可选 `PHOTOSTORY_OPENAI_MODEL`，默认 `gpt-4.1-mini`）或 `ANTHROPIC_API_KEY`（可选 `PHOTOSTORY_ANTHROPIC_MODEL`）；同时配置两者时可通过 `PHOTOSTORY_AI_PROVIDER` 指定 `openai` 或 `anthropic`。
+2. **通用 OIDC 任务网关**：设置 `AI_TASK_GATEWAY_URL`、`PHOTOSTORY_NATIVE_BINDING`（以及可选的异步筛选路由 `PHOTOSTORY_SCREEN_BINDING`），通过 GitHub OIDC 提交受限任务。
+
+下文同时保留已弃用的 VPS CLI 隔离安装说明供旧部署参考。PhotoStory 将网站、照片读取器和 AI 运行环境分开部署；公开仓库不提供任何人的账号、密钥、照片或网关。
 
 ## 支持的运行模式
 

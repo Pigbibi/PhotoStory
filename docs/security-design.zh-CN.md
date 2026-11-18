@@ -1,5 +1,7 @@
 # 安全设计与部署检查
 
+[English](security-design.md) | 简体中文
+
 PhotoStory 处理私人照片、OAuth 连接和可选发布权限。以下内容是部署者应保留的
 安全设计与检查清单，不是某次审计的历史结论。
 

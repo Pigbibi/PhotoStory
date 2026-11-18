@@ -7,6 +7,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import sqlite3
 import stat
 from urllib.parse import urlsplit
@@ -15,9 +16,18 @@ from jsonschema import Draft202012Validator
 from PIL import Image
 
 STAGES = {'screen', 'group', 'cross_review', 'labels', 'strict_review', 'publication'}
+PROJECT_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
+PROVIDER_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
+ASYNC_SCREEN_PROFILE = 'async-screen'
+MUSE_SCREEN_PROFILE = 'muse-screen'
+ASYNC_SCREEN_PROFILES = {ASYNC_SCREEN_PROFILE, MUSE_SCREEN_PROFILE}
+ASYNC_SCREEN_TIMEOUT = 600
+MUSE_SCREEN_TIMEOUT = ASYNC_SCREEN_TIMEOUT
+MUSE_TASK_TIMEOUT = ASYNC_SCREEN_TIMEOUT
+MAX_SCREEN_TASKS = 17  # ceil(100 photos / 6 per screening task)
 # Existing batch graph: screen ceil(100/6), <=24 shortlist groups, cross+labels,
 # and <=8 strict reviews. This bounds work; it never creates additional calls.
-MAX_BATCH_TASKS = 17 + 24 + 1 + 1 + 8
+MAX_BATCH_TASKS = MAX_SCREEN_TASKS + 24 + 1 + 1 + 8
 TASK_STATUSES = {'queued', 'submitting', 'running', 'outcome_unknown', 'cancel_requested',
                  'completed', 'failed', 'invalid_output', 'cancelled'}
 TASK_ERROR_CODES = {'deadline_before_submission', 'deadline_exceeded', 'acceptance_unknown',
@@ -30,6 +40,10 @@ class NativeStopped(Exception):
 
 class NativePending(NativeStopped):
     """A known task is still running; retain the same identity for readback."""
+
+    def __init__(self, message, *, screen_wait=None):
+        super().__init__(message)
+        self.screen_wait = screen_wait
 
 
 def packed(value):
@@ -67,9 +81,16 @@ def _endpoint(value, synthetic, *, base=False):
     return value.rstrip('/') if base else value
 
 
+def valid_project(value):
+    if not isinstance(value, str) or not 1 <= len(value) <= 200 or not PROJECT_PATTERN.fullmatch(value):
+        return False
+    owner, repo = value.split('/', 1)
+    return owner not in {'.', '..'} and repo not in {'.', '..'}
+
+
 def _context_fields(context):
     root, state = context['fixture_root'], context['state_root']
-    if (type(context.get('synthetic_only')) is not bool or context['project'] != 'Pigbibi/PhotoStory'
+    if (type(context.get('synthetic_only')) is not bool or not valid_project(context.get('project'))
             or type(context.get('cancel', False)) is not bool
             or not isinstance(context['operation_id'], str) or not 1 <= len(context['operation_id']) <= 200
             or not callable(context['now']) or not callable(context['persist'])
@@ -84,11 +105,25 @@ def _context_fields(context):
     for key, maximum in (('adoption_age_seconds',3600),('task_limit',MAX_BATCH_TASKS)):
         if key in context and (type(context[key]) is not int or not 1 <= context[key] <= maximum):
             raise ValueError()
-    for route in context['routes'].values():
+    for stage, route in context['routes'].items():
         if (set(route) != {'mode', 'provider', 'model', 'profile', 'worker'}
-                or route['mode'] != 'agent' or route['provider'] not in {'dot', 'grok', 'grokbot'}
+                or route['mode'] not in {'agent', 'api'}
+                or not isinstance(route.get('provider'), str)
+                or not PROVIDER_PATTERN.fullmatch(route['provider'])
                 or any(not isinstance(v, str) or not 1 <= len(v) <= 200 for v in route.values())):
             raise ValueError()
+
+
+def with_screen_route(context, route):
+    routes = {**context['routes'], 'screen': route}
+    result = {**context, 'routes': routes}
+    if 'native_binding' in result:
+        result['native_binding'] = {**result['native_binding'], 'routes': routes}
+    return result
+
+
+with_muse_screen = with_screen_route
+
 
 def validate_context(context):
     try:
@@ -251,6 +286,56 @@ def _completed_receipt(context, value, record, schema, output_limit):
                  completed_at=completed, accepted_at=now)
 
 
+def restore_screen_inputs(context, candidate_ids):
+    """Read the previews already bound to this batch's original async screen tasks."""
+    route = context['routes']['screen']
+    if route['profile'] not in ASYNC_SCREEN_PROFILES or not PROVIDER_PATTERN.fullmatch(route['provider']):
+        raise NativeStopped('native_binding_changed')
+    path = _private_database(context)
+    with sqlite3.connect(path.as_uri()+'?mode=ro', uri=True) as db:
+        rows = db.execute(
+            "SELECT value FROM native_operations WHERE json_extract(value,'$.binding.operation_id')=? "
+            "AND json_extract(value,'$.binding.route.profile')=? ORDER BY rowid LIMIT ?",
+            (context['operation_id'], route['profile'], MAX_SCREEN_TASKS+1),
+        ).fetchall()
+    if not 1 <= len(rows) <= MAX_SCREEN_TASKS:
+        raise NativeStopped('native_binding_changed')
+    previews, receipts = {}, {}
+    try:
+        for (raw,) in rows:
+            value = json.loads(raw)
+            binding, task_id = value['binding'], value['task_id']
+            if (binding['route'] != route or binding['resource'] != context['client'].resource
+                    or binding['project'] != context['project'] or binding['deadline'] != context['deadline']
+                    or not task_id or value['halt'] or value['cancel'] or task_id in receipts):
+                raise ValueError()
+            # The normal task path still applies expiry and persists any
+            # cancellation against this original task before stopping.
+            record = context['client'].get(task_id)
+            _record_identity(value, record)
+            material, = record['request']['materials']
+            records, images = material['records'], material['images']
+            ids = [item['id'] for item in records]
+            if (material['stage'] != 'screen' or not 1 <= len(ids) <= 6
+                    or ids != [image['id'] for image in images]
+                    or len(set(ids)) != len(ids) or not set(ids) <= candidate_ids or set(ids) & previews.keys()):
+                raise ValueError()
+            for image in images:
+                raw_preview = base64.b64decode(image['base64'], validate=True)
+                if image['mime'] != 'image/jpeg' or hashlib.sha256(raw_preview).hexdigest() != image['sha256']:
+                    raise ValueError()
+                previews[image['id']] = raw_preview
+            receipts[task_id] = record
+    except NativeStopped:
+        raise
+    except Exception:
+        raise NativeStopped('native_screen_readback_failed') from None
+    return previews, receipts
+
+
+restore_muse_screen_inputs = restore_screen_inputs
+
+
 def task_call(context, stage):
     """Use one generic submit/get/cancel task, never helper RPCs or CLI fallback."""
     def call(prompt, records, paths, schema, cwd):
@@ -278,9 +363,11 @@ def task_call(context, stage):
                                'sha256': hashlib.sha256(data).hexdigest(),
                                'base64': base64.b64encode(data).decode()})
             route = json.loads(packed(context['routes'][stage]))
+            async_screen = stage == 'screen' and route['profile'] in ASYNC_SCREEN_PROFILES
+            timeout = ASYNC_SCREEN_TIMEOUT if (async_screen or route['provider'] == 'muse') else 60
             request = {'mode': route['mode'], 'model': route['model'], 'profile': route['profile'],
                        'objective': prompt, 'materials': [{'schema_version':'photostory.task-input.v1', 'stage': stage, 'records': records, 'images': images}],
-                       'output_schema': schema, 'timeout_seconds': 60}
+                       'output_schema': schema, 'timeout_seconds': timeout}
             request_limit, output_limit = media_limits(context)
             if len(packed(request)) > request_limit:
                 raise ValueError()
@@ -389,7 +476,10 @@ def task_call(context, stage):
                             active()
                             record = client.submit(request, 'photostory:'+operation)
                         else:
-                            record = client.get(value['task_id'])
+                            restored = context.get('restored_screen_records', {}) if async_screen else {}
+                            record = restored.get(value['task_id'])
+                            if record is None:
+                                record = client.get(value['task_id'])
                         _record_identity(value, record)
                         # Retain only fixed operational codes after identity validation.
                         # Qualification receipts need these even when adoption stops.
@@ -403,7 +493,8 @@ def task_call(context, stage):
                             if value['output_sha256']:
                                 raise ValueError()
                             save()
-                            raise NativePending('native_pending')
+                            screen_wait = {'taskId': value['task_id'], 'revision': value['revision']} if async_screen else None
+                            raise NativePending('native_pending', screen_wait=screen_wait)
                         _completed_receipt(context, value, record, schema, output_limit)
                         save()
                         active()

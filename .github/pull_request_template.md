@@ -14,7 +14,7 @@ npm ci && npm test && npm run build
 ## Risk and documentation
 
 Explain relevant compatibility, permissions, data and documentation changes.
-Follow `AGENTS.md` and `.github/engineering.md`.
+Follow `AGENTS.md`.
 
 ## Checklist
 

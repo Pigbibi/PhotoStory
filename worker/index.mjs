@@ -15,6 +15,7 @@ import * as health from './health.mjs';
 import {inventoryRequest,inventoryCommit,inventoryStatus} from './inventory-state.mjs';
 import {json,failure,errorResponse} from './http.mjs';
 import {failureCodeSet,failureStageSet} from './vocabulary.mjs';
+import {resumeScreen, screenWakePattern, taskIdPattern} from './screen-resume.mjs';
 
 const BODY_LIMIT={small:4096,history:128000,automatic:2600000,batch:12*1024*1024};
 const PREFIX={publish:'/api/publish/',photos:'/api/photos/',drafts:'/api/drafts/',export:'/api/export/',jobs:'/api/jobs/',delivery:'/delivery/'};
@@ -86,15 +87,16 @@ async function photoSources(r, e) {
   return json({ ok: true });
 }
 
-async function claim(e) {
+async function claim(e, wake, pilotJob) {
   const view = await settingsView(e);
   if (view.backlogPaused || view.storage?.full) return json(null);
   const lease = auth.random();
-  const row = await e.DB.prepare(
-    "UPDATE jobs SET status='running',lease=? WHERE id=(SELECT id FROM jobs WHERE status='pending' ORDER BY created LIMIT 1) AND status='pending' RETURNING id,body",
-  )
-    .bind(await auth.hash(lease))
-    .first();
+  const leaseHash = await auth.hash(lease);
+  const row = wake
+    ? await e.DB.prepare("UPDATE jobs SET status='running',lease=? WHERE id=? AND status='pending' AND json_extract(body,'$.screenWait.wake')=? AND json_extract(body,'$.screenWait.dispatched')=1 RETURNING id,body")
+      .bind(leaseHash, pilotJob, wake).first()
+    : await e.DB.prepare("UPDATE jobs SET status='running',lease=? WHERE id=(SELECT id FROM jobs WHERE status='pending' ORDER BY created LIMIT 1) AND status='pending' RETURNING id,body")
+      .bind(leaseHash).first();
   return json(row ? { id: row.id, ...JSON.parse(row.body), lease } : null);
 }
 
@@ -102,6 +104,7 @@ async function source(e, job) {
   const used = await e.DB.prepare("SELECT id FROM photos").all();
   const prior = (await e.DB.prepare("SELECT id,body FROM drafts WHERE json_extract(body,'$.status') IN ('draft','approved') ORDER BY CASE json_extract(body,'$.status') WHEN 'approved' THEN 0 ELSE 1 END,rowid DESC LIMIT 50").all()).results;
   const view = await settingsView(e);
+  const {screenWait: _screenWait, ...jobBody} = JSON.parse(job.body);
   return json({
     accessToken: await auth.microsoftToken(e),
     knownPhotoIds: [...new Set([...used.results.map((x) => x.id), ...await history.excluded(e)])],
@@ -112,7 +115,7 @@ async function source(e, job) {
     ownerRejectionFeedback: await auth.get(e, 'ownerRejectionFeedback') || { categories: {}, recent: [] },
     captionLanguage: "en",
     editorLanguage: "zh-CN", // Legacy jobs keep their original prompt language.
-    ...JSON.parse(job.body),
+    ...jobBody,
     referenceDrafts: prior.map(row => { const d = JSON.parse(row.body); return { id: row.id, status: d.status, title: d.title, caption: d.caption.slice(0, 400), photos: d.photos.slice(0, 2).map(p => ({ alt: p.alt })) }; }),
     draftLimit: Math.max(0, Math.min(8, view.settings.draftLimit, view.settings.pendingLimit - view.pending)),
   });
@@ -129,10 +132,24 @@ async function checkpoint(e, job, b) {
   // The ordinary checkpoint still releases it; neither path extends identity.
   const retain = b.nativeCheckpoint === true;
   if (retain && previous.stopRequested) throw new Error('job_stopped');
-  const update = retain
-    ? "UPDATE jobs SET body=json_set(body,'$.progress',json(?)) WHERE id=? AND lease=? AND status='running' AND COALESCE(json_extract(body,'$.stopRequested'),0)!=1"
-    : "UPDATE jobs SET body=json_set(body,'$.progress',json(?)),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE 'pending' END,lease=NULL WHERE id=? AND lease=? AND status='running'";
-  statements.push(e.DB.prepare(update).bind(JSON.stringify(progress), job.id, job.lease));
+  let screenWait = null;
+  if (b.screenWait !== undefined) {
+    const wait = b.screenWait;
+    if (retain || !inventory || !wait || Object.keys(wait).sort().join(',') !== 'revision,taskId'
+        || typeof wait.taskId !== 'string' || !taskIdPattern.test(wait.taskId)
+        || !Number.isSafeInteger(wait.revision) || wait.revision < 1)
+      throw new Error('invalid_checkpoint');
+    const original = previous.screenWait;
+    screenWait = original?.taskId === wait.taskId && original.revision === wait.revision
+      ? original : {...wait, wake: auth.random().replaceAll('-', ''), dispatched: 0};
+  }
+  if (retain) {
+    statements.push(e.DB.prepare("UPDATE jobs SET body=json_set(body,'$.progress',json(?)) WHERE id=? AND lease=? AND status='running' AND COALESCE(json_extract(body,'$.stopRequested'),0)!=1")
+      .bind(JSON.stringify(progress), job.id, job.lease));
+  } else {
+    statements.push(e.DB.prepare("UPDATE jobs SET body=json_patch(json_set(body,'$.progress',json(?)),json_object('screenWait',json(?))),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE 'pending' END,lease=NULL WHERE id=? AND lease=? AND status='running'")
+      .bind(JSON.stringify(progress), JSON.stringify(screenWait), job.id, job.lease));
+  }
   const results = await e.DB.batch(statements);
   if (results.at(-1).meta.changes !== 1) return failure("job_conflict", 409);
   return json({ ok: true });
@@ -225,7 +242,7 @@ async function complete(e, job, b) {
   }
   stmts.push(
     e.DB.prepare(
-      "UPDATE jobs SET body=json_set(body,'$.progress',json(?),'$.lastBatch',?),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE ? END,lease=NULL WHERE id=? AND lease=? AND status='running'",
+      "UPDATE jobs SET body=json_set(json_remove(body,'$.screenWait'),'$.progress',json(?),'$.lastBatch',?),status=CASE WHEN json_extract(body,'$.stopRequested')=1 THEN 'cancelled' ELSE ? END,lease=NULL WHERE id=? AND lease=? AND status='running'",
     ).bind(JSON.stringify(progress), b.batchId, b.more ? (previous.analysisLimit && progress.analyzed >= previous.analysisLimit ? 'limited' : 'pending') : 'complete', job.id, job.lease),
   );
   await e.DB.batch(stmts);
@@ -254,7 +271,13 @@ const internalRoutes = [
     await maintenance(e, Date.now(), (await readJSON(r)).temporaryCleanup);
     return json({ ok: true });
   } },
-  { path: '/internal/claim', methods: ['POST'], handle: (r, e) => claim(e) },
+  { path: '/internal/claim', methods: ['POST'], handle: async (r, e) => {
+    const b = await readJSON(r, BODY_LIMIT.small);
+    if (b?.resumeScreen !== undefined && (typeof b.resumeScreen !== 'string' ||
+        !screenWakePattern.test(b.resumeScreen) || !validId(b.pilotJob)))
+      return failure('invalid_request', 400);
+    return claim(e, b?.resumeScreen, b?.pilotJob);
+  } },
   { path: '/internal/source', methods: ['POST'], lease: true, handle: (r, e, job) => source(e, job) },
   { path: '/internal/checkpoint', methods: ['POST'], lease: true, handle: (r, e, job, b) => checkpoint(e, job, b) },
   { path: '/internal/fail', methods: ['POST'], lease: true, handle: (r, e, job, b) => failJob(e, job, b) },
@@ -327,6 +350,8 @@ async function route(r, e) {
     const parts=p.split('/');if(parts.length!==4||!validId(parts[2])||!validId(parts[3]))return failure('not_found',404);
     return publishing.media(e,parts[2],parts[3]);
   }
+  if (p === '/internal/screen-completed' && r.method === 'POST')
+    return resumeScreen(r, e, () => readBytes(r, BODY_LIMIT.small));
   if (p.startsWith("/internal/")) return internal(r, e, p);
   if (p.startsWith("/api/") || p.startsWith("/auth/")) {
     const user = await auth.session(r, e);

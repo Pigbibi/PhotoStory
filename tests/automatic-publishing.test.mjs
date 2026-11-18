@@ -225,6 +225,16 @@ async function nativeFixture(t){
   intent:true,task_id:null,revision:null,task_deadline:null,claim:null,output_sha256:null,halt:false,cancel:false}};
  return {...v,candidate,auth,checkpoint};
 }
+test('Muse checkpoints bind to the publication profile and existing approved draft',async t=>{
+ const {env,DB,auth,checkpoint}=await nativeFixture(t);
+ const route=checkpoint.value.binding.route;
+ Object.assign(route,{provider:'muse',profile:'screen'});
+ await assert.rejects(automatic(env,{...auth,action:'native_checkpoint',checkpoint}),/publication_conflict/);
+ route.profile='publication';
+ await automatic(env,{...auth,action:'native_checkpoint',checkpoint});
+ const row=await DB.prepare('SELECT status FROM publications WHERE id=?').bind(auth.publicationId).first();
+ assert.equal(row.status,'prepared');
+});
 test('native prepared checkpoint resumes only the same known task without refreshing publication expiry',async t=>{
  const v=await nativeFixture(t);const {env,DB,auth,checkpoint}=v;
  const before=await DB.prepare('SELECT created,expires FROM publications WHERE id=?').bind(auth.publicationId).first();
@@ -244,7 +254,7 @@ test('native checkpoint identity drift, expiry and original owner/uncertain gate
  Object.assign(checkpoint.value,{task_id:'synthetic-task',revision:1,task_deadline:Date.now()/1000+60});
  await automatic(env,{...auth,action:'native_checkpoint',checkpoint});
  for(const mutate of [x=>x.value.task_id='different',x=>x.value.binding.route.worker='different',
-  x=>x.value.binding.request_sha256='b'.repeat(64),x=>x.value.binding.project='QuantStrategyLab/QuantRuntimeSettings']){
+  x=>x.value.binding.request_sha256='b'.repeat(64),x=>x.value.binding.project='OtherOwner/OtherRepo']){
   const wrong=structuredClone(checkpoint);mutate(wrong);
   await assert.rejects(automatic(env,{...auth,action:'native_checkpoint',checkpoint:wrong}),/publication_conflict/);
  }
