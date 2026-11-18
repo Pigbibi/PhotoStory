@@ -76,33 +76,39 @@ the feature with more than one administrator.
 ```text
 Browser → Cloudflare Worker + D1 + private R2
                          ↕ machine-authenticated API
-              GitHub Actions processor → PersonalAIService tasks
-                         ↕                  ↕
-                      OneDrive          Dot / GrokBot
+              GitHub Actions processor → Direct AI API (OpenAI / Anthropic)
+                                         or OIDC Task Gateway
+                         ↕
+                      OneDrive
 ```
 
 The Worker owns authentication, OAuth, settings, drafts, approval state, and
 publication state. GitHub Actions performs bounded scans, restores private SQLite
-state from R2, and submits native tasks with GitHub OIDC through PersonalAIService.
+state from R2, and runs AI review through direct OpenAI / Anthropic HTTPS APIs
+or an explicit OIDC Task Gateway (`AI_TASK_GATEWAY_URL`).
 
-The private `PHOTOSTORY_NATIVE_BINDING` selects one admitted provider, model and
-worker across all six stages. Dot and named `grokbot` are supported; adding a
-provider name does not enable it or grant service access.
+When using a task gateway, `PHOTOSTORY_NATIVE_BINDING` selects one explicit
+`agent` or `api` route configuration (`provider`, `model`, and `worker`) across
+all six stages. Direct API keys are used only when `AI_TASK_GATEWAY_URL` and
+`PHOTOSTORY_NATIVE_BINDING` are unset.
 
 The AI runtime does not receive OneDrive refresh tokens, Worker secrets, or
 publishing authority. The processor receives EXIF-free previews; it never deletes
 OneDrive originals.
 
-The Actions processor requires no Codex CLI or VPS gateway. The retained
+The Actions processor requires no CLI daemon or VPS gateway. The retained
 `run_isolated_ai.py` and systemd CLI setup are deprecated. Use the
-[processor setup](docs/github-actions-processor.zh-CN.md) for the active path.
+[processor setup](docs/github-actions-processor.md) for the active path.
 
 ## Quick start
 
 Requirements: Node.js and npm, Python 3 with Pillow, a Cloudflare account, a
 GitHub OAuth App, and a Microsoft Entra app that supports personal Microsoft
-accounts. The Actions processor needs a private R2 bucket and an admitted native
-task binding to PersonalAIService, including an available Dot or GrokBot worker.
+accounts.
+
+The Actions processor also needs a private R2 bucket and either a direct
+`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` or an admitted OIDC Task Gateway
+(`AI_TASK_GATEWAY_URL` + `PHOTOSTORY_NATIVE_BINDING`).
 
 ```sh
 npm ci
@@ -145,7 +151,10 @@ history, source file, frontend variable, issue, screenshot, or chat.
 | `BATCH_TOKEN` | Worker Secret | Authenticates the processor |
 | `PHOTOSTORY_BATCH_TOKEN` | GitHub Actions Secret | Same machine token |
 | `PHOTOSTORY_URL` | GitHub Actions variable | Your Worker origin |
-| `PHOTOSTORY_NATIVE_BINDING` | GitHub Actions Secret | Native service origin, audience and exact stage routes |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Optional GitHub Actions Secret | Direct OpenAI or Anthropic HTTPS backend when `AI_TASK_GATEWAY_URL` is unset |
+| `PHOTOSTORY_OPENAI_MODEL`, `PHOTOSTORY_ANTHROPIC_MODEL`, `PHOTOSTORY_AI_PROVIDER` | Optional GitHub Actions variable | Override default direct models or pick `openai` / `anthropic` |
+| `AI_TASK_GATEWAY_URL`, `PHOTOSTORY_NATIVE_BINDING` | Optional GitHub Actions variable / Secret | Generic OIDC Task Gateway origin, audience and stage routes |
+| `PHOTOSTORY_SCREEN_BINDING` | Optional GitHub Actions Secret | Configure asynchronous screen routing and rule-based manual drafts for a batch job |
 
 Register these redirects with your own applications:
 
@@ -156,8 +165,8 @@ https://YOUR-SITE/auth/microsoft/callback
 
 GitHub login requests no repository scope. Microsoft consent requests read access
 and offline access; the processor applies the selected folder and date range.
-The Actions setup is in the [processor migration guide](docs/github-actions-processor.zh-CN.md).
-The [AI and VPS setup](docs/ai-setup.zh-CN.md) describes the deprecated CLI path.
+The Actions setup is in the [processor setup guide](docs/github-actions-processor.md).
+The [AI and processor setup](docs/ai-setup.md) also documents legacy CLI paths.
 
 For an unverified cloud qualification, keep its task ID and use the processor's
 existing `native_qualification_task_id` and `native_qualification_action=readback`
@@ -200,7 +209,7 @@ ordinary processor success does not verify a skipped qualification job.
 
 The scheduled workflow advances pending work only while it runs. It does not
 retry failed or uncertain external operations automatically. See
-[lifecycle and retention](docs/lifecycle.zh-CN.md).
+[lifecycle and retention](docs/lifecycle.md).
 
 ## Safety boundaries
 
@@ -219,16 +228,16 @@ See [privacy and operating limits](docs/privacy.md),
 
 ## Documentation
 
-- [AI and VPS setup](docs/ai-setup.zh-CN.md)
+- [AI and processor setup](docs/ai-setup.md)
 - [Ownership and preferences](docs/ownership-and-preferences.md)
 - [Privacy and operating limits](docs/privacy.md)
-- [Lifecycle and retention](docs/lifecycle.zh-CN.md)
+- [Lifecycle and retention](docs/lifecycle.md)
 - [Instagram setup](docs/instagram-setup.md)
 - [Publication history and repeat protection](docs/publication-history.md)
 - [Private R2 storage](docs/storage.md)
-- [Security design and deployment checks](docs/security-design.zh-CN.md)
+- [Security design and deployment checks](docs/security-design.md)
 - [Linux processor isolation](deploy/systemd/README.md)
-- [GitHub Actions processor migration](docs/github-actions-processor.zh-CN.md)
+- [GitHub Actions processor setup](docs/github-actions-processor.md)
 
 ## Validation
 

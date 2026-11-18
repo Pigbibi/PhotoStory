@@ -39,7 +39,7 @@ class LocalTransport:
         route = self.routes[request['profile']]
         task = 'synthetic-task-'+str(len(self.records)+1)
         record = {'id':task, 'owner':self.project, 'request':json.loads(json.dumps(request)),
-                  'provider':route['provider'], 'revision':1, 'deadline':self.clock[0]+60,
+                  'provider':route['provider'], 'revision':1, 'deadline':self.clock[0]+request['timeout_seconds'],
                   'created':self.clock[0], 'updated':self.clock[0],
                   'worker':route['worker'] if self.dispatch else None,
                   'attempt':'synthetic-attempt-'+task if self.dispatch else None,
@@ -105,6 +105,52 @@ def test_six_existing_stages_each_create_exactly_one_configured_task(tmp_path):
     assert {r['request']['profile'] for r in records} == set(STAGES)
     assert all(r['provider'] == ctx['routes'][r['request']['profile']]['provider'] for r in records)
     assert all('helper' not in r['request']['objective'].lower() for r in records)
+
+
+def test_all_six_stages_accept_muse_provider(tmp_path):
+    ctx, wire = context(tmp_path)
+    ctx['routes'] = {stage: {**route, 'provider': 'muse'} for stage, route in ctx['routes'].items()}
+    wire.routes = {stage: route for stage, route in ctx['routes'].items()}
+    image = photo(tmp_path)
+    for stage in STAGES:
+        call = batch.native_review_gateway(ctx, stage=stage)
+        out = call('prompt', [{'id': 'p'}], [] if stage == 'labels' else [image], SCHEMA, tmp_path)
+        assert out == {'ok': True}
+    assert {r['provider'] for r in wire.records.values()} == {'muse'}
+    assert {r['request']['timeout_seconds'] for r in wire.records.values()} == {600}
+
+
+def test_regular_muse_screen_pending_does_not_park_for_a_pilot_webhook(tmp_path):
+    from native_tasks import NativePending
+    ctx, wire = context(tmp_path)
+    ctx['routes']['screen']['provider'] = 'muse'
+    wire.complete = False
+    with pytest.raises(NativePending) as pending:
+        batch.native_review_gateway(ctx, stage='screen')('prompt', [{'id':'p'}], [photo(tmp_path)], SCHEMA, tmp_path)
+    assert pending.value.screen_wait is None
+
+
+
+def test_muse_screen_resumes_original_task_while_group_keeps_60_seconds(tmp_path):
+    from native_tasks import NativePending, with_muse_screen
+    ctx, wire = context(tmp_path)
+    route = {**ctx['routes']['screen'], 'provider': 'muse', 'profile': 'muse-screen'}
+    ctx = with_muse_screen({**ctx, 'deadline': wire.clock[0] + 3600}, route)
+    wire.routes['muse-screen'] = route
+    image = photo(tmp_path)
+    wire.complete = False
+    screen = batch.native_review_gateway(ctx, stage='screen')
+    with pytest.raises(NativePending):
+        screen('prompt', [{'id': 'p'}], [image], SCHEMA, tmp_path)
+    task, = wire.records
+    assert wire.records[task]['request']['timeout_seconds'] == 600
+    wire.clock[0] += 300
+    wire.complete_task(task)
+    assert screen('prompt', [{'id': 'p'}], [image], SCHEMA, tmp_path) == {'ok': True}
+    assert [call[0] for call in wire.calls] == ['POST', 'GET']
+    wire.complete = True
+    batch.native_review_gateway(ctx, stage='group')('prompt', [{'id': 'p'}], [image], SCHEMA, tmp_path)
+    assert [row['request']['timeout_seconds'] for row in wire.records.values()] == [600, 60]
 
 
 @pytest.mark.parametrize('phase', ['intent_checkpoint', 'response', 'adoption_checkpoint'])
@@ -217,7 +263,7 @@ def test_stop_cancels_original_task_once_and_never_reports_it_stopped_early(tmp_
     assert wire.records[task_id]['status'] == 'cancelled'
 
 
-@pytest.mark.parametrize('field,value', [('owner','QuantStrategyLab/QuantAIService'), ('provider','wrong'), ('revision',True), ('worker','wrong-worker'), ('output',{'ok':False})])
+@pytest.mark.parametrize('field,value', [('owner','OtherOwner/OtherRepo'), ('provider','wrong'), ('revision',True), ('worker','wrong-worker'), ('output',{'ok':False})])
 def test_wrong_binding_or_schema_never_consumes_result(tmp_path, field, value):
     from native_tasks import NativeStopped
     ctx, wire = context(tmp_path)
@@ -603,8 +649,8 @@ def test_run_without_enabled_binding_never_bootstraps_or_touches_business(disabl
 def test_bootstrap_rejects_incomplete_binding_before_client_or_task(tmp_path,invalid):
     from native_tasks import bootstrap_context,NativeStopped
     ctx,wire=context(tmp_path);binding=bootstrap_binding(ctx);factory=MagicMock()
-    if invalid=='project':binding['project']='other/PhotoStory'
-    if invalid=='provider':binding['routes']['screen']['provider']='api'
+    if invalid=='project':binding['project']='invalid-project-slug'
+    if invalid=='provider':binding['routes']['screen']['provider']='../bad'
     if invalid=='missing_stage':binding['routes'].pop('publication')
     if invalid=='worker':binding['routes']['screen']['worker']=''
     if invalid=='mcp_base':binding['service_url']+='/mcp'
@@ -891,7 +937,7 @@ class PendingBatchHarness:
         else: raise AssertionError('unexpected fake business request: '+path)
         return json.dumps(result).encode()
 
-    def run(self, *, workflow_env=None):
+    def run(self, *, workflow_env=None, **runtime):
         import cloud_inventory
         h = self
         class Cloud:
@@ -922,7 +968,7 @@ class PendingBatchHarness:
              patch.object(batch,'graph',side_effect=AssertionError('no real media/scan')), \
              patch('preselect.representatives',side_effect=lambda previews,*args:[(v,data,{}) for v,data in previews]), \
              patch.object(batch,'gateway',side_effect=AssertionError('retired gateway')):
-            if workflow_env is None: batch.run(native_context=self.ctx)
+            if workflow_env is None: batch.run(native_context=self.ctx, **runtime)
             else: batch.main()
 
     def timely_result(self, resume=1800):
@@ -931,6 +977,83 @@ class PendingBatchHarness:
         self.wire.complete_task(task)
         self.wire.clock[0] = self.started + resume
         return task
+
+
+@pytest.mark.parametrize('receipt_case', ['valid', 'altered_request', 'expired'])
+def test_muse_wakeup_restores_cloud_checkpoint_and_never_enters_publication(tmp_path, receipt_case):
+    fixture = PendingBatchHarness(tmp_path, cloud=True)
+    fixture.ctx['adoption_age_seconds'] = 60
+    route = {**fixture.ctx['routes']['screen'], 'provider': 'muse', 'profile': 'muse-screen'}
+    fixture.wire.routes = {**fixture.wire.routes, 'muse-screen': route}
+    fixture.wire.output = lambda request: {'photos':[{
+        'id':'p','decision':'allow','flags':[],'landscape':True,'aesthetic':8,
+        'description':'Synthetic scenery','peopleRole':'none','compositionClear':True,
+        'contentKind':'permanent_scenery','light':'day','scene':'architecture',
+        'place':{'city':'','landmark':'','evidence':'','confidence':'none'}}]}
+    pilot = {'job_id': 'job', 'route': route}
+    fixture.run(muse_screen=pilot)
+    task, = fixture.wire.records
+    assert fixture.calls[-1][1]['screenWait'] == {'taskId': task, 'revision': 1}
+    if receipt_case=='expired':
+        fixture.wire.clock[0] = fixture.started + 60
+    else:
+        fixture.timely_result(resume=30)
+    original_image = fixture.image
+    latest_image = io.BytesIO()
+    Image.new('RGB',(80,60),'red').save(latest_image,'JPEG')
+    fixture.image = latest_image.getvalue()
+    if receipt_case=='altered_request':
+        fixture.wire.records[task]['request']['objective'] = 'different request'
+    before = len(fixture.calls)
+    wake = 'a' * 64
+    if receipt_case != 'valid':
+        with pytest.raises(batch.Stop):
+            fixture.run(muse_screen=pilot, resume_screen=wake)
+        assert fixture.completed == []
+        expected = 'native_cancel_or_expiry' if receipt_case=='expired' else 'native_screen_readback_failed'
+        assert fixture.calls[-1][1]['reason'] == expected
+        assert sum(m=='POST' and path=='/v1/tasks' for m,path,_ in fixture.wire.calls)==1
+        assert sum(path.endswith('/cancel') for _,path,_ in fixture.wire.calls)==(receipt_case=='expired')
+        return
+    fixture.run(muse_screen=pilot, resume_screen=wake)
+    assert fixture.calls[before] == ('/internal/claim', {'resumeScreen': wake, 'pilotJob': 'job'})
+    assert not any(path in {'/internal/maintenance', '/internal/autopublish'} for path, _ in fixture.calls[before:])
+    assert len(fixture.completed) == 1
+    completion = fixture.completed[0]
+    draft, = completion['drafts']
+    assert draft['id'].startswith('job-' + completion['batchId'] + '-')
+    assert [p['id'] for p in draft['photos']] == ['p']
+    assert base64.b64decode(completion['photos'][0]['jpeg']) == original_image
+    assert completion['autoReviews'] == completion['crossReviews'] == []
+    assert [(method,path) for method,path,_ in fixture.wire.calls] == [
+        ('POST','/v1/tasks'), ('GET','/v1/tasks/'+task)]
+
+@pytest.mark.parametrize('muse_pilot', [False,True])
+def test_only_named_muse_pilot_can_scan_a_58_page_folder_in_one_lease(tmp_path,muse_pilot):
+    from inventory import Inventory
+    fixture=PendingBatchHarness(tmp_path,cloud=True)
+    fixture.source['progress']['phase']='scanning'
+    route={**fixture.ctx['routes']['screen'],'provider':'muse','profile':'muse-screen'}
+    pilot={'job_id':'job' if muse_pilot else 'different-job','route':route}
+    source_policy=hashlib.sha256((batch.SCREEN_PROMPT+batch.GROUP_PROMPT).encode()).hexdigest()
+    inv=Inventory(fixture.directory,'job',fixture.source,source_policy)
+    with inv.db:
+        inv.db.execute("INSERT INTO folders(id) VALUES('generated-folder')")
+    inv.close()
+    original_scan=Inventory.scan
+    pages=[]
+    def graph(url):
+        pages.append(url)
+        if len(pages)==58:
+            return {'value':[]}
+        return {'value':[],'@odata.nextLink':f'https://graph.microsoft.com/next/{len(pages)}'}
+    def scan(inventory,fetch,decode,**options):
+        return original_scan(inventory,graph,decode,**options)
+    with patch.object(Inventory,'scan',scan):
+        fixture.run(muse_screen=pilot)
+    assert len(pages)==(58 if muse_pilot else 50)
+    assert fixture.source['progress']['phase']==('processing' if muse_pilot else 'scanning')
+    assert fixture.wire.calls==[]
 
 
 @pytest.mark.parametrize('cloud', [False,True])
@@ -1067,7 +1190,7 @@ def test_workflow_binding_requires_exact_single_handler_before_client_or_busines
     config=workflow_config()
     if invalid=='disabled':config['enabled']=False
     if invalid=='extra':config['token']='not-allowed'
-    if invalid=='project':config['project']='QuantStrategyLab/QuantAIService'
+    if invalid=='project':config['project']='OtherOwner/OtherRepo'
     if invalid=='ttl':config['timeout_seconds']=600
     if invalid=='mixed_provider':config['routes']['cross_review']['provider']='grok'
     if invalid=='mixed_grokbot':config['routes']['cross_review']['provider']='grokbot'
@@ -1131,7 +1254,7 @@ def test_public_http_factory_reuses_existing_ledger_and_consumer(tmp_path,mode):
     if mode in {'pending_resume','cancel','expiry'}:wire.complete=False
     if mode=='unknown':wire.lose=True
     if mode=='wrong_revision':wire.mutate=lambda r:{**r,'revision':True}
-    if mode=='wrong_project':wire.mutate=lambda r:{**r,'owner':'QuantStrategyLab/QuantAIService'}
+    if mode=='wrong_project':wire.mutate=lambda r:{**r,'owner':'OtherOwner/OtherRepo'}
     if mode=='wrong_provider':wire.mutate=lambda r:{**r,'provider':'grok'}
     if mode=='invalid_output':wire.output=lambda r:{'ok':False}
     call=lambda:batch.native_review_gateway(ctx,stage='labels')('generated',[{'id':'p'}],[],SCHEMA,tmp_path)
@@ -1317,7 +1440,7 @@ def test_new_task_age_policy_does_not_reinterpret_legacy_receipts(tmp_path):
     assert len(wire.calls)==count
 
 
-@pytest.mark.parametrize('provider', ['dot', 'grokbot'])
+@pytest.mark.parametrize('provider', ['dot', 'grokbot', 'muse'])
 def test_workflow_binding_accepts_one_explicit_provider(tmp_path, provider):
     config = workflow_config()
     for route in config['routes'].values():
@@ -1333,9 +1456,45 @@ def test_grokbot_context_preserves_provider_identity(tmp_path):
     for route in ctx['routes'].values():
         route['provider'] = 'grokbot'
     validate_context(ctx)
-    ctx['routes']['screen']['provider'] = 'unknown-provider'
+    ctx['routes']['screen']['provider'] = 'invalid/provider'
     with pytest.raises(NativeStopped):
         validate_context(ctx)
+
+
+def test_generic_oss_project_provider_mode_and_neutral_screen_binding(tmp_path):
+    from native_tasks import validate_context
+    ctx, wire = context(tmp_path)
+    ctx['project'] = 'custom-org/photostory-oss'
+    wire.project = 'custom-org/photostory-oss'
+    for stage, route in ctx['routes'].items():
+        route.update(mode='api', provider='custom-provider.v1')
+    validate_context(ctx)
+    wire.routes = dict(ctx['routes'])
+    image = photo(tmp_path)
+    assert batch.native_review_gateway(ctx, stage='screen')(
+        'prompt', [{'id': 'p1'}], [image], SCHEMA, tmp_path,
+    ) == {'ok': True}
+
+    config = workflow_config()
+    config['project'] = 'custom-org/photostory-oss'
+    for route in config['routes'].values():
+        route.update(mode='api', provider='openai-gateway', worker='gw-worker', model='gpt-4.1-mini')
+    screen_cfg = {'job_id': 'job-42', 'model': 'gpt-4.1', 'worker': 'screen-w', 'provider': 'vision-gw'}
+    with patch.dict('os.environ', {
+        'GITHUB_REPOSITORY': 'custom-org/photostory-oss',
+        'PHOTOSTORY_NATIVE_BINDING': json.dumps(config),
+        'PHOTOSTORY_SCREEN_BINDING': json.dumps(screen_cfg),
+    }, clear=True):
+        binding = batch.workflow_binding(tmp_path, tmp_path, now=lambda: 100)
+        pilot = batch.screen_binding()
+    assert binding['project'] == 'custom-org/photostory-oss'
+    assert pilot == {
+        'job_id': 'job-42',
+        'route': {
+            'mode': 'agent', 'provider': 'vision-gw', 'profile': 'async-screen',
+            'model': 'gpt-4.1', 'worker': 'screen-w',
+        },
+    }
 
 
 def test_named_grokbot_completes_existing_stages_without_legacy_provider(tmp_path):
@@ -1354,3 +1513,29 @@ def test_named_grokbot_completes_existing_stages_without_legacy_provider(tmp_pat
     with pytest.raises(NativeStopped):
         batch.native_review_gateway(ctx, stage='screen')(
             'different synthetic prompt', [{'id': 'synthetic-photo'}], [image], SCHEMA, tmp_path)
+
+
+def test_screen_binding_overrides_muse_base_route_and_resumes_cleanly(tmp_path):
+    fixture = PendingBatchHarness(tmp_path, cloud=True)
+    for route in fixture.ctx['routes'].values():
+        route.update(provider='muse', model='base-muse', worker='muse-worker')
+    fixture.wire.routes = dict(fixture.ctx['routes'])
+    override = {
+        'mode': 'api', 'provider': 'vision-gw', 'profile': 'async-screen',
+        'model': 'vision-v2', 'worker': 'async-worker',
+    }
+    fixture.wire.routes['async-screen'] = override
+    fixture.wire.output = lambda request: {'photos': [{
+        'id': 'p', 'decision': 'allow', 'flags': [], 'landscape': True, 'aesthetic': 8,
+        'description': 'Synthetic scenery', 'peopleRole': 'none', 'compositionClear': True,
+        'contentKind': 'permanent_scenery', 'light': 'day', 'scene': 'architecture',
+        'place': {'city': '', 'landmark': '', 'evidence': '', 'confidence': 'none'},
+    }]}
+    pilot = {'job_id': 'job', 'route': override}
+    fixture.run(screen_binding_config=pilot)
+    task, = fixture.wire.records
+    assert fixture.wire.records[task]['provider'] == 'vision-gw'
+    assert fixture.calls[-1][1]['screenWait'] == {'taskId': task, 'revision': 1}
+    fixture.timely_result(resume=30)
+    fixture.run(screen_binding_config=pilot, resume_screen='a' * 64)
+    assert len(fixture.completed) == 1

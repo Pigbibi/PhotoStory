@@ -55,9 +55,10 @@ Do not reveal or generate a token merely to complete this preparation step.
 The setup wizard can offer **Add all required permissions** for messaging, listing
 basic profile, comments and messages. A photo publisher should instead open
 **Permissions and features** and add only `instagram_business_basic` and
-`instagram_business_content_publish`. Leave comments, messages, insights and ads
-unselected. An app permission marked ready for testing is not account consent or
-approval to serve the public.
+`instagram_business_content_publish`.
+
+Leave comments, messages, insights and ads unselected. An app permission marked
+ready for testing is not account consent or approval to serve the public.
 
 Before adding the Instagram account, the console directs you to **App roles →
 Roles** to assign its **Instagram Tester** role. Use the intended account's exact
@@ -67,15 +68,17 @@ developer sign-in and Instagram account sign-in are separate sessions.
 After adding the username, the Meta roles table shows **Pending** until the
 Instagram account accepts. Meta links to [Apps and websites](https://www.instagram.com/accounts/manage_access/)
 for invitation management. Sign in as the intended Instagram account, select
-**Tester Invites**, and accept the **PhotoStory-IG** invitation. Read the tester
-statement and Meta terms before accepting. If opening this link fails at the
-login redirect, first sign in at [Instagram home](https://www.instagram.com/),
+**Tester Invites**, and accept the **PhotoStory-IG** invitation.
+
+Read the tester statement and Meta terms before accepting. If opening this link
+fails at the login redirect, first sign in at [Instagram home](https://www.instagram.com/),
 then reopen Apps and websites. This sequence was verified in the embedded browser.
-If login still cannot load, use your normal browser;
-do not send passwords or verification codes to the deployment operator. Return
-to the Meta roles page afterward and verify that Pending has cleared before
-attempting account authorization. Do not remove and re-invite merely because
-acceptance is still pending.
+
+If login still cannot load, use your normal browser; do not send passwords or
+verification codes to the deployment operator. Return to the Meta roles page
+afterward and verify that Pending has cleared before attempting account
+authorization. Do not remove and re-invite merely because acceptance is still
+pending.
 
 The wizard also has a **Webhook callback URL** and a separate **Set up Instagram
 business login** section. A webhook callback is not an OAuth redirect URI. Do not
@@ -87,10 +90,12 @@ callback below; it does not implement Instagram webhooks.
 The integration uses **Instagram API with Instagram Login**, for a
 Business or Creator account. Its basic profile permission is
 `instagram_business_basic`; content publishing uses
-`instagram_business_content_publish`. Do not request messages, comments, ads or
-insights permissions solely to publish landscape photos. The similarly named
-Facebook Login API has a different setup and must not be mixed into these steps.
-See [Meta's official Instagram API collection](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api).
+`instagram_business_content_publish`.
+
+Do not request messages, comments, ads or insights permissions solely to publish
+landscape photos. The similarly named Facebook Login API has a different setup
+and must not be mixed into these steps. See
+[Meta's official Instagram API collection](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api).
 
 For initial testing, follow the app dashboard's account-role/tester instructions
 and accept the invitation from the intended Instagram account. Verify the returned
@@ -108,6 +113,7 @@ client secrets, authorization codes or screenshots containing them.
 Store `INSTAGRAM_CLIENT_SECRET` in Cloudflare encrypted Secrets. The Worker stores
 the provider token encrypted with the existing `TOKEN_ENCRYPTION_KEY`; do not
 rotate that key casually, because it also protects the existing OneDrive token.
+
 Never put credentials in `VITE_*` variables, frontend bundles, browser links,
 committed `.env` files or chat messages. Meta's long-lived-token API requires
 server-to-server query parameters; these requests never reach the browser and
@@ -138,22 +144,23 @@ sanitized errors.
    is one-use, expires after ten minutes and is bound to the owner's exact login
    session. Do not sign out of PhotoStory midway through the flow.
 6. Long-lived tokens renew automatically when fewer than 30 days remain, provided
-   they are at least 24 hours old and still valid. The existing VPS maintenance
-   timer must remain online; renewal works even when scheduled draft generation
-   is disabled. No new secret, permission or database migration is required.
-   Each connection can attempt renewal at most once per day. Failures retain the
-   old token and show a warning; expired/revoked grants need **Reconnect Instagram**.
-   The page shows the updated expiry and last successful renewal time. Concurrent
-   renewal is guarded and cannot overwrite a newer owner reconnection.
-   Tokens remain encrypted in D1; provider errors and credential URLs are not logged.
-   Renewal follows Meta's [refresh endpoint](https://developers.facebook.com/documentation/instagram-platform/reference/refresh_access_token). To revoke access, use Instagram's
-   **Apps and websites** settings. The displayed expiry is the stored grant's
-   expiry, not a continuous check for revocation. Publishing checks the saved account and token expiry again.
+   they are at least 24 hours old and still valid:
+   - Keep the existing maintenance timer online; renewal works even when
+     scheduled draft generation is disabled, with no new secret or migration.
+   - Each connection attempts renewal at most once daily. Failures retain the
+     old token with a warning; expired grants need **Reconnect Instagram**.
+   - Concurrent renewal is guarded against newer owner reconnections, and
+     provider errors or credential URLs are never logged.
+   - Renewal follows Meta's [refresh endpoint](https://developers.facebook.com/documentation/instagram-platform/reference/refresh_access_token)
+     and can be revoked in Instagram's **Apps and websites** settings.
+   - The displayed expiry reflects the stored grant; publishing rechecks the
+     saved account and expiry before calling Meta.
 
 The implementation follows Meta's [Business Login documentation](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login)
-and [account identity endpoint](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/get-started),
-using Graph API `v26.0`. Test the connection with your own app-role account first;
-public distribution still depends on Meta's applicable access review.
+and [account identity endpoint](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/get-started), using Graph API `v26.0`.
+
+Test the connection with your own app-role account first; public distribution
+still depends on Meta's applicable access review.
 
 
 Keep posting disabled during setup. The first end-to-end test must name the target
@@ -196,8 +203,10 @@ delivery, see [Notifications and operator response](notifications.md).
 Once publishing starts, draft edits/trash and duplicate publication are blocked.
 Each external operation is claimed durably before sending; timeouts, crashes or
 ambiguous results stop in an uncertain state. Never delete that record to retry.
+
 Check Instagram and the known container/media IDs through an administrator first;
 there is deliberately no automatic replay of a possibly successful publish call.
+
 Temporary image URLs expire after one hour. Maintenance removes expired JPEG blobs
 independently of review-trash retention; the publication record remains for duplicate
 prevention and history. Unfinished preparations stay private and expire too.
@@ -207,69 +216,109 @@ Meta app roles/access review still govern who can use the integration.
 
 API sequence follows Meta's [content publishing guide](https://developers.facebook.com/documentation/instagram-platform/content-publishing):
 create image containers, wait for `FINISHED`, create the carousel if needed, then
-call `media_publish` once. Pending containers are polled at one-minute intervals,
-with at most five unfinished checks; approved image alt text is included. Tokens are server-only bearer headers; provider error
-messages and credential-bearing URLs are never returned to the website.
+call `media_publish` once.
+
+Pending containers poll at one-minute intervals up to five unfinished checks and
+include approved alt text. Tokens stay server-side; provider errors and signed
+URLs never reach the website.
 
 ## Optional automatic publishing
 
 Connection Settings → Publishing mode offers **Manual publishing (default)** and
-**Strict AI automatic publishing**. Select a mode and save; the owner-only,
-same-origin, version-checked settings API persists it in private D1 state across
-redeployments. No source edit, secret in GitHub, or database migration is needed.
+**Strict AI automatic publishing**. Save your choice; the owner-only API persists
+it in private D1 across redeployments with no code edits or secrets required.
+
 Existing installations remain manual even if strict AI *review* was already on.
-Selecting automatic publishing also selects strict AI review and requires a
-connected Instagram account. Switching review to manual disables automatic publishing.
+Selecting automatic publishing also enables strict AI review and requires a
+connected Instagram account. Switching review to manual disables automatic
+publishing.
 
 Only newly AI-approved drafts generated after activation qualify. Existing drafts,
 human-approved drafts, edited drafts, and fitted/white-border layouts are excluded.
-Each source must score at least 9/10 and pass the complete-post AI gate. The VPS
-then downloads version-checked originals, confirms matching orientation, renders
-the saved crop at 1080 pixels wide without upscaling, and strips metadata. A separate
-AI call reviews these exact final JPEGs. Their SHA-256 digests are checked against
-the staged files before starting the existing durable Instagram publisher.
+Each source must score at least 9/10 and pass the complete-post AI gate.
+
+The processor then downloads version-checked originals, confirms matching
+orientation, renders the saved crop at 1080 pixels wide without upscaling, and
+strips metadata. A separate AI call reviews these exact final JPEGs. Their SHA-256
+digests are checked against the staged files before starting the existing durable
+Instagram publisher.
+
 Rejected preparations return to the human-review queue. Failed/crashed preparations
 are never automatically reclaimed. A browser is not required.
 
 Deploy the Worker and all Python files under `scripts/` together, including
-`inventory.py`, `preselect.py`, the review modules and the publishing processor. Use the existing
-Pillow environment and the GitHub Actions processor or a VPS timer. The gateway's
-bounded JPEG input limit is 1.8 MB per image, matching the publisher. Each run
-selects at most one post and advances its recorded Meta operations after preparation
-within the same run, for at most 20 minutes and 128 calls. Unfinished containers
-still respect the server's one-minute polling delay. Publication takes priority
-over scanning; it no longer waits for another scheduled invocation that might
-arrive after the one-hour delivery URLs expire. An uncertain response, transport
-failure or run limit stops processing and fails the run without replaying the
-operation. An existing publication requiring inspection also fails the run instead
-of silently reporting no work. Keep the timer online; this is best-effort processing, not an exact-time
-posting scheduler. Scheduled photo discovery is a separate setting.
+`inventory.py`, `preselect.py`, the review modules and the publishing processor.
+Use the existing Pillow environment and the GitHub Actions processor or a VPS
+timer. The gateway's bounded JPEG input limit is 1.8 MB per image, matching the
+publisher.
+
+Each run selects at most one post and advances its recorded Meta operations after
+preparation within the same run, for at most 20 minutes and 128 calls. Unfinished
+containers still respect the server's one-minute polling delay. Publication takes
+priority over scanning; it no longer waits for another scheduled invocation that
+might arrive after the one-hour delivery URLs expire.
+
+An uncertain response, transport failure or run limit stops processing and fails
+the run without replaying the operation. An existing publication requiring
+inspection also fails the run instead of silently reporting no work. Keep the
+timer online; this is best-effort processing, not an exact-time posting scheduler.
+Scheduled photo discovery is a separate setting.
 
 The fixed weekly mode permits **one new automatic attempt per rolling seven days**.
 The optional adaptive mode uses the approved, unpublished queue: 1–2 posts keep
 a seven-day interval, 3–5 use three days, and 6 or more use at least 24 hours.
-It starts only during the configured Asia/Shanghai hour. Manual publications
-and failed preparation attempts count toward the interval. An ambiguous or interrupted
-external request stops the queue for owner inspection; it is never blindly retried.
-Switching to manual blocks subsequent automatic requests, but cannot recall a
-request already sent to Meta. Re-enabling does not resume old automatic attempts.
-An in-progress/uncertain publication needs inspection before starting another.
-To take over a private prepared draft, select manual mode and regenerate its
-publishing preview. Existing expiring delivery links and cleanup remain unchanged.
+It starts only during the configured Asia/Shanghai hour.
+
+Manual publications and failed preparation attempts count toward the interval. An
+ambiguous or interrupted external request stops the queue for owner inspection; it
+is never blindly retried. Switching to manual blocks subsequent automatic requests,
+but cannot recall a request already sent to Meta.
+
+Re-enabling does not resume old automatic attempts. An in-progress/uncertain
+publication needs inspection before starting another. To take over a private
+prepared draft, select manual mode and regenerate its publishing preview. Existing
+expiring delivery links and cleanup remain unchanged.
 
 Automatic mode is opt-in authorization to actually publish. Test your account with
 an explicitly approved manual post first. AI is fallible; strict checks reduce
 risk but do not guarantee safe or attractive photos. No live automatic post is
 part of the repository's automated test suite.
 
-For a low-frequency deployment, scan the last three months weekly with a configurable analysis budget (default 300). No new photos or no eligible draft means no post; unused opportunities do not accumulate.
+For a low-frequency deployment, scan the last three months weekly with a
+configurable analysis budget (default 300). No new photos or no eligible draft
+means no post; unused opportunities do not accumulate.
 
 ## Account verification and publication alerts
 
-A Meta checkpoint can temporarily prevent API access even while the saved token has not expired. PhotoStory records a failed publication's time, step, HTTP status and numeric Meta codes in its private publication record. Provider messages, tokens and URLs are excluded. A persistent owner-only site alert appears on page load and refreshes every minute while the site is open; this is an in-site notification, not email or push delivery. Codes 10, 190 and 200, or HTTP 401/403, request authorization attention without claiming to identify the exact Meta checkpoint.
+A Meta checkpoint can temporarily prevent API access even while the saved token
+has not expired. PhotoStory records a failed publication's time, step, HTTP status
+and numeric Meta codes in its private publication record. Provider messages,
+tokens and URLs are excluded.
 
-Complete verification on Meta's official site and wait for access to return. `GET /internal/instagram-check`, protected by the processor credential, checks the account without creating media. Verification does not automatically retry publication.
+A persistent owner-only site alert appears on page load and refreshes every minute
+while the site is open; this is an in-site notification, not email or push
+delivery. Codes 10, 190 and 200, or HTTP 401/403, request authorization attention
+without claiming to identify the exact Meta checkpoint.
 
-For manual posts, the owner can use **Resume after account verification** only for a settled failure before any first-container result, with all publication files still present and unexpired. A fresh account check and exact approval/version check are required. One recovery is allowed, and its prior error is retained.
+Complete verification on Meta's official site and wait for access to return.
+`GET /internal/instagram-check`, protected by the processor credential, checks the
+account without creating media. Verification does not automatically retry
+publication.
 
-Automatic posts have one narrow exception: the record must prove expiry before the `preflight` check, with no container, waiting result or media ID. The owner can explicitly authorize one new preparation through the existing recovery API. It checks the current account, settings and approval, preserves the prior failure, and requires the processor to download version-checked originals, render and review the output again. The recovery permission is consumed once; delivery expiry and publication cadence restart when claimed. A crashed preparation is not reclaimed. Container-stage failures, unknown publish outcomes and automatic posts lacking this evidence remain blocked; never delete their records to retry.
+For manual posts, the owner can use **Resume after account verification** only for
+a settled failure before any first-container result, with all publication files
+still present and unexpired. A fresh account check and exact approval/version
+check are required. One recovery is allowed, and its prior error is retained.
+
+Automatic posts have one narrow exception: the record must prove expiry before the
+`preflight` check, with no container, waiting result or media ID. The owner can
+explicitly authorize one new preparation through the existing recovery API.
+
+It checks the current account, settings and approval, preserves the prior failure,
+and requires the processor to download version-checked originals, render and review
+the output again. The recovery permission is consumed once; delivery expiry and
+publication cadence restart when claimed.
+
+A crashed preparation is not reclaimed. Container-stage failures, unknown publish
+outcomes and automatic posts lacking this evidence remain blocked; never delete
+their records to retry.

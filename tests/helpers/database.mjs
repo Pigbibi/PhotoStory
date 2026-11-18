@@ -9,6 +9,8 @@ import {hash} from '../../worker/auth.mjs';
 // boundary here instead of letting the driver reject a test fixture.
 function bindable(value){
  if(value===undefined||value===null)return null;
+ // Node 22 can bind a zero-length ArrayBuffer as NULL instead of an empty BLOB.
+ if(value instanceof ArrayBuffer&&value.byteLength===0)return Buffer.alloc(0);
  if(value instanceof ArrayBuffer)return new Uint8Array(value);
  if(ArrayBuffer.isView(value))return new Uint8Array(value.buffer,value.byteOffset,value.byteLength);
  if(typeof value==='number'&&!Number.isFinite(value))return null;
