@@ -16,7 +16,7 @@ from PIL import Image
 
 STAGES = {'screen', 'group', 'cross_review', 'labels', 'strict_review', 'publication'}
 MUSE_SCREEN_PROFILE = 'muse-screen'
-MUSE_SCREEN_TIMEOUT = 600
+MUSE_TASK_TIMEOUT = 600
 MAX_SCREEN_TASKS = 17  # ceil(100 photos / 6 per screening task)
 # Existing batch graph: screen ceil(100/6), <=24 shortlist groups, cross+labels,
 # and <=8 strict reviews. This bounds work; it never creates additional calls.
@@ -341,10 +341,10 @@ def task_call(context, stage):
                                'sha256': hashlib.sha256(data).hexdigest(),
                                'base64': base64.b64encode(data).decode()})
             route = json.loads(packed(context['routes'][stage]))
-            muse_screen = stage == 'screen' and route['provider'] == 'muse'
+            muse_screen = stage == 'screen' and route['provider'] == 'muse' and route['profile'] == MUSE_SCREEN_PROFILE
             request = {'mode': route['mode'], 'model': route['model'], 'profile': route['profile'],
                        'objective': prompt, 'materials': [{'schema_version':'photostory.task-input.v1', 'stage': stage, 'records': records, 'images': images}],
-                       'output_schema': schema, 'timeout_seconds': MUSE_SCREEN_TIMEOUT if muse_screen else 60}
+                       'output_schema': schema, 'timeout_seconds': MUSE_TASK_TIMEOUT if route['provider'] == 'muse' else 60}
             request_limit, output_limit = media_limits(context)
             if len(packed(request)) > request_limit:
                 raise ValueError()

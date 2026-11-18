@@ -15,17 +15,17 @@
 | `adoption_age_seconds` | 1–3600 秒；从原任务创建起计，恢复不延长 |
 | `routes` | 精确包含 `screen`、`group`、`cross_review`、`labels`、`strict_review`、`publication` |
 
-每个 route 包含 `mode`、`provider`、`model`、`profile`、`worker`。`mode` 固定为 `agent`，`profile` 与阶段名一致；全部阶段使用同一个 provider、model 和 worker。支持 `dot` 或独立的 `grokbot`。底层客户端保留旧 `grok` 契约，现役 workflow 不将它当作 `grokbot`。
+每个 route 包含 `mode`、`provider`、`model`、`profile`、`worker`。`mode` 固定为 `agent`，`profile` 与阶段名一致；全部阶段使用同一个 provider、model 和 worker。生产使用 `muse`，也支持 `dot` 或独立的 `grokbot`。底层客户端保留旧 `grok` 契约，现役 workflow 不将它当作 `grokbot`。
 
-服务端须为各阶段 profile 配置精确的 provider/model 路由，并完成调用方和 worker 准入。GrokBot 还需要真实 Routine HTTPS 入口与 `AI_SERVICE_GROKBOT_WEBHOOK_KEY`。缺少配置时保留已验证的 Dot 绑定，不填写占位入口或切换 provider。
+服务端须为各阶段 profile 配置精确的 provider/model 路由，并完成调用方和 worker 准入。GrokBot 还需要真实 Routine HTTPS 入口与 `AI_SERVICE_GROKBOT_WEBHOOK_KEY`。Muse 宿主按 180 秒心跳领取该项目任务，六个 profile 的服务端任务时限均为 600 秒。采纳时限从原任务创建时起算，重启后继续核对同一任务。
 
-在 main 手动运行 `Process PhotoStory`，选择 `cloud_native_qualification=true`，可向当前绑定提交一张生成色块图。该入口不访问 OneDrive、草稿或发布；通过提交、持久化、读取和结果校验后才写入脱敏回执。HTTP 接收成功不等于任务完成。随后以小范围任务核对进度、R2 快照和草稿无重复，再启用定时处理。
+在 main 手动运行 `Process PhotoStory`，选择 `cloud_native_qualification=true` 和 `qualification_stage=all`。六个阶段串行提交合成材料，各自使用生产 profile 和对应的输出格式，独立记录领取、完成和结果采纳。图片来自生成的色块，标签翻译仅使用合成文字。验证不访问 OneDrive 或草稿，不创建待发布对象。每个阶段的回执保存在以阶段名结尾的 artifact 中。
 
-若回执未验证，保留原 task ID。读取同一任务时仍选择 `cloud_native_qualification=true`，将 `native_qualification_task_id` 设为原 ID、`native_qualification_action` 设为 `readback`，`native_qualification` 保持 false。读回仅 GET 原任务，核对固定合成请求、provider、worker 和结果格式，不重新提交或取消。`completion_verified` 只证明任务按时完成，`adopted` 仍为 false；不会将过期结果采纳为业务输出。
+若回执未验证，保留原 task ID。读取同一任务时仍选择 `cloud_native_qualification=true`，将 `native_qualification_task_id` 设为原 ID、`qualification_stage` 设为对应的单个阶段、`native_qualification_action` 设为 `readback`，`native_qualification` 保持 false。读回仅 GET 原任务，核对固定合成请求、provider、worker 和结果格式，不重新提交或取消。`completion_verified` 只证明任务按时完成，`adopted` 仍为 false；不会将过期结果采纳为业务输出。
 
 ## Muse 筛选试点
 
-在 PersonalAIService 的同一 PhotoStory 项目准入 `agent:muse-screen`、指定模型及 Muse worker，项目允许的最长执行时间设为 600 秒。Muse 云端轮询间隔和心跳窗口都要留出识图及回传时间。PhotoStory 发给其他阶段的请求仍限 60 秒，结果采纳时限应覆盖试点执行和续跑。
+在 PersonalAIService 的同一 PhotoStory 项目准入 `agent:muse-screen`、指定模型及 Muse worker，项目允许的最长执行时间设为 600 秒。Muse 云端轮询间隔和心跳窗口都要留出识图及回传时间。普通 Muse 任务使用阶段名 profile；只有专门的 `muse-screen` 试点会等待签名回调。其他提供方任务仍限 60 秒。
 
 仓库 Secret `PHOTOSTORY_MUSE_SCREEN_BINDING` 包含 `job_id`、`model`、`worker` 三个字段。先用占位 job ID，在 main 手动运行 `cloud_native_qualification=true` 和 `qualify_muse_screen=true`。验收要求识别生成色块的主色通道，并校验原任务回执。验收通过后再设为选定的小批量任务 ID，并在该任务运行期间保留绑定。
 
