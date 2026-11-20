@@ -2,6 +2,7 @@ import History from './History.jsx';
 import {Publishing, nextOwnerWindow} from './Publishing.jsx';
 import {localizedDraftText} from './i18n-core.mjs';
 import {I18nProvider,LanguageSwitcher,useI18n} from "./i18n.jsx";
+import {ThemeProvider} from "./theme.jsx";
 import React, { lazy, Suspense, useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { reviewDraft } from "../worker/review.mjs";
@@ -837,4 +838,4 @@ function Settings({ session, notify }) {
     </div>
   );
 }
-createRoot(document.getElementById("root")).render(<I18nProvider><App /></I18nProvider>);
+createRoot(document.getElementById("root")).render(<I18nProvider><ThemeProvider><App /></ThemeProvider></I18nProvider>);
