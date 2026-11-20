@@ -401,10 +401,17 @@ button.secondary:hover:not(:disabled) {
 
 .welcome img {
   width: 100%;
+  height: auto;
+  aspect-ratio: 1448 / 1086;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
-  background: var(--surface-recessed);
-  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55);
+  background: linear-gradient(
+    160deg,
+    var(--accent-soft) 0%,
+    var(--surface-elevated) 55%,
+    var(--surface-subtle) 100%
+  );
+  box-shadow: 0 20px 44px -16px rgba(10, 20, 30, 0.38);
 }
 
 .welcome h2 {

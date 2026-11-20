@@ -207,7 +207,9 @@ function App() {
         ) : !session?.user && !demo ? (
           <section className="welcome">
             <img
-              src="/demo-coast.png"
+              src="/demo-coast.webp"
+              width="1448"
+              height="1086"
               alt={t("AI 生成的海岸示意图，不是用户照片")}
             />
             <div>
@@ -234,7 +236,7 @@ function App() {
                 >
                   <img
                     src={
-                      demo ? "/demo-coast.png" : "/api/photos/" + d.photos[0].id
+                      demo ? "/demo-coast.webp" : "/api/photos/" + d.photos[0].id
                     }
                     alt=""
                   />
@@ -373,7 +375,7 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
             key={photo.id}
             className="main-photo"
             style={{...mainFrame,"--photo-ratio":mainFrame.aspectRatio}}
-            src={demo ? "/demo-coast.png" : "/api/photos/" + photo.id}
+            src={demo ? "/demo-coast.webp" : "/api/photos/" + photo.id}
             alt={photo.alt}
           />
         </div>
@@ -388,7 +390,7 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
               aria-describedby={reviewConcerns.has(p.id) ? `photo-review-${i}` : undefined}
             >
               <img
-                src={demo ? "/demo-coast.png" : "/api/photos/" + p.id}
+                src={demo ? "/demo-coast.webp" : "/api/photos/" + p.id}
                 alt={p.alt}
                 style={frameStyle(form.aspect,p.frame)}
               />
