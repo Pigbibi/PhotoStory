@@ -305,5 +305,9 @@
   "文案修改后尚未重新核对，请人工检查地点和事实。": "La didascalia modificata non è stata ricontrollata. Verifica luoghi e fatti.",
   "Review concern · photo {count}": "Avviso di revisione · foto {count}",
   "Recorded review concern: {flags}. Check this photo before approval.": "Avviso di revisione registrato: {flags}. Controlla questa foto prima di approvarla.",
-  "从 OneDrive 限定范围挑选风景照，起草配文并经 AI 复核；每篇由你亲手批准后才进入发布队列。": "Una scrivania privata per le tue foto di viaggio: esamina un intervallo delimitato di OneDrive, prepara le didascalie con revisione IA e accoda i post solo dopo la tua approvazione."
+  "从 OneDrive 限定范围挑选风景照，起草配文并经 AI 复核；每篇由你亲手批准后才进入发布队列。": "Una scrivania privata per le tue foto di viaggio: esamina un intervallo delimitato di OneDrive, prepara le didascalie con revisione IA e accoda i post solo dopo la tua approvazione.",
+  "界面主题": "Tema",
+  "跟随系统": "Sistema",
+  "浅色": "Chiaro",
+  "深色": "Scuro"
 }

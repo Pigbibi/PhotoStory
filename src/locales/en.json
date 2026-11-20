@@ -305,5 +305,9 @@
   "文案修改后尚未重新核对，请人工检查地点和事实。": "The edited caption has not been checked again. Review its place names and factual details.",
   "Review concern · photo {count}": "Review concern · photo {count}",
   "Recorded review concern: {flags}. Check this photo before approval.": "Recorded review concern: {flags}. Check this photo before approval.",
-  "从 OneDrive 限定范围挑选风景照，起草配文并经 AI 复核；每篇由你亲手批准后才进入发布队列。": "A private curation desk for your travel photos: it screens a bounded OneDrive range, drafts captions with AI review, and queues posts only after your approval."
+  "从 OneDrive 限定范围挑选风景照，起草配文并经 AI 复核；每篇由你亲手批准后才进入发布队列。": "A private curation desk for your travel photos: it screens a bounded OneDrive range, drafts captions with AI review, and queues posts only after your approval.",
+  "界面主题": "Theme",
+  "跟随系统": "System",
+  "浅色": "Light",
+  "深色": "Dark"
 }
