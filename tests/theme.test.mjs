@@ -72,3 +72,21 @@ test('index.html runs the no-flash theme script before the module script', () =>
   assert.ok(moduleIdx !== -1, 'module script present');
   assert.ok(inlineIdx < moduleIdx, 'inline script runs before module script');
 });
+
+test('style.css supports explicit light/dark overrides and system preference fallback', () => {
+  const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+  const rootDarkMatch = css.match(/:root\s*\{([^}]*)\}/);
+  assert.ok(rootDarkMatch, ':root block present');
+  assert.match(rootDarkMatch[1], /color-scheme:\s*dark;/);
+
+  const mediaLightMatch = css.match(
+    /@media\s*\(prefers-color-scheme:\s*light\)\s*\{\s*:root:not\(\[data-theme="dark"\]\)\s*\{([^}]*)\}\s*\}/,
+  );
+  assert.ok(mediaLightMatch, 'prefers-color-scheme: light guarded by :not([data-theme="dark"])');
+
+  const explicitLightMatch = css.match(/html\[data-theme="light"\]\s*\{([^}]*)\}/);
+  assert.ok(explicitLightMatch, 'html[data-theme="light"] block present');
+
+  const normalize = (block) => block.replace(/\s+/g, ' ').trim();
+  assert.equal(normalize(explicitLightMatch[1]), normalize(mediaLightMatch[1]));
+});
