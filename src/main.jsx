@@ -1,5 +1,5 @@
 import History from './History.jsx';
-import {Publishing} from './Publishing.jsx';
+import {Publishing, nextOwnerWindow} from './Publishing.jsx';
 import {localizedDraftText} from './i18n-core.mjs';
 import {I18nProvider,LanguageSwitcher,useI18n} from "./i18n.jsx";
 import React, { lazy, Suspense, useState, useEffect, useRef } from "react";
@@ -59,7 +59,7 @@ async function api(path, method = "GET", body) {
   return data;
 }
 function App() {
-  const {t,locale}=useI18n();
+  const {t,locale,date}=useI18n();
   const [session, setSession] = useState(null),
     [view, setView] = useState("review"),
     [demo, setDemo] = useState(false),
@@ -256,10 +256,35 @@ function App() {
             </div>
           </section>
         ) : (
+          <>
+          {view === "queue" && session?.user && !demo && (
+            <section className="queue-summary" aria-label={t("发布队列")}>
+              <div className="sum-card">
+                <span className="sum-label">{t("发布模式")}</span>
+                <strong>{session.publishingSchedule?.publishMode === "automatic" ? t("严格 AI 自动发布") : t("人工发布（默认）")}</strong>
+              </div>
+              <div className="sum-card">
+                <span className="sum-label">{t("发布节奏")}</span>
+                <strong>{nextOwnerWindow(session.publishingSchedule) ? date(nextOwnerWindow(session.publishingSchedule)) : t("尚未设置")}</strong>
+              </div>
+              <div className="sum-card">
+                <span className="sum-label">Instagram</span>
+                <strong className={session.instagram?.connected ? "sum-ok" : ""}>
+                  {session.instagram?.connected && session.instagram?.username
+                    ? t("已连接：@{username}", {username: session.instagram.username})
+                    : session.instagram?.configured
+                      ? t("连接 Instagram")
+                      : t("请先配置 Instagram 应用及回调地址。")}
+                </strong>
+              </div>
+            </section>
+          )}
           <div className="workspace">
             <aside>
               <h2>{t("主题草稿")}<span className="contact-count">{filtered.length}</span></h2>
-              {filtered.map((d) => (
+              {filtered.map((d) => {
+                const hasFlag = d.strictReviewEvidence?.screens?.some((s) => Array.isArray(s?.flags) && s.flags.length > 0);
+                return (
                 <button
                   key={d.id}
                   className={
@@ -268,6 +293,7 @@ function App() {
                   onClick={() => setSelected(d.id)}
                 >
                   <img
+                    className={hasFlag ? "flagged" : ""}
                     src={
                       demo ? "/demo-coast.webp" : "/api/photos/" + d.photos[0].id
                     }
@@ -277,10 +303,12 @@ function App() {
                     {localizedDraftText(d,'title',locale)}
                     <small>
                       {t("{count} 张",{count:d.photos.length})}{" · "}
-                      {t(DRAFT_STATUS[d.status]||"")}                    </small>
+                      {t(DRAFT_STATUS[d.status]||"")}
+                    </small>
                   </span>
                 </button>
-              ))}
+                );
+              })}
               {!filtered.length && (
                 <p className="muted">
                   {t(viewOf(view)?.emptyList || "")}
@@ -319,6 +347,7 @@ function App() {
               </div>
             )}
           </div>
+          </>
         )}
       </main>
       <footer>
@@ -484,12 +513,7 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
             onChange={(e) => setForm(f=>({...f,title:e.target.value,translations:undefined}))}
           />
         </label>
-        {draft.status==='approved' && draft.approvalSource==='strict_ai_v1' && <p className="muted">{t("由严格 AI 自动审核批准")}</p>}
         {draft.status==='approved' && draft.approvalSource==='owner_scheduled_v1' && <p className="muted">{t(publishingSchedule?.publishMode==='automatic'?"已由你批准，正等待排期发布。":"已批准，保留在发布队列中。")}</p>}
-        {form.photos.map((p, i) => reviewConcerns.has(p.id) ? <div key={p.id} className="review-warning photo-review-concern">
-          <button type="button" className="text-button" onClick={() => setIndex(i)}>{t("Review concern · photo {count}", {count:i+1})}</button>
-          <p id={`photo-review-${i}`}>{t("Recorded review concern: {flags}. Check this photo before approval.", {flags:reviewConcerns.get(p.id).join(', ')})}</p>
-        </div> : null)}
         <hr />
         <label>{t("文案")}<textarea dir="auto"
             value={form.caption}
@@ -513,48 +537,74 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
           <p>{t("保留至 {date}，之后在启用清理时移除。",{date:date(draft.trashedAt+30*86400000)})}</p>
           {draft.ownerFeedback&&<p>{t('不采用原因')}：{t(feedbackLabels[draft.ownerFeedback.category]||'其他原因')}{draft.ownerFeedback.note?` · ${draft.ownerFeedback.note}`:''}</p>}
           <button className="button primary" disabled={busy} onClick={()=>update(draft,'restore')}>{t("恢复到待审核")}</button>
-        </>:<><div className="approval-note">
+        </>:<>
+        {(draft.approvalSource==='strict_ai_v1' || reviewConcerns.size>0 || draft.crossReview?.duplicateIds?.length>0 || draft.crossReview?.captionGrounded===false || draft.crossReview?.locationGrounded===false || draft.crossReview?.status==='unavailable' || (draft.crossReview?.status==='checked' && draft.crossReview.captionGrounded===null)) && (
+          <div className="ai-review-panel">
+            <div className="ai-review-head">
+              <span className="ai-review-badge">{t("严格 AI 自动审核")}</span>
+              {draft.status==='approved' && draft.approvalSource==='strict_ai_v1' && <span className="ai-review-status">{t("由严格 AI 自动审核批准")}</span>}
+            </div>
+            {form.photos.map((p, i) => reviewConcerns.has(p.id) ? <div key={p.id} className="review-warning photo-review-concern">
+              <button type="button" className="text-button" onClick={() => setIndex(i)}>{t("Review concern · photo {count}", {count:i+1})}</button>
+              <p id={`photo-review-${i}`}>{t("Recorded review concern: {flags}. Check this photo before approval.", {flags:reviewConcerns.get(p.id).join(', ')})}</p>
+            </div> : null)}
+            {draft.crossReview?.duplicateIds?.length>0 && <p className="review-warning" role="alert">{t("疑似与「{titles}」拍摄同一画面；请只批准要保留的一篇。",{titles:draft.crossReview.duplicateIds.map(id=>relatedDrafts.find(x=>x.id===id)?.title||id).join('、')})}</p>}
+            {draft.crossReview?.captionGrounded===false && <p className="review-warning" role="alert">{t("文案或标签含有画面未能证实的细节，请核对并修改。")}</p>}
+            {draft.crossReview?.locationGrounded===false && <p className="review-warning" role="alert">{t("地点或站名与画面证据可能不符，请逐字核对标牌。")}</p>}
+            {draft.crossReview?.status==='unavailable' && <p className="review-warning" role="alert">{t("跨草稿和文案核对未完成，请人工检查后再批准。")}</p>}
+            {draft.crossReview?.status==='checked' && draft.crossReview.captionGrounded===null && <p className="review-warning" role="alert">{t("文案修改后尚未重新核对，请人工检查地点和事实。")}</p>}
+          </div>
+        )}
+        <div className="approval-note">
           <strong>{t("发布前，请看每一张照片。")}</strong>
           <p>{t("检查人物、私人信息、地点和文案。AI 可能漏判，批准仍需要你的判断。")}</p>
         </div>
-        {draft.crossReview?.duplicateIds?.length>0 && <p className="review-warning" role="alert">{t("疑似与「{titles}」拍摄同一画面；请只批准要保留的一篇。",{titles:draft.crossReview.duplicateIds.map(id=>relatedDrafts.find(x=>x.id===id)?.title||id).join('、')})}</p>}
-        {draft.crossReview?.captionGrounded===false && <p className="review-warning" role="alert">{t("文案或标签含有画面未能证实的细节，请核对并修改。")}</p>}
-        {draft.crossReview?.locationGrounded===false && <p className="review-warning" role="alert">{t("地点或站名与画面证据可能不符，请逐字核对标牌。")}</p>}
-        {draft.crossReview?.status==='unavailable' && <p className="review-warning" role="alert">{t("跨草稿和文案核对未完成，请人工检查后再批准。")}</p>}
-        {draft.crossReview?.status==='checked' && draft.crossReview.captionGrounded===null && <p className="review-warning" role="alert">{t("文案修改后尚未重新核对，请人工检查地点和事实。")}</p>}
-        <button
-          className="button primary approve"
-          disabled={busy || dirty || draft.status === "approved"}
-          onClick={() => update(form, "approve")}
-        >
-          {draft.status === "approved" ? t("草稿已批准") : t("批准草稿")}
-        </button>
-        <button
-          className="button secondary"
-          disabled={busy || !dirty}
-          onClick={() => update(form, "save")}
-        >{t("保存修改")}</button>
+        <div className="decision-group">
+          <button
+            className="button primary approve"
+            disabled={busy || dirty || draft.status === "approved"}
+            onClick={() => update(form, "approve")}
+          >
+            {draft.status === "approved" ? t("草稿已批准") : t("批准草稿")}
+          </button>
+          <div className="decision-secondary">
+            <button
+              className="button secondary"
+              disabled={busy || !dirty}
+              onClick={() => update(form, "save")}
+            >{t("保存修改")}</button>
+            {draft.status === "approved" && (
+              <button
+                className="button secondary"
+                disabled={busy}
+                onClick={() => update(form, "return")}
+              >{t("退回待审核")}</button>
+            )}
+            {!rejecting && (
+              <button
+                className="button danger"
+                disabled={busy || dirty}
+                onClick={() => setRejecting(true)}
+              >{t("不采用，移入回收站")}</button>
+            )}
+          </div>
+        </div>
         <button className="button secondary" disabled={demo||busy||dirty||exporting||draft.status!=='approved'} onClick={download}>{exporting?t('正在生成…')+' '+exportProgress:t('下载成品 ZIP')}</button>
         <p className="muted">{t('从已批准原图生成统一 1080px 宽 JPEG，不保留 GPS；同时附上文案。')}</p>
         {exportError&&<p role="alert">{t('导出失败：请确认批准、原图格式和版本；单张最多 25 MB，且清晰度足够。')}</p>}
-        {draft.status === "approved" && (
-          <button
-            className="text-button"
-            disabled={busy}
-            onClick={() => update(form, "return")}
-          >{t("退回待审核")}</button>
-        )}
         <p className="muted bottom-note">
           {dirty
             ? t("请先保存修改，再批准这个版本。修改已批准的内容会重新进入待审核。")
             : t("批准后进入队列，连接 Instagram 后才能发布。")}
         </p>
-        {!rejecting?<button className="text-button" disabled={busy||dirty} onClick={()=>setRejecting(true)}>{t("不采用，移入回收站")}</button>:<div className="approval-note">
+        {rejecting && <div className="approval-note">
           <label>{t('不采用原因')}<select value={feedbackCategory} onChange={e=>setFeedbackCategory(e.target.value)}><option value="">{t('请选择原因')}</option>{Object.entries(feedbackLabelsFor()).map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}</select></label>
           <label>{t('补充说明（可选）')}<textarea value={feedbackNote} maxLength={400} rows={3} onChange={e=>setFeedbackNote(e.target.value)}/></label>
           <p className="muted">{t('反馈会作为后续制稿的参考，不会自行更改审核规则。')}</p>
-          <button className="button secondary" disabled={busy||!feedbackCategory||(feedbackCategory==='other'&&!feedbackNote.trim())} onClick={()=>update({...draft,feedback:{category:feedbackCategory,note:feedbackNote}},'trash')}>{t('确认不采用')}</button>
-          <button className="text-button" disabled={busy} onClick={()=>setRejecting(false)}>{t('取消')}</button>
+          <div className="decision-secondary">
+            <button className="button danger" disabled={busy||!feedbackCategory||(feedbackCategory==='other'&&!feedbackNote.trim())} onClick={()=>update({...draft,feedback:{category:feedbackCategory,note:feedbackNote}},'trash')}>{t('确认不采用')}</button>
+            <button className="button secondary" disabled={busy} onClick={()=>setRejecting(false)}>{t('取消')}</button>
+          </div>
         </div>}
         </>}
       </section>

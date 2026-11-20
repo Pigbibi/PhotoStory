@@ -15,16 +15,21 @@ export function Publishing({draft,onChange,disabled,schedule,onSettings}){
  const {t,date}=useI18n(),[state,setState]=useState(draft.publication),[busy,setBusy]=useState(false),[error,setError]=useState(false),[preview,setPreview]=useState(false);
  const base='/api/publish/'+draft.id;
  if(draft.approvalSource==='owner_scheduled_v1') return <section className="publication" aria-label={t('Instagram publishing')}>
-  <h3>{t('Instagram publishing')}</h3>
-  {state?.status==='published'?<p role="status">{t('Published · Instagram ID {id}',{id:state.mediaId})}</p>:
-   schedule?.publishMode!=='automatic'||schedule?.reviewMode!=='strict_auto'?<p role="status">{t('自动发布已关闭；批准稿会留在队列中。')}</p>:
-   nextOwnerWindow(schedule)===null?<>
-    <p role="status">{t('人工排期尚未设置；人工批准稿会继续留在队列中。')}</p>
-    <button className="text-button" onClick={onSettings}>{t('设置人工发布时间')}</button>
-   </>:<>
-    <p role="status">{t('下一个可用发布窗口：{time}',{time:date(nextOwnerWindow(schedule))})}</p>
-    <p className="muted">{schedule.adaptive?t('实际发布间隔按已批准队列积压量调整，每天最多一篇；前次尝试或授权问题会延后。'):t('每七天最多一次发布尝试；如有前次尝试或授权问题，可能继续等待。')}</p>
-   </>}
+  <div className="publication-head">
+   <h3>{t('Instagram publishing')}</h3>
+   <span className="platform-chip">Instagram</span>
+  </div>
+  <div className="publication-meta">
+   {state?.status==='published'?<p role="status" className="publication-status ok">{t('Published · Instagram ID {id}',{id:state.mediaId})}</p>:
+    schedule?.publishMode!=='automatic'||schedule?.reviewMode!=='strict_auto'?<p role="status" className="publication-status">{t('自动发布已关闭；批准稿会留在队列中。')}</p>:
+    nextOwnerWindow(schedule)===null?<>
+     <p role="status" className="publication-status">{t('人工排期尚未设置；人工批准稿会继续留在队列中。')}</p>
+     <button className="text-button" onClick={onSettings}>{t('设置人工发布时间')}</button>
+    </>:<>
+     <p role="status" className="publication-status ok">{t('下一个可用发布窗口：{time}',{time:date(nextOwnerWindow(schedule))})}</p>
+     <p className="muted">{schedule.adaptive?t('实际发布间隔按已批准队列积压量调整，每天最多一篇；前次尝试或授权问题会延后。'):t('每七天最多一次发布尝试；如有前次尝试或授权问题，可能继续等待。')}</p>
+    </>}
+  </div>
  </section>;
  const refresh=async()=>{const next=await request(base);setState(next);return next;};
  const prepare=async()=>{
@@ -50,7 +55,10 @@ export function Publishing({draft,onChange,disabled,schedule,onSettings}){
   finally{setBusy(false);}
  };
  return <section className="publication" aria-label={t('Instagram publishing')}>
-  <h3>{t('Instagram publishing')}</h3>
+  <div className="publication-head">
+   <h3>{t('Instagram publishing')}</h3>
+   <span className="platform-chip">{state?.username ? `Instagram · @${state.username}` : 'Instagram'}</span>
+  </div>
   {(!state||state.status==='prepared')&&<>
    <button className="button secondary" disabled={busy||disabled} onClick={prepare}>{t(busy?'Preparing images…':'Prepare Instagram post')}</button>
    {preview&&state&&<>
@@ -61,7 +69,7 @@ export function Publishing({draft,onChange,disabled,schedule,onSettings}){
    </>}
   </>}
   {state&&['publishing','working'].includes(state.status)&&<button className="button primary" disabled={busy||disabled} onClick={()=>publish(false)}>{t(busy?'Publishing…':'Continue publishing')}</button>}
-  {state?.status==='published'&&<p role="status">{t('Published · Instagram ID {id}',{id:state.mediaId})}</p>}
+  {state?.status==='published'&&<p role="status" className="publication-status ok">{t('Published · Instagram ID {id}',{id:state.mediaId})}</p>}
   {state?.canRecover&&<button className="button secondary" disabled={busy||disabled} onClick={()=>publish('recover')}>{t('Resume after account verification')}</button>}
   {state?.failure&&<p role="alert">{t(state.failure.category==='authorization'?'Instagram authorization needs attention':'Instagram publication needs attention')}</p>}
   {state?.status==='uncertain'&&<p role="alert">{t('Publishing outcome uncertain. Check Instagram; automatic retries are blocked.')}</p>}
