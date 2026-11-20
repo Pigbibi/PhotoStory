@@ -5,26 +5,31 @@ export function themeOrDefault(value) {
   return THEMES.includes(value) ? value : 'system';
 }
 
-export function applyTheme(theme, root = globalThis.document?.documentElement) {
-  if (!root) return;
-  const resolved = themeOrDefault(theme);
-  if (resolved === 'light' || resolved === 'dark') {
-    root.setAttribute('data-theme', resolved);
-  } else {
-    root.removeAttribute('data-theme');
-  }
+export function applyTheme(theme, root) {
+  try {
+    const target = root === undefined ? globalThis.document?.documentElement : root;
+    if (!target) return;
+    const resolved = themeOrDefault(theme);
+    if (resolved === 'light' || resolved === 'dark') {
+      target.setAttribute('data-theme', resolved);
+    } else {
+      target.removeAttribute('data-theme');
+    }
+  } catch {}
 }
 
-export function readStoredTheme(storage = globalThis.localStorage) {
+export function readStoredTheme(storage) {
   try {
-    return themeOrDefault(storage?.getItem(THEME_STORAGE_KEY));
+    const target = storage === undefined ? globalThis.localStorage : storage;
+    return themeOrDefault(target?.getItem(THEME_STORAGE_KEY));
   } catch {
     return 'system';
   }
 }
 
-export function writeStoredTheme(theme, storage = globalThis.localStorage) {
+export function writeStoredTheme(theme, storage) {
   try {
-    storage?.setItem(THEME_STORAGE_KEY, themeOrDefault(theme));
+    const target = storage === undefined ? globalThis.localStorage : storage;
+    target?.setItem(THEME_STORAGE_KEY, themeOrDefault(theme));
   } catch {}
 }

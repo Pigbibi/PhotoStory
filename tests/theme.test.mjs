@@ -68,6 +68,41 @@ test('readStoredTheme and writeStoredTheme handle storage safely', () => {
   assert.doesNotThrow(() => writeStoredTheme('light', failingStorage));
 });
 
+test('readStoredTheme, writeStoredTheme, and applyTheme tolerate throwing global/property getters', (t) => {
+  const prevStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const prevDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  t.after(() => {
+    if (prevStorage) Object.defineProperty(globalThis, 'localStorage', prevStorage);
+    else delete globalThis.localStorage;
+    if (prevDocument) Object.defineProperty(globalThis, 'document', prevDocument);
+    else delete globalThis.document;
+  });
+
+  const deniedError = () => new DOMException('Access is denied for this document.', 'SecurityError');
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    get() { throw deniedError(); },
+  });
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    get() { throw deniedError(); },
+  });
+
+  assert.equal(readStoredTheme(), 'system');
+  assert.doesNotThrow(() => writeStoredTheme('dark'));
+  assert.doesNotThrow(() => applyTheme('dark'));
+
+  const getterTrap = {};
+  Object.defineProperty(getterTrap, 'getItem', {
+    get() { throw deniedError(); },
+  });
+  Object.defineProperty(getterTrap, 'setItem', {
+    get() { throw deniedError(); },
+  });
+  assert.equal(readStoredTheme(getterTrap), 'system');
+  assert.doesNotThrow(() => writeStoredTheme('light', getterTrap));
+});
+
 test('index.html loads synchronous external theme-init script before module script without inline scripts', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const headMatch = html.match(/<head>([\s\S]*?)<\/head>/i);
