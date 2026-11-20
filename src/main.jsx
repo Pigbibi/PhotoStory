@@ -2,7 +2,7 @@ import History from './History.jsx';
 import {Publishing, nextOwnerWindow} from './Publishing.jsx';
 import {localizedDraftText} from './i18n-core.mjs';
 import {I18nProvider,LanguageSwitcher,useI18n} from "./i18n.jsx";
-import {ThemeProvider} from "./theme.jsx";
+import {ThemeProvider,ThemeSwitcher} from "./theme.jsx";
 import React, { lazy, Suspense, useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { reviewDraft } from "../worker/review.mjs";
@@ -184,7 +184,10 @@ function App() {
             </button>
           </nav>
         )}
-        <LanguageSwitcher />
+        <div className="header-controls">
+          <ThemeSwitcher />
+          <LanguageSwitcher />
+        </div>
         <div className="identity">
           {demo ? (
             <button onClick={leaveDemo}>{t("退出演示")}</button>

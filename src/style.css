@@ -220,7 +220,7 @@ nav.visitor-nav {
   padding: 0;
 }
 
-nav.visitor-nav + select.language-switch {
+nav.visitor-nav + .header-controls {
   margin-left: 0;
 }
 
@@ -247,11 +247,19 @@ nav button.active {
   color: var(--accent);
 }
 
-select.language-switch {
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+select.language-switch,
+select.theme-switch {
   width: auto;
   min-width: 0;
   max-width: 168px;
-  margin-left: auto;
   flex-shrink: 0;
   padding: 6px 28px 6px 10px;
   background-color: var(--surface);
@@ -262,7 +270,8 @@ select.language-switch {
   cursor: pointer;
 }
 
-select.language-switch:hover {
+select.language-switch:hover,
+select.theme-switch:hover {
   border-color: var(--accent);
   color: var(--ink);
 }
@@ -873,7 +882,7 @@ aside h2 {
   color: var(--ink-secondary);
 }
 
-select:not(.language-switch),
+select:not(.language-switch):not(.theme-switch),
 input[type="text"],
 input[type="search"],
 input[type="url"],
@@ -1419,8 +1428,13 @@ footer {
   nav.visitor-nav {
     justify-content: flex-start;
   }
-  select.language-switch {
+  .header-controls {
     margin-left: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  select.language-switch,
+  select.theme-switch {
     max-width: 140px;
   }
   main {

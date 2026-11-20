@@ -305,5 +305,9 @@
   "文案修改后尚未重新核对，请人工检查地点和事实。": "A legenda editada ainda não foi revista. Verifique os locais e os factos.",
   "Review concern · photo {count}": "Aviso de revisão · foto {count}",
   "Recorded review concern: {flags}. Check this photo before approval.": "Aviso de revisão registrado: {flags}. Verifique esta foto antes da aprovação.",
-  "从 OneDrive 限定范围挑选风景照，起草配文并经 AI 复核；每篇由你亲手批准后才进入发布队列。": "Uma mesa privada para suas fotos de viagem: seleciona um intervalo limitado do OneDrive, redige legendas com revisão de IA e só coloca na fila após sua aprovação."
+  "从 OneDrive 限定范围挑选风景照，起草配文并经 AI 复核；每篇由你亲手批准后才进入发布队列。": "Uma mesa privada para suas fotos de viagem: seleciona um intervalo limitado do OneDrive, redige legendas com revisão de IA e só coloca na fila após sua aprovação.",
+  "界面主题": "Tema",
+  "跟随系统": "Sistema",
+  "浅色": "Claro",
+  "深色": "Escuro"
 }

@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createServer } from 'vite';
 import {
   THEME_STORAGE_KEY,
   THEMES,
@@ -89,4 +92,23 @@ test('style.css supports explicit light/dark overrides and system preference fal
 
   const normalize = (block) => block.replace(/\s+/g, ' ').trim();
   assert.equal(normalize(explicitLightMatch[1]), normalize(mediaLightMatch[1]));
+});
+
+test('ThemeSwitcher renders three localized theme options matching the stored default', async (t) => {
+  const vite = await createServer({ configFile: false, server: { middlewareMode: true, hmr: false, ws: false } });
+  t.after(() => vite.close());
+  const { I18nProvider } = await vite.ssrLoadModule('/src/i18n.jsx');
+  const { ThemeProvider, ThemeSwitcher } = await vite.ssrLoadModule('/src/theme.jsx');
+  const html = renderToStaticMarkup(
+    React.createElement(
+      I18nProvider,
+      null,
+      React.createElement(ThemeProvider, null, React.createElement(ThemeSwitcher)),
+    ),
+  );
+  assert.match(html, /class="theme-switch"/);
+  assert.match(html, /aria-label="Theme"/);
+  assert.match(html, /<option value="system" selected="">System<\/option>/);
+  assert.match(html, /<option value="light">Light<\/option>/);
+  assert.match(html, /<option value="dark">Dark<\/option>/);
 });
