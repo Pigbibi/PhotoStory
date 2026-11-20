@@ -304,5 +304,6 @@
   "跨草稿和文案核对未完成，请人工检查后再批准。": "Der Abgleich der Entwürfe und des Bildtexts wurde nicht abgeschlossen. Prüfe beides vor der Genehmigung.",
   "文案修改后尚未重新核对，请人工检查地点和事实。": "Der bearbeitete Bildtext wurde nicht erneut geprüft. Prüfe Ortsnamen und Fakten selbst.",
   "Review concern · photo {count}": "Prüfhinweis · Foto {count}",
-  "Recorded review concern: {flags}. Check this photo before approval.": "Erfasster Prüfhinweis: {flags}. Prüfe dieses Foto vor der Freigabe."
+  "Recorded review concern: {flags}. Check this photo before approval.": "Erfasster Prüfhinweis: {flags}. Prüfe dieses Foto vor der Freigabe.",
+  "从 OneDrive 限定范围挑选风景照，起草配文并经 AI 复核；每篇由你亲手批准后才进入发布队列。": "Ein privates Kuratierungspult für Ihre Reisefotos: Es prüft einen begrenzten OneDrive-Bereich, entwirft Bildunterschriften mit KI-Prüfung und reiht Beiträge erst nach Ihrer Freigabe ein."
 }

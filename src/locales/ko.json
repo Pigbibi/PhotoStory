@@ -304,5 +304,6 @@
   "跨草稿和文案核对未完成，请人工检查后再批准。": "게시물 간 중복과 캡션 검사가 완료되지 않았습니다. 승인 전에 직접 확인하세요.",
   "文案修改后尚未重新核对，请人工检查地点和事实。": "수정한 캡션은 다시 검사되지 않았습니다. 장소명과 사실을 직접 확인하세요.",
   "Review concern · photo {count}": "검토 사항 · 사진 {count}",
-  "Recorded review concern: {flags}. Check this photo before approval.": "기록된 검토 사항: {flags}. 승인 전에 이 사진을 확인하세요."
+  "Recorded review concern: {flags}. Check this photo before approval.": "기록된 검토 사항: {flags}. 승인 전에 이 사진을 확인하세요.",
+  "从 OneDrive 限定范围挑选风景照，起草配文并经 AI 复核；每篇由你亲手批准后才进入发布队列。": "OneDrive의 지정된 범위에서 풍경 사진을 선별해 캡션 초안을 작성하고 AI로 검토합니다. 직접 승인한 게시물만 발행 대기열에 들어갑니다."
 }

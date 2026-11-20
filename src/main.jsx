@@ -141,26 +141,48 @@ function App() {
   return (
     <>
       <header>
-        <a href="/" className="brand">
+        <a
+          href="/"
+          className="brand"
+          onClick={(e) => {
+            if (!session?.user && !demo && view === "settings") {
+              e.preventDefault();
+              setView("review");
+            }
+          }}
+        >
           <img className="brand-icon" src="/favicon.svg" alt="" width="32" height="32" />
           <span>PhotoStory</span>
         </a>
-        <nav aria-label={t("主导航")}>
-          {VIEWS.map(({id: v, label}) => (
+        {session?.user || demo ? (
+          <nav aria-label={t("主导航")}>
+            {VIEWS.map(({id: v, label}) => (
+              <button
+                key={v}
+                type="button"
+                className={view === v ? "active" : ""}
+                onClick={() => {
+                  setView(v);
+                  if (v !== "settings" && session?.user && !demo) load();
+                  const ds = drafts.filter((d) => inView(d, v));
+                  if (!ds.some((d) => d.id === selected)) setSelected(ds[0]?.id);
+                }}
+              >
+                {t(label)}
+              </button>
+            ))}
+          </nav>
+        ) : (
+          <nav className="visitor-nav" aria-label={t("主导航")}>
             <button
-              key={v}
-              className={view === v ? "active" : ""}
-              onClick={() => {
-                setView(v);
-                if (v !== "settings" && session?.user && !demo) load();
-                const ds = drafts.filter((d) => inView(d, v));
-                if (!ds.some((d) => d.id === selected)) setSelected(ds[0]?.id);
-              }}
+              type="button"
+              className={view === "settings" ? "active" : ""}
+              onClick={() => setView(view === "settings" ? "review" : "settings")}
             >
-              {t(label)}
+              {t("连接设置")}
             </button>
-          ))}
-        </nav>
+          </nav>
+        )}
         <LanguageSwitcher />
         <div className="identity">
           {demo ? (
@@ -206,20 +228,31 @@ function App() {
           <Settings session={session} notify={setMessage} />
         ) : !session?.user && !demo ? (
           <section className="welcome">
-            <img
-              src="/demo-coast.webp"
-              width="1448"
-              height="1086"
-              alt={t("AI 生成的海岸示意图，不是用户照片")}
-            />
-            <div>
-              <h2>PhotoStory</h2>
-              <a className="button primary" href="/auth/github/start">{t("使用 GitHub 登录")}</a>
-              <button className="button secondary" onClick={startDemo}>{t("先体验审核流程")}</button>
-              <p className="muted">{t("示意图片由 AI 生成。真实照片仅登录后可见。")}</p>
+            <div className="welcome-copy">
+              <p className="welcome-brand">PhotoStory</p>
+              <h2>{t("慢慢挑，喜欢了再分享。")}</h2>
+              <p className="welcome-lede">{t("从 OneDrive 限定范围挑选风景照，起草配文并经 AI 复核；每篇由你亲手批准后才进入发布队列。")}</p>
+              <div className="welcome-actions">
+                <a className="button primary" href="/auth/github/start">{t("使用 GitHub 登录")}</a>
+                <button type="button" className="button secondary" onClick={startDemo}>{t("先体验审核流程")}</button>
+              </div>
+              <ol className="welcome-steps">
+                <li><b>1</b><span>{t("待审核")}</span></li>
+                <li><b>2</b><span>{t("批准草稿")}</span></li>
+                <li><b>3</b><span>{t("发布队列")}</span></li>
+              </ol>
+              <p className="muted welcome-fine">{t("示意图片由 AI 生成。真实照片仅登录后可见。")}</p>
               {session && !session.githubConfigured && (
                 <p className="setup-hint">{t("首次部署：请在「连接设置」完成 GitHub 应用配置。")}</p>
               )}
+            </div>
+            <div className="welcome-media">
+              <img
+                src="/demo-coast.webp"
+                width="1448"
+                height="1086"
+                alt={t("AI 生成的海岸示意图，不是用户照片")}
+              />
             </div>
           </section>
         ) : (
