@@ -515,6 +515,10 @@ def _pilot_clause(text, limit):
     return (cut or candidate[:limit - 1]).rstrip() + '…'
 
 
+def _has_cjk(text):
+    return bool(re.search(r'[\u4e00-\u9fff]', text))
+
+
 def _pilot_draft_copy(photo, direction, source):
     """Build descriptive, bounded pilot draft copy from screening metadata."""
     chinese_editor = source.get('editorLanguage', 'zh-CN').startswith('zh')
@@ -526,6 +530,7 @@ def _pilot_draft_copy(photo, direction, source):
     city = (place.get('city') or '').strip() if high_place else ''
     landmark = (place.get('landmark') or '').strip() if high_place else ''
     description = ' '.join(str(photo.get('description') or '').split()).strip()
+    desc_is_cjk = _has_cjk(description) if description else False
 
     en_scene, zh_scene = PILOT_SCENE_LABELS.get(scene, PILOT_SCENE_LABELS['unknown'])
     en_light, zh_light = PILOT_LIGHT_LABELS.get(light, ('', ''))
@@ -538,11 +543,13 @@ def _pilot_draft_copy(photo, direction, source):
         place_title = landmark or city
 
     desc_title = _pilot_clause(description, 80) if description else ''
-    en_title = (place_title or desc_title or en_fallback_title)[:DRAFT_TEXT_LIMITS['title']]
-    zh_title = (place_title or desc_title or zh_fallback_title)[:DRAFT_TEXT_LIMITS['title']]
+    en_desc_title = desc_title if (desc_title and not desc_is_cjk) else ''
+    zh_desc_title = desc_title if (desc_title and desc_is_cjk) else ''
+    en_title = (place_title or en_desc_title or en_fallback_title)[:DRAFT_TEXT_LIMITS['title']]
+    zh_title = (place_title or zh_desc_title or zh_fallback_title)[:DRAFT_TEXT_LIMITS['title']]
     title = zh_title if chinese_editor else en_title
 
-    if description:
+    if description and (chinese_caption == desc_is_cjk):
         caption = description
         if place_title and landmark.casefold() not in description.casefold() and city.casefold() not in description.casefold():
             caption = f'{description} ({place_title})'

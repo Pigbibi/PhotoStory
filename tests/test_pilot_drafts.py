@@ -58,6 +58,7 @@ def test_pilot_drafts_uses_place_and_description_instead_of_generic_scenic_copy(
     assert by_photo['p2']['caption'] == 'Quiet cobblestone alley lined with pastel townhouses; morning shadows.'
     assert by_photo['p2']['hashtags'] == '#StreetPhotography #Cityscape'
     assert by_photo['p2']['title'] != 'Scenic photo'
+    assert by_photo['p2']['translations']['zh-CN']['title'] == '日间街景'
 
     assert by_photo['p3']['title'] == 'Blue Hour Waterfront'
     assert by_photo['p3']['caption'] == 'Blue Hour Waterfront.'
@@ -73,7 +74,7 @@ def test_pilot_drafts_respects_chinese_editor_and_caption_languages():
             'aesthetic': 8,
             'scene': 'architecture',
             'light': 'night',
-            'description': '',
+            'description': 'Illuminated stone facade at night.',
             'place': {'city': '', 'landmark': '', 'evidence': '', 'confidence': 'none'},
         },
     ]
@@ -87,6 +88,6 @@ def test_pilot_drafts_respects_chinese_editor_and_caption_languages():
     assert len(drafts) == 1
     assert drafts[0]['title'] == '夜景建筑'
     assert drafts[0]['caption'] == '夜景建筑，待编辑。'
-    assert drafts[0]['translations']['en']['title'] == 'Night View Architecture'
+    assert drafts[0]['translations']['en']['title'] == 'Illuminated stone facade at night'
     assert '#Architecture' in drafts[0]['hashtags']
     assert '#NightPhotography' in drafts[0]['hashtags']
