@@ -304,5 +304,6 @@
   "跨草稿和文案核对未完成，请人工检查后再批准。": "No se completó la revisión entre borradores ni del texto. Compruébalos antes de aprobar.",
   "文案修改后尚未重新核对，请人工检查地点和事实。": "El texto editado no se ha revisado de nuevo. Comprueba los lugares y los datos.",
   "Review concern · photo {count}": "Aviso de revisión · foto {count}",
-  "Recorded review concern: {flags}. Check this photo before approval.": "Aviso de revisión registrado: {flags}. Revisa esta foto antes de aprobarla."
+  "Recorded review concern: {flags}. Check this photo before approval.": "Aviso de revisión registrado: {flags}. Revisa esta foto antes de aprobarla.",
+  "从 OneDrive 限定范围挑选风景照，起草配文并经 AI 复核；每篇由你亲手批准后才进入发布队列。": "Un escritorio privado para tus fotos de viaje: selecciona un rango acotado de OneDrive, redacta textos con revisión de IA y solo pone en cola lo que tú apruebes."
 }
