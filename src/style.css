@@ -1,29 +1,76 @@
 :root {
-  color-scheme: dark;
-  --bg: #0e1012;
-  --surface: #16191d;
-  --surface-elevated: #1d2127;
-  --surface-recessed: #08090b;
-  --surface-subtle: #111317;
-  --ink: #f3f4f6;
-  --ink-secondary: #c4c9d1;
-  --muted: #8b93a1;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --accent: #e58e26;
-  --accent-hover: #f59e0b;
-  --accent-soft: rgba(229, 142, 38, 0.14);
-  --approve: #16a34a;
-  --approve-hover: #15803d;
-  --approve-soft: rgba(34, 197, 94, 0.14);
-  --approve-ink: #4ade80;
-  --warn-bg: rgba(229, 142, 38, 0.12);
-  --warn-border: rgba(229, 142, 38, 0.42);
-  --warn-ink: #fcd34d;
-  --danger: #ef4444;
+  color-scheme: light dark;
+  --bg: #0f1418;
+  --surface: #161c22;
+  --surface-elevated: #1e262e;
+  --surface-recessed: #0b0f12;
+  --surface-subtle: #121820;
+  --header-bg: rgba(22, 28, 34, 0.9);
+  --ink: #e7edf2;
+  --ink-secondary: #c3ced8;
+  --muted: #98a6b3;
+  --border: #28323c;
+  --border-strong: #3a4652;
+  --accent: #5db3d0;
+  --accent-hover: #7cc5de;
+  --accent-ink: #06222c;
+  --accent-soft: #15313b;
+  --accent-border: rgba(93, 179, 208, 0.35);
+  --approve: #2d7a4c;
+  --approve-hover: #24633d;
+  --approve-soft: #15301f;
+  --approve-ink: #72cf98;
+  --approve-border: rgba(114, 207, 152, 0.35);
+  --warn-bg: #2d2714;
+  --warn-border: rgba(227, 196, 92, 0.42);
+  --warn-ink: #e3c45c;
+  --danger: #f2958c;
+  --danger-border: #5a2c28;
+  --violet: #ada1f6;
+  --violet-soft: #25213e;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 40px -18px rgba(0, 0, 0, 0.6);
+  --mat-shadow: inset 0 2px 14px rgba(0, 0, 0, 0.55);
+  --photo-shadow: 0 18px 44px rgba(0, 0, 0, 0.65);
   --radius: 6px;
   --radius-sm: 4px;
   --mono: "JetBrains Mono", "SF Mono", "Menlo", "Monaco", monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --surface-elevated: #f1efe9;
+    --surface-recessed: #e9e6de;
+    --surface-subtle: #fbfaf7;
+    --header-bg: rgba(255, 255, 255, 0.92);
+    --ink: #1c2430;
+    --ink-secondary: #3d4753;
+    --muted: #5f6b78;
+    --border: #e4e1d9;
+    --border-strong: #cfcac0;
+    --accent: #1f6f8b;
+    --accent-hover: #185a72;
+    --accent-ink: #ffffff;
+    --accent-soft: #e2eff3;
+    --accent-border: rgba(31, 111, 139, 0.3);
+    --approve: #2d7a4c;
+    --approve-hover: #24633d;
+    --approve-soft: #e3f2e8;
+    --approve-ink: #2d7a4c;
+    --approve-border: rgba(45, 122, 76, 0.3);
+    --warn-bg: #faf1d4;
+    --warn-border: rgba(138, 106, 0, 0.35);
+    --warn-ink: #8a6a00;
+    --danger: #b3261e;
+    --danger-border: #e7b9b5;
+    --violet: #5a4fc0;
+    --violet-soft: #eeecfb;
+    --shadow: 0 1px 2px rgba(20, 30, 40, 0.05), 0 18px 40px -18px rgba(20, 30, 40, 0.22);
+    --mat-shadow: inset 0 1px 6px rgba(20, 30, 40, 0.08);
+    --photo-shadow: 0 12px 30px -8px rgba(20, 30, 40, 0.24);
+  }
 }
 
 *,
@@ -68,13 +115,13 @@ button:disabled {
 
 a,
 a:visited {
-  color: var(--accent-hover);
+  color: var(--accent);
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
 }
 
 a:hover {
-  color: #fbbf24;
+  color: var(--accent-hover);
   text-decoration-thickness: 2px;
 }
 
@@ -92,7 +139,7 @@ header {
   align-items: center;
   gap: 14px;
   padding: 10px 24px;
-  background: rgba(14, 16, 18, 0.9);
+  background: var(--header-bg);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
@@ -157,7 +204,7 @@ nav button {
 
 nav button:hover {
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-elevated);
 }
 
 nav button.active {
@@ -264,7 +311,7 @@ main {
   padding: 5px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--warn-border);
-  background: rgba(14, 16, 18, 0.65);
+  background: var(--surface);
   color: var(--warn-ink);
   font-size: 0.8rem;
   white-space: nowrap;
@@ -315,7 +362,7 @@ a.button {
 .button.primary:visited,
 button.primary {
   background: var(--accent);
-  color: #0e1012;
+  color: var(--accent-ink);
   border-color: var(--accent);
 }
 
@@ -323,7 +370,7 @@ button.primary {
 button.primary:hover:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-  color: #0e1012;
+  color: var(--accent-ink);
 }
 
 .button.primary.approve,
@@ -341,7 +388,7 @@ button.primary:hover:not(:disabled) {
 
 .button.primary.approve:disabled {
   background: var(--approve-soft);
-  border-color: rgba(34, 197, 94, 0.35);
+  border-color: var(--approve-border);
   color: var(--approve-ink);
   opacity: 0.88;
 }
@@ -356,8 +403,8 @@ button.secondary {
 
 .button.secondary:hover:not(:disabled),
 button.secondary:hover:not(:disabled) {
-  background: #252b34;
-  border-color: rgba(255, 255, 255, 0.28);
+  background: var(--surface-elevated);
+  border-color: var(--accent);
   color: var(--ink);
 }
 
@@ -441,7 +488,7 @@ button.secondary:hover:not(:disabled) {
     var(--surface-elevated) 55%,
     var(--surface-subtle) 100%
   );
-  box-shadow: 0 20px 44px -16px rgba(10, 20, 30, 0.38);
+  box-shadow: var(--shadow);
 }
 
 .welcome h2 {
@@ -651,21 +698,21 @@ aside h2 {
   padding: 2px 8px;
   border-radius: 3px;
   background: var(--accent-soft);
-  border: 1px solid rgba(229, 142, 38, 0.35);
+  border: 1px solid var(--accent-border);
   color: var(--accent);
   font-weight: 600;
 }
 
 .mat {
   background: var(--surface-recessed);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 20px;
   min-height: 400px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 0 2px 14px rgba(0, 0, 0, 0.65);
+  box-shadow: var(--mat-shadow);
 }
 
 .mat > .main-photo,
@@ -677,7 +724,7 @@ aside h2 {
   aspect-ratio: var(--photo-ratio, 4 / 5);
   background: #ffffff;
   border-radius: 2px;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.72);
+  box-shadow: var(--photo-shadow);
 }
 
 /* 35mm Filmstrip */
@@ -711,7 +758,7 @@ aside h2 {
 
 .filmstrip button.selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(229, 142, 38, 0.4);
+  box-shadow: 0 0 0 1px var(--accent);
   background: var(--surface-elevated);
 }
 
