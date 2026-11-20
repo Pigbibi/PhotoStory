@@ -392,6 +392,7 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
   const {t,date,locale}=useI18n();
   const [form, setForm] = useState(structuredClone(draft)),
     [index, setIndex] = useState(0),
+    [photoFailedId, setPhotoFailedId] = useState(''),
     [rejecting,setRejecting]=useState(false),[feedbackCategory,setFeedbackCategory]=useState(''),[feedbackNote,setFeedbackNote]=useState(''),
     [exporting,setExporting]=useState(false),[exportProgress,setExportProgress]=useState(''),[exportError,setExportError]=useState(false);
   const download=async()=>{
@@ -439,8 +440,11 @@ function Editor({ draft, relatedDrafts=[], demo, busy, update, onPublication, pu
             style={{...mainFrame,"--photo-ratio":mainFrame.aspectRatio}}
             src={demo ? "/demo-coast.webp" : "/api/photos/" + photo.id}
             alt={photo.alt}
+            onLoad={() => setPhotoFailedId('')}
+            onError={() => setPhotoFailedId(photo.id)}
           />
         </div>
+        {photoFailedId === photo.id && <p className="review-warning" role="alert">{t("图片存储暂不可用，请检查 R2 连接。")}</p>}
         <div className="filmstrip">
           {form.photos.map((p, i) => (
             <button

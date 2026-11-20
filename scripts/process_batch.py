@@ -471,24 +471,129 @@ def orientation(size):
     return 'landscape' if width>height else 'portrait' if height>width else 'square'
 
 
+PILOT_SCENE_LABELS = {
+    'landscape': ('Landscape', '风景'),
+    'wildlife': ('Wildlife', '野生动物'),
+    'architecture': ('Architecture', '建筑'),
+    'culture': ('Culture', '人文'),
+    'street': ('Street View', '街景'),
+    'water': ('Waterfront', '水景'),
+    'unknown': ('Scenic photo', '风景照'),
+}
+PILOT_LIGHT_LABELS = {
+    'day': ('Daylight', '日间'),
+    'golden_hour': ('Golden Hour', '金色时刻'),
+    'blue_hour': ('Blue Hour', '蓝调时刻'),
+    'night': ('Night View', '夜景'),
+    'unknown': ('', ''),
+}
+PILOT_SCENE_HASHTAGS = {
+    'landscape': ('#Landscape', '#Nature'),
+    'wildlife': ('#Wildlife', '#Nature'),
+    'architecture': ('#Architecture', '#UrbanPhotography'),
+    'culture': ('#Culture', '#TravelPhotography'),
+    'street': ('#StreetPhotography', '#Cityscape'),
+    'water': ('#Waterfront', '#Landscape'),
+    'unknown': ('#Landscape', '#TravelPhotography'),
+}
+PILOT_LIGHT_HASHTAGS = {
+    'golden_hour': '#GoldenHour',
+    'blue_hour': '#BlueHour',
+    'night': '#NightPhotography',
+}
+
+
+def _pilot_clause(text, limit):
+    cleaned = ' '.join(text.split()).strip(' .。;；,，-')
+    if not cleaned:
+        return ''
+    first = re.split(r'[.。;；]', cleaned, maxsplit=1)[0].strip(' ,，-')
+    candidate = first or cleaned
+    if len(candidate) <= limit:
+        return candidate
+    cut = candidate[:limit - 1].rsplit(' ', 1)[0].strip(' ,，-')
+    return (cut or candidate[:limit - 1]).rstrip() + '…'
+
+
+def _pilot_draft_copy(photo, direction, source):
+    """Build descriptive, bounded pilot draft copy from screening metadata."""
+    chinese_editor = source.get('editorLanguage', 'zh-CN').startswith('zh')
+    chinese_caption = source.get('captionLanguage', 'en').startswith('zh')
+    scene = photo.get('scene', 'unknown')
+    light = photo.get('light', 'unknown')
+    place = photo.get('place') if isinstance(photo.get('place'), dict) else {}
+    high_place = place.get('confidence') == 'high'
+    city = (place.get('city') or '').strip() if high_place else ''
+    landmark = (place.get('landmark') or '').strip() if high_place else ''
+    description = ' '.join(str(photo.get('description') or '').split()).strip()
+
+    en_scene, zh_scene = PILOT_SCENE_LABELS.get(scene, PILOT_SCENE_LABELS['unknown'])
+    en_light, zh_light = PILOT_LIGHT_LABELS.get(light, ('', ''))
+    en_fallback_title = f'{en_light} {en_scene}'.strip() if en_light else en_scene
+    zh_fallback_title = f'{zh_light}{zh_scene}' if zh_light else zh_scene
+
+    if landmark and city and landmark.casefold() != city.casefold():
+        place_title = f'{landmark}, {city}'
+    else:
+        place_title = landmark or city
+
+    desc_title = _pilot_clause(description, 80) if description else ''
+    en_title = (place_title or desc_title or en_fallback_title)[:DRAFT_TEXT_LIMITS['title']]
+    zh_title = (place_title or desc_title or zh_fallback_title)[:DRAFT_TEXT_LIMITS['title']]
+    title = zh_title if chinese_editor else en_title
+
+    if description:
+        caption = description
+        if place_title and landmark.casefold() not in description.casefold() and city.casefold() not in description.casefold():
+            caption = f'{description} ({place_title})'
+    elif place_title:
+        caption = f'{place_title} · {zh_fallback_title}，待编辑。' if chinese_caption else f'{place_title} — {en_fallback_title}.'
+    else:
+        caption = f'{zh_fallback_title}，待编辑。' if chinese_caption else f'{en_fallback_title}.'
+    caption = caption[:DRAFT_TEXT_LIMITS['caption']]
+
+    tags = list(PILOT_SCENE_HASHTAGS.get(scene, PILOT_SCENE_HASHTAGS['unknown']))
+    light_tag = PILOT_LIGHT_HASHTAGS.get(light)
+    if light_tag and light_tag not in tags:
+        tags.append(light_tag)
+    hashtags = ' '.join(tags)[:DRAFT_TEXT_LIMITS['hashtags']]
+
+    score = photo.get('aesthetic')
+    score_note_zh = f'评分 {score}/10，' if isinstance(score, int) else ''
+    score_note_en = f'score {score}/10, ' if isinstance(score, int) else ''
+    zh_reason = f'同场景同画幅保留评分最高的一张（{score_note_zh}{zh_scene} · {direction}），待人工复核。'[:DRAFT_TEXT_LIMITS['reason']]
+    en_reason = f'Highest screened photo for this scene and orientation ({score_note_en}{en_scene} · {direction}). Awaiting manual review.'[:DRAFT_TEXT_LIMITS['reason']]
+    reason = zh_reason if chinese_editor else en_reason
+    alt = (description or title)[:DRAFT_TEXT_LIMITS['alt']]
+
+    return {
+        'title': title,
+        'caption': caption,
+        'hashtags': hashtags,
+        'reason': reason,
+        'alt': alt,
+        'translations': {
+            'en': {'title': en_title, 'reason': en_reason},
+            'zh-CN': {'title': zh_title, 'reason': zh_reason},
+        },
+    }
+
+
 def pilot_drafts(shortlist, dimensions, limit, draft_prefix, source):
     """Keep one already-screened photo per scene and orientation for manual review."""
-    chinese = source.get('editorLanguage', 'zh-CN').startswith('zh')
-    title = '风景照' if chinese else 'Scenic photo'
-    reason = '同场景同画幅保留评分最高的一张，待人工复核。' if chinese else (
-        'Highest screened score for this scene and orientation. Awaiting manual review.'
-    )
-    caption = '风景照，待编辑。' if source.get('captionLanguage', 'en').startswith('zh') else (
-        'Scenic photo. Caption to be edited.'
-    )
     drafts = []
     for direction in ASPECT_BY_ORIENTATION:
         photos = [p for p in shortlist if orientation(dimensions[p['id']]) == direction]
         for index, scene in enumerate(scene_groups(photos)):
             best = scene[0]
+            copy = _pilot_draft_copy(best, direction, source)
             draft = {
-                'title': title, 'caption': caption, 'hashtags': '#Landscape', 'reason': reason,
-                'photos': [{'id': best['id'], 'alt': title, 'frame': {'mode': 'crop', 'x': 50, 'y': 50}}],
+                'title': copy['title'],
+                'caption': copy['caption'],
+                'hashtags': copy['hashtags'],
+                'reason': copy['reason'],
+                'translations': copy['translations'],
+                'photos': [{'id': best['id'], 'alt': copy['alt'], 'frame': {'mode': 'crop', 'x': 50, 'y': 50}}],
             }
             drafts.extend(validated_groups({'drafts': [draft]}, {best['id']},
                                            f'{draft_prefix}-{direction}-{index}', dimensions))
