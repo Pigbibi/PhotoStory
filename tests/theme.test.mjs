@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
@@ -67,13 +68,53 @@ test('readStoredTheme and writeStoredTheme handle storage safely', () => {
   assert.doesNotThrow(() => writeStoredTheme('light', failingStorage));
 });
 
-test('index.html runs the no-flash theme script before the module script', () => {
+test('index.html loads synchronous external theme-init script before module script without inline scripts', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  const inlineIdx = html.indexOf('photostory-theme');
+  const headMatch = html.match(/<head>([\s\S]*?)<\/head>/i);
+  assert.ok(headMatch, '<head> present');
+  const head = headMatch[1];
+
+  const initTagMatch = html.match(/<script\b[^>]*\bsrc="\/theme-init\.js"[^>]*>\s*<\/script>/i);
+  assert.ok(initTagMatch, 'external /theme-init.js script tag present');
+  assert.ok(head.includes(initTagMatch[0]), '/theme-init.js script is inside <head>');
+  assert.doesNotMatch(initTagMatch[0], /\b(async|defer)\b/i, 'theme-init script must be synchronous');
+  assert.doesNotMatch(initTagMatch[0], /\btype\s*=\s*["']?module/i, 'theme-init script must be classic');
+
+  const initIdx = html.indexOf(initTagMatch[0]);
   const moduleIdx = html.indexOf('/src/main.jsx');
-  assert.ok(inlineIdx !== -1, 'inline theme script present');
   assert.ok(moduleIdx !== -1, 'module script present');
-  assert.ok(inlineIdx < moduleIdx, 'inline script runs before module script');
+  assert.ok(initIdx < moduleIdx, 'theme-init script runs before module script');
+
+  const inlineScripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].filter(
+    ([, attrs, body]) => !/\bsrc\s*=/i.test(attrs) && body.trim().length > 0,
+  );
+  assert.equal(inlineScripts.length, 0, 'no inline scripts that would be blocked by script-src self CSP');
+
+  const initSrc = readFileSync(new URL('../public/theme-init.js', import.meta.url), 'utf8');
+  assert.match(initSrc, /photostory-theme/);
+  assert.match(initSrc, /data-theme/);
+  assert.match(initSrc, /\btry\b[\s\S]*\bcatch\b/);
+
+  const runInit = (storageGetter) => {
+    const attrs = new Map([['data-theme', 'stale']]);
+    const ctx = {
+      document: {
+        documentElement: {
+          setAttribute: (k, v) => attrs.set(k, v),
+          removeAttribute: (k) => attrs.delete(k),
+        },
+      },
+    };
+    Object.defineProperty(ctx, 'localStorage', { configurable: true, get: storageGetter });
+    vm.runInNewContext(initSrc, ctx);
+    return attrs;
+  };
+
+  assert.equal(runInit(() => ({ getItem: () => 'dark' })).get('data-theme'), 'dark');
+  assert.equal(runInit(() => ({ getItem: () => 'light' })).get('data-theme'), 'light');
+  assert.equal(runInit(() => ({ getItem: () => 'system' })).has('data-theme'), false);
+  assert.equal(runInit(() => ({ getItem: () => null })).has('data-theme'), false);
+  assert.doesNotThrow(() => runInit(() => { throw new Error('SecurityError'); }));
 });
 
 test('style.css supports explicit light/dark overrides and system preference fallback', () => {
